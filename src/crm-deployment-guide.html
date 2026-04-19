@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Deployment Guide — Free Stack</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; padding: 2rem 1rem; line-height: 1.7; }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+  .subtitle { font-size: 15px; color: #666; margin-bottom: 2rem; }
+  .stack-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 2rem; }
+  .stack-box { background: white; border: 1px solid #e0e0d8; border-radius: 10px; padding: 14px; text-align: center; }
+  .stack-box strong { display: block; font-size: 15px; margin-bottom: 3px; }
+  .stack-box span { font-size: 12px; color: #666; }
+  .step { background: white; border: 1px solid #e0e0d8; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .num { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; flex-shrink: 0; }
+  .step-title { font-size: 16px; font-weight: 600; }
+  .step-desc { font-size: 13px; color: #666; }
+  .body { font-size: 14px; color: #333; margin-left: 46px; }
+  .body ol { padding-left: 18px; }
+  .body li { margin-bottom: 6px; }
+  pre { background: #f0efe8; border: 1px solid #e0e0d8; border-radius: 8px; padding: 10px 14px; font-size: 12px; font-family: 'Courier New', monospace; margin: 10px 0; overflow-x: auto; white-space: pre; }
+  .tip { background: #eaf3de; border-left: 3px solid #639922; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 13px; color: #3b6d11; margin: 10px 0; }
+  .warn { background: #faeeda; border-left: 3px solid #ba7517; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 13px; color: #633806; margin: 10px 0; }
+  .options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .opt { background: #f8f8f4; border: 1px solid #e0e0d8; border-radius: 8px; padding: 12px; }
+  .opt strong { display: block; font-size: 14px; margin-bottom: 4px; }
+  .opt p { font-size: 12px; color: #555; line-height: 1.5; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 20px; margin: 4px 4px 0 0; }
+  .b-green { background: #eaf3de; color: #3b6d11; }
+  .b-blue { background: #e6f1fb; color: #185fa5; }
+  .b-purple { background: #eeedfe; color: #3c3489; }
+  a { color: #185fa5; }
+  @media (max-width: 500px) {
+    .stack-row, .options { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🚀 Deploy Your CRM — Free Stack Guide</h1>
+  <p class="subtitle">Step-by-step, explained simply. No paid services needed.</p>
+
+  <div class="stack-row">
+    <div class="stack-box"><strong>Vercel</strong><span>Website hosting</span></div>
+    <div class="stack-box"><strong>Firebase</strong><span>Database + backend</span></div>
+    <div class="stack-box"><strong>GitHub</strong><span>Code storage</span></div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#e6f1fb;color:#185fa5;">1</div>
+      <div>
+        <div class="step-title">Install Node.js (one time only)</div>
+        <div class="step-desc">The engine that runs React on your computer</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Think of Node.js like the engine of a car — React needs it to run. You only install it once.</p>
+      <ol style="margin-top:10px;">
+        <li>Go to <a href="https://nodejs.org" target="_blank">nodejs.org</a></li>
+        <li>Click the big green <strong>LTS</strong> button (Long Term Stable — the safe choice)</li>
+        <li>Download and install it like any normal app</li>
+        <li>Check it worked — open your Terminal (Mac) or Command Prompt (Windows) and type:</li>
+      </ol>
+      <pre>node --version</pre>
+      <p>If it shows something like <code>v20.x.x</code> — you're good!</p>
+      <div class="tip">💡 On Windows, search "Command Prompt" in the Start menu. On Mac, search "Terminal" in Spotlight (Cmd+Space).</div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#eaf3de;color:#3b6d11;">2</div>
+      <div>
+        <div class="step-title">Create a React project and add your JSX</div>
+        <div class="step-desc">Wrap your CRM code in a proper React app</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Your .jsx file is like a cake. This step puts it in a box so it can be shipped (deployed).</p>
+      <ol style="margin-top:10px;">
+        <li>Open Terminal / Command Prompt</li>
+        <li>Navigate to your Desktop (or wherever you want to work):</li>
+      </ol>
+      <pre>cd Desktop</pre>
+      <ol start="3">
+        <li>Create a new React project:</li>
+      </ol>
+      <pre>npx create-react-app my-crm</pre>
+      <ol start="4">
+        <li>Enter the project folder:</li>
+      </ol>
+      <pre>cd my-crm</pre>
+      <ol start="5">
+        <li>Open the folder in your file explorer. Find the file <code>src/App.js</code></li>
+        <li>Delete everything inside it and paste your CRM's JSX code in there</li>
+        <li>Save the file. Then test it works locally:</li>
+      </ol>
+      <pre>npm start</pre>
+      <p>A browser window should pop open at <code>http://localhost:3000</code> showing your CRM. 🎉</p>
+      <div class="tip">💡 Press Ctrl+C in the terminal to stop the local server when you're done testing.</div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#eeedfe;color:#3c3489;">3</div>
+      <div>
+        <div class="step-title">Put your code on GitHub</div>
+        <div class="step-desc">GitHub is like Google Drive but for code</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Vercel needs your code on GitHub to deploy it. Think of GitHub as the middleman.</p>
+      <ol style="margin-top:10px;">
+        <li>Go to <a href="https://github.com" target="_blank">github.com</a> and create a free account</li>
+        <li>Click the green <strong>New</strong> button → Name it "my-crm" → Click "Create repository"</li>
+        <li>Download <a href="https://desktop.github.com" target="_blank">GitHub Desktop</a> (free app — much easier than terminal)</li>
+        <li>Open GitHub Desktop → Sign in → Click "Add existing repository"</li>
+        <li>Point it to your <code>my-crm</code> folder on your Desktop</li>
+        <li>Click <strong>Publish repository</strong> → make sure "Keep this code private" is checked if you want → Click Publish</li>
+      </ol>
+      <div class="tip">💡 GitHub Desktop is a free visual app so you don't need to type complicated git commands. Highly recommended for beginners!</div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#faeeda;color:#854f0b;">4</div>
+      <div>
+        <div class="step-title">Deploy your website FREE on Vercel</div>
+        <div class="step-desc">Go from code on GitHub → live website in 2 minutes</div>
+      </div>
+    </div>
+    <div class="body">
+      <span class="badge b-green">Free forever</span><span class="badge b-blue">No credit card needed</span>
+      <ol style="margin-top:10px;">
+        <li>Go to <a href="https://vercel.com" target="_blank">vercel.com</a></li>
+        <li>Click <strong>Sign Up</strong> → Choose <strong>Continue with GitHub</strong></li>
+        <li>Click <strong>New Project</strong></li>
+        <li>Find your "my-crm" repo in the list → Click <strong>Import</strong></li>
+        <li>Vercel will auto-detect it's a React app — don't change any settings</li>
+        <li>Click the big <strong>Deploy</strong> button</li>
+        <li>Wait about 30-60 seconds...</li>
+        <li>🎉 Your site is LIVE at something like <code>my-crm.vercel.app</code></li>
+      </ol>
+      <div class="tip">💡 Every time you update your code and push it to GitHub (via GitHub Desktop), Vercel automatically rebuilds and updates your live site within 30 seconds!</div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#e6f1fb;color:#185fa5;">5</div>
+      <div>
+        <div class="step-title">Add a FREE database with Firebase</div>
+        <div class="step-desc">So your CRM actually saves and loads data</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Without a database, your CRM data disappears every time you refresh the page. Firebase fixes that — it's free and made by Google.</p>
+      
+      <p style="margin-top:10px;font-weight:500;">Choose your database:</p>
+      <div class="options">
+        <div class="opt">
+          <strong>🔥 Firebase (recommended)</strong>
+          <p>Google's free database. No backend needed — works directly in React. Best for beginners. Free up to 1GB storage + 50k reads/day.</p>
+          <span class="badge b-green">Easiest</span><span class="badge b-purple">Real-time</span>
+        </div>
+        <div class="opt">
+          <strong>⚡ Supabase (alternative)</strong>
+          <p>Open-source alternative to Firebase. Uses SQL (spreadsheet-style tables). 500MB free storage. Great if your CRM has complex data relationships.</p>
+          <span class="badge b-green">Free tier</span><span class="badge b-blue">SQL</span>
+        </div>
+      </div>
+
+      <p style="margin-top:14px;font-weight:500;">Setting up Firebase (step by step):</p>
+      <ol style="margin-top:6px;">
+        <li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>
+        <li>Sign in with Google → Click <strong>Create a project</strong> → Name it "my-crm"</li>
+        <li>Disable Google Analytics (not needed) → Click <strong>Create project</strong></li>
+        <li>In the left sidebar click <strong>Firestore Database</strong> → <strong>Create database</strong></li>
+        <li>Choose <strong>Start in test mode</strong> (allows open access for testing)</li>
+        <li>Pick any location close to you → Click <strong>Enable</strong></li>
+        <li>Go back to Project Overview → Click the <strong>&lt;/&gt;</strong> (web) icon to register your app</li>
+        <li>Give it a name like "my-crm-web" → Click <strong>Register app</strong></li>
+        <li>Copy the config code that appears — it looks like this:</li>
+      </ol>
+      <pre>const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "my-crm.firebaseapp.com",
+  projectId: "my-crm",
+  storageBucket: "my-crm.appspot.com",
+  messagingSenderId: "123456",
+  appId: "1:123456:web:abcdef"
+};</pre>
+      <ol start="10">
+        <li>In your React project, install Firebase:</li>
+      </ol>
+      <pre>npm install firebase</pre>
+      <ol start="11">
+        <li>Create a new file <code>src/firebase.js</code> and paste this:</li>
+      </ol>
+      <pre>import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+
+const firebaseConfig = {
+  // paste YOUR config values here
+};
+
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);</pre>
+      <div class="warn">⚠️ Test mode is open to everyone for 30 days. Before sharing with real users, go to Firestore → Rules and add security rules so only you can read/write data.</div>
+    </div>
+  </div>
+
+  <!-- STEP 6 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#eaf3de;color:#3b6d11;">6</div>
+      <div>
+        <div class="step-title">Read &amp; write CRM data to Firebase</div>
+        <div class="step-desc">The actual code to save contacts, leads, notes etc.</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Inside your CRM JSX file, import Firebase and use it like this:</p>
+      <pre>import { db } from './firebase';
+import { collection, addDoc, getDocs } from 'firebase/firestore';
+
+// SAVE a new contact to cloud:
+const saveContact = async (contact) => {
+  await addDoc(collection(db, "contacts"), contact);
+};
+
+// LOAD all contacts from cloud:
+const loadContacts = async () => {
+  const snapshot = await getDocs(collection(db, "contacts"));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};</pre>
+      <div class="tip">💡 Each "collection" in Firestore is like a spreadsheet tab. You can have "contacts", "deals", "notes" — each is its own collection.</div>
+    </div>
+  </div>
+
+  <!-- STEP 7 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="num" style="background:#faece7;color:#993c1d;">7</div>
+      <div>
+        <div class="step-title">Push updates → site auto-updates</div>
+        <div class="step-desc">Your workflow from now on</div>
+      </div>
+    </div>
+    <div class="body">
+      <p>Once everything is set up, your daily workflow to update the site is:</p>
+      <ol style="margin-top:10px;">
+        <li>Make changes to your code in <code>src/App.jsx</code></li>
+        <li>Open <strong>GitHub Desktop</strong></li>
+        <li>You'll see your changes listed — write a short message like "fixed contact form"</li>
+        <li>Click <strong>Commit to main</strong></li>
+        <li>Click <strong>Push origin</strong></li>
+        <li>Go to your Vercel dashboard — it'll show "Building..." for ~30 seconds</li>
+        <li>Done! Your live site is updated ✅</li>
+      </ol>
+      <div class="tip">💡 You can also do this from the terminal with: <br><code>git add . && git commit -m "your message" && git push</code></div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div style="background:white;border:1px solid #e0e0d8;border-radius:12px;padding:1.25rem;margin-top:0.5rem;">
+    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;">Quick Reference — Your Free Stack</h2>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <tr style="border-bottom:1px solid #e8e8e0;">
+        <td style="padding:8px 0;font-weight:500;color:#333;width:30%;">Website hosting</td>
+        <td style="padding:8px 0;color:#555;"><a href="https://vercel.com">vercel.com</a> — free, auto-deploys from GitHub</td>
+      </tr>
+      <tr style="border-bottom:1px solid #e8e8e0;">
+        <td style="padding:8px 0;font-weight:500;color:#333;">Database</td>
+        <td style="padding:8px 0;color:#555;"><a href="https://firebase.google.com">firebase.google.com</a> — free Firestore DB</td>
+      </tr>
+      <tr style="border-bottom:1px solid #e8e8e0;">
+        <td style="padding:8px 0;font-weight:500;color:#333;">Code storage</td>
+        <td style="padding:8px 0;color:#555;"><a href="https://github.com">github.com</a> — free repos, use GitHub Desktop</td>
+      </tr>
+      <tr style="border-bottom:1px solid #e8e8e0;">
+        <td style="padding:8px 0;font-weight:500;color:#333;">Alt database</td>
+        <td style="padding:8px 0;color:#555;"><a href="https://supabase.com">supabase.com</a> — free Postgres SQL database</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-weight:500;color:#333;">Local dev</td>
+        <td style="padding:8px 0;color:#555;"><a href="https://nodejs.org">nodejs.org</a> — needed to run React locally</td>
+      </tr>
+    </table>
+    <p style="font-size:12px;color:#888;margin-top:12px;text-align:center;">Total cost: $0 — all free tiers, no credit card required to get started</p>
+  </div>
+
+</div>
+</body>
+</html>
