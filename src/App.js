@@ -36,6 +36,7 @@ function useStore(key, def) {
       set(p => JSON.stringify(p) === JSON.stringify(fresh) ? p : fresh);
     }, 3500);
     return () => clearInterval(t);
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return [val, setAndPersist];
 }
