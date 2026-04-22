@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { db } from "./firebase";
+import { ref, onValue, set as fbSet } from "firebase/database";
 
 // ═══════════════════════════════════════════════════════════════
 //  SECURITY
@@ -24,49 +26,45 @@ function checkPw(input, stored) {
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 
 // ═══════════════════════════════════════════════════════════════
-//  BROADCAST + STORAGE
-//  BroadcastChannel = instant same-device tab sync
-//  localStorage = persistent cross-session storage
-//  The polling interval keeps multiple devices in sync
-//  when they share the same localStorage (same origin).
-//  For REAL cross-device live sync deploy to Vercel + Firebase:
-//    firebase.google.com → Realtime Database → free tier
+//  FIREBASE REALTIME DATABASE STORAGE
+//  All data lives in Firebase and syncs across every device
+//  in real-time. localStorage is used only as a fast offline cache.
 // ═══════════════════════════════════════════════════════════════
-const CH = "tas9";
-const BC = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(CH) : null;
 let _debounce = null;
 
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
-function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); BC?.postMessage({ k, v }); } catch {} }
+function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
 function useStore(key, def) {
-  // Store `def` in a ref so it never changes identity and doesn't
-  // trigger stale-closure warnings from the exhaustive-deps rule.
   const defRef = useRef(def);
   const [val, setRaw] = useState(() => ls(key, defRef.current));
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Subscribe to Firebase — fires instantly on any device that changes data
+  useEffect(() => {
+    const r = ref(db, key);
+    const unsub = onValue(r, (snap) => {
+      const v = snap.exists() ? snap.val() : defRef.current;
+      setRaw(v);
+      lsw(key, v); // keep local cache in sync
+    }, (err) => {
+      console.warn("Firebase read error for", key, err.message);
+    });
+    return () => unsub();
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const set = useCallback((next) => {
-    const n = typeof next === "function" ? next(ls(key, defRef.current)) : next;
-    setRaw(n); lsw(key, n);
-  }, [key]);
-
-  useEffect(() => {
-    if (!BC) return;
-    const h = e => { if (e.data?.k === key) setRaw(e.data.v); };
-    BC.addEventListener("message", h);
-    return () => BC.removeEventListener("message", h);
-  }, [key]);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const t = setInterval(() => {
-      const f = ls(key, defRef.current);
-      setRaw(p => JSON.stringify(p) === JSON.stringify(f) ? p : f);
-    }, 4000);
-    return () => clearInterval(t);
-  }, [key]);
+    setRaw(prev => {
+      const n = typeof next === "function" ? next(prev) : next;
+      lsw(key, n); // update cache instantly for snappy UI
+      // debounce Firebase write 600ms to batch rapid changes (e.g. qty dials)
+      clearTimeout(_debounce);
+      _debounce = setTimeout(() => {
+        fbSet(ref(db, key), n).catch(e => console.warn("Firebase write error:", e.message));
+      }, 600);
+      return n;
+    });
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return [val, set];
 }
@@ -486,15 +484,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Agent live locations — stored so admin can see all agents
   const [agentLocs, setAgentLocs]=useStore("tas9_locs",{});
 
-  // Debounced full sync push after any data change
-  const allData=useMemo(()=>({tas9_cust:customers,tas9_deliv:deliveries,tas9_sup:supplies,tas9_exp:expenses,tas9_prod:products,tas9_act:actLog,tas9_users:users,tas9_settings:settings,tas9_locs:agentLocs,tas9_waste:wastage}),[customers,deliveries,supplies,expenses,products,actLog,users,settings,agentLocs,wastage]);
-  useEffect(()=>{
-    clearTimeout(_debounce);
-    _debounce=setTimeout(()=>{
-      // Push to localStorage + BC
-      Object.entries(allData).forEach(([k,v])=>lsw(k,v));
-    },800);
-  },[allData]);
+  // Firebase handles all sync via useStore — no extra debounce needed
 
   const [tab,setTab]=useState(()=>userPerms[0]||"Deliveries");
   const [srch,setSrch]=useState("");
