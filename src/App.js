@@ -32,6 +32,8 @@ const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 //  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
 let _timers = {};
+// Tracks pending local writes so Firebase echo doesn't overwrite them
+let _pending = {};
 
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -39,20 +41,23 @@ function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  // Start with null so we know Firebase hasnt loaded yet
   const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
-  // Subscribe to Firebase path — fires on every change from any device
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
+      // If we have a pending local write, ignore the Firebase echo
+      // This stops deleted items from bouncing back
+      if (_pending[key]) {
+        setFbLoaded(true);
+        return;
+      }
       if (snap.exists()) {
         const v = snap.val();
         setRaw(v);
         lsw(key, v);
       } else {
-        // Nothing in Firebase yet — write the default data in
         const d = defRef.current;
         setRaw(d);
         fbSet(ref(db, key), d).catch(e => console.warn("Firebase seed error:", e.message));
@@ -60,7 +65,6 @@ function useStore(key, def) {
       setFbLoaded(true);
     }, (err) => {
       console.warn("Firebase read error for", key, err.message);
-      // Fall back to localStorage if Firebase fails
       setRaw(ls(key, defRef.current));
       setFbLoaded(true);
     });
@@ -71,16 +75,18 @@ function useStore(key, def) {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
       lsw(key, n);
-      // Write to Firebase immediately — debounced 400ms to batch fast changes
+      // Mark as pending so the onValue echo doesn't revert our change
+      _pending[key] = true;
       clearTimeout(_timers[key]);
       _timers[key] = setTimeout(() => {
-        fbSet(ref(db, key), n).catch(e => console.warn("Firebase write error:", e.message));
+        fbSet(ref(db, key), n)
+          .then(() => { _pending[key] = false; })
+          .catch(e => { console.warn("Firebase write error:", e.message); _pending[key] = false; });
       }, 400);
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // While Firebase hasnt loaded yet, show localStorage cache or default
   const safeVal = fbLoaded ? val : (ls(key, defRef.current));
   return [safeVal ?? defRef.current, set];
 }
