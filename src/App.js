@@ -31,13 +31,12 @@ const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 //  All devices subscribe and receive updates in real-time.
 //  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
-let _timers = {};
-// Tracks pending local writes so Firebase echo doesn't overwrite them
-let _pending = {};
-
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
+
+// Tracks the last value WE wrote, so we can ignore Firebase echoing it back
+let _localWrites = {};
 
 function useStore(key, def) {
   const defRef = useRef(def);
@@ -47,19 +46,22 @@ function useStore(key, def) {
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      // If we have a pending local write, ignore the Firebase echo
-      // This stops deleted items from bouncing back
-      if (_pending[key]) {
-        setFbLoaded(true);
-        return;
-      }
       if (snap.exists()) {
-        const v = snap.val();
-        setRaw(v);
-        lsw(key, v);
+        const incoming = snap.val();
+        const incomingStr = JSON.stringify(incoming);
+        // If Firebase is just echoing back what we wrote, ignore it
+        if (_localWrites[key] === incomingStr) {
+          setFbLoaded(true);
+          return;
+        }
+        setRaw(incoming);
+        lsw(key, incoming);
       } else {
+        // Nothing in Firebase — seed defaults
         const d = defRef.current;
         setRaw(d);
+        const dStr = JSON.stringify(d);
+        _localWrites[key] = dStr;
         fbSet(ref(db, key), d).catch(e => console.warn("Firebase seed error:", e.message));
       }
       setFbLoaded(true);
@@ -75,14 +77,18 @@ function useStore(key, def) {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
       lsw(key, n);
-      // Mark as pending so the onValue echo doesn't revert our change
-      _pending[key] = true;
-      clearTimeout(_timers[key]);
-      _timers[key] = setTimeout(() => {
-        fbSet(ref(db, key), n)
-          .then(() => { _pending[key] = false; })
-          .catch(e => { console.warn("Firebase write error:", e.message); _pending[key] = false; });
-      }, 400);
+      // Remember exactly what we wrote so onValue can skip the echo
+      const nStr = JSON.stringify(n);
+      _localWrites[key] = nStr;
+      // Write to Firebase immediately — no debounce so deletes never bounce
+      fbSet(ref(db, key), n)
+        .then(() => {
+          // After 3s clear the write record so other devices can update us again
+          setTimeout(() => {
+            if (_localWrites[key] === nStr) _localWrites[key] = null;
+          }, 3000);
+        })
+        .catch(e => console.warn("Firebase write error:", e.message));
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
