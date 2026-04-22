@@ -26,11 +26,12 @@ function checkPw(input, stored) {
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 
 // ═══════════════════════════════════════════════════════════════
-//  FIREBASE REALTIME DATABASE STORAGE
-//  All data lives in Firebase and syncs across every device
-//  in real-time. localStorage is used only as a fast offline cache.
+//  FIREBASE REALTIME DATABASE
+//  Writes every change to Firebase immediately.
+//  All devices subscribe and receive updates in real-time.
+//  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
-let _debounce = null;
+let _timers = {};
 
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -38,35 +39,50 @@ function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  const [val, setRaw] = useState(() => ls(key, defRef.current));
+  // Start with null so we know Firebase hasnt loaded yet
+  const [val, setRaw] = useState(null);
+  const [fbLoaded, setFbLoaded] = useState(false);
 
-  // Subscribe to Firebase — fires instantly on any device that changes data
+  // Subscribe to Firebase path — fires on every change from any device
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      const v = snap.exists() ? snap.val() : defRef.current;
-      setRaw(v);
-      lsw(key, v); // keep local cache in sync
+      if (snap.exists()) {
+        const v = snap.val();
+        setRaw(v);
+        lsw(key, v);
+      } else {
+        // Nothing in Firebase yet — write the default data in
+        const d = defRef.current;
+        setRaw(d);
+        fbSet(ref(db, key), d).catch(e => console.warn("Firebase seed error:", e.message));
+      }
+      setFbLoaded(true);
     }, (err) => {
       console.warn("Firebase read error for", key, err.message);
+      // Fall back to localStorage if Firebase fails
+      setRaw(ls(key, defRef.current));
+      setFbLoaded(true);
     });
     return () => unsub();
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = useCallback((next) => {
     setRaw(prev => {
-      const n = typeof next === "function" ? next(prev) : next;
-      lsw(key, n); // update cache instantly for snappy UI
-      // debounce Firebase write 600ms to batch rapid changes (e.g. qty dials)
-      clearTimeout(_debounce);
-      _debounce = setTimeout(() => {
+      const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
+      lsw(key, n);
+      // Write to Firebase immediately — debounced 400ms to batch fast changes
+      clearTimeout(_timers[key]);
+      _timers[key] = setTimeout(() => {
         fbSet(ref(db, key), n).catch(e => console.warn("Firebase write error:", e.message));
-      }, 600);
+      }, 400);
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return [val, set];
+  // While Firebase hasnt loaded yet, show localStorage cache or default
+  const safeVal = fbLoaded ? val : (ls(key, defRef.current));
+  return [safeVal ?? defRef.current, set];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -484,7 +500,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Agent live locations — stored so admin can see all agents
   const [agentLocs, setAgentLocs]=useStore("tas9_locs",{});
 
-  // Firebase handles all sync via useStore — no extra debounce needed
+  // Firebase handles all sync via useStore — no extra sync needed
 
   const [tab,setTab]=useState(()=>userPerms[0]||"Deliveries");
   const [srch,setSrch]=useState("");
