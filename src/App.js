@@ -35,38 +35,47 @@ function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.par
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
-// Tracks the last value WE wrote, so we can ignore Firebase echoing it back
-let _localWrites = {};
+// Firebase deletes nodes when arrays/objects are empty, causing re-seed loops.
+// Fix: always wrap data as {v: data} before writing — empty arrays become {v:[]}
+// which Firebase stores correctly. Unwrap with .v on read.
+function fbWrite(key, data) {
+  return fbSet(ref(db, key), { v: data });
+}
+
+let _writing = {}; // keys currently being written — ignore echoes
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  const [val, setRaw] = useState(null);
+  const [val, setRaw] = useState(() => ls(key, defRef.current));
   const [fbLoaded, setFbLoaded] = useState(false);
 
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
+      // Ignore echo of our own write
+      if (_writing[key]) {
+        setFbLoaded(true);
+        return;
+      }
       if (snap.exists()) {
-        const incoming = snap.val();
-        const incomingStr = JSON.stringify(incoming);
-        // If Firebase is just echoing back what we wrote, ignore it
-        if (_localWrites[key] === incomingStr) {
-          setFbLoaded(true);
-          return;
-        }
+        const raw = snap.val();
+        // Unwrap from {v: data} wrapper
+        const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
         setRaw(incoming);
         lsw(key, incoming);
       } else {
-        // Nothing in Firebase — seed defaults
+        // Nothing in Firebase at all — first ever load, seed defaults once
         const d = defRef.current;
+        _writing[key] = true;
+        fbWrite(key, d)
+          .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
+          .catch(e => { console.warn("seed error:", e.message); _writing[key] = false; });
         setRaw(d);
-        const dStr = JSON.stringify(d);
-        _localWrites[key] = dStr;
-        fbSet(ref(db, key), d).catch(e => console.warn("Firebase seed error:", e.message));
+        lsw(key, d);
       }
       setFbLoaded(true);
     }, (err) => {
-      console.warn("Firebase read error for", key, err.message);
+      console.warn("Firebase error for", key, err.message);
       setRaw(ls(key, defRef.current));
       setFbLoaded(true);
     });
@@ -77,23 +86,16 @@ function useStore(key, def) {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
       lsw(key, n);
-      // Remember exactly what we wrote so onValue can skip the echo
-      const nStr = JSON.stringify(n);
-      _localWrites[key] = nStr;
-      // Write to Firebase immediately — no debounce so deletes never bounce
-      fbSet(ref(db, key), n)
-        .then(() => {
-          // After 3s clear the write record so other devices can update us again
-          setTimeout(() => {
-            if (_localWrites[key] === nStr) _localWrites[key] = null;
-          }, 3000);
-        })
-        .catch(e => console.warn("Firebase write error:", e.message));
+      // Block echo for this key while write is in flight
+      _writing[key] = true;
+      fbWrite(key, n)
+        .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
+        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = false; });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const safeVal = fbLoaded ? val : (ls(key, defRef.current));
+  const safeVal = fbLoaded ? val : ls(key, defRef.current);
   return [safeVal ?? defRef.current, set];
 }
 
