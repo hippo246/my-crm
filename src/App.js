@@ -955,7 +955,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
                 </div>
                 {canSeeFinancials&&<div className="flex gap-2 mb-3">
                   <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-2.5 text-center"><p className="font-bold text-emerald-500 text-sm">{inr(c.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
@@ -1168,9 +1168,11 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 </table>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-                    const w=window.open("","_blank","width=900,height=900,noopener");
-                    if(w){w.document.open();w.document.write(html);w.document.close();}
-                    else alert("Allow pop-ups then try again.");
+                    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+                    const burl=URL.createObjectURL(blob);
+                    const wa=document.createElement("a");wa.href=burl;wa.target="_blank";wa.rel="noopener";
+                    document.body.appendChild(wa);wa.click();document.body.removeChild(wa);
+                    setTimeout(()=>URL.revokeObjectURL(burl),60000);
                     addLog("Exported wastage","PDF report");
                   }}>PDF</Btn>
                   <Btn dm={dm} size="sm" onClick={()=>{setWF(blkW());setWSh("add");}}>+ Log Wastage</Btn>
