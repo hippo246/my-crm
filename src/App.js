@@ -136,9 +136,23 @@ const D_PRODS = [
   {id:"paratha10", name:"Paratha Pack (10 pcs)", unit:"pack", prices:[130,140,150]},
 ];
 
-const D_CUST = [];
+const D_CUST = [
+  {id:"c1",name:"Hotel Saffron",phone:"9876543210",address:"MG Road, Panaji, Goa",lat:15.4989,lng:73.8278,
+   orderLines:{roti:{qty:20,priceAmount:6},paratha5:{qty:4,priceAmount:75},paratha10:{qty:0,priceAmount:140}},
+   paid:1200,pending:300,notes:"Prefers crispy",active:true,joinDate:"2026-01-01"},
+  {id:"c2",name:"Sharma Tiffin",phone:"9123456789",address:"Panaji Market, Goa",lat:15.5004,lng:73.8212,
+   orderLines:{roti:{qty:0,priceAmount:5},paratha5:{qty:0,priceAmount:70},paratha10:{qty:3,priceAmount:130}},
+   paid:0,pending:390,notes:"",active:true,joinDate:"2026-02-15"},
+];
 
-const D_DELIV = [];
+const D_DELIV = [
+  {id:"d1",customerId:"c1",customer:"Hotel Saffron",
+   orderLines:{roti:{qty:20,priceAmount:6},paratha5:{qty:4,priceAmount:75},paratha10:{qty:0,priceAmount:140}},
+   date:"2026-04-12",deliveryDate:"",status:"Pending",notes:"",address:"MG Road, Panaji, Goa",lat:15.4989,lng:73.8278,createdBy:"Admin",createdAt:"2026-04-12"},
+  {id:"d2",customerId:"c2",customer:"Sharma Tiffin",
+   orderLines:{roti:{qty:0,priceAmount:5},paratha5:{qty:0,priceAmount:70},paratha10:{qty:3,priceAmount:130}},
+   date:"2026-04-12",deliveryDate:"",status:"Delivered",notes:"",address:"Panaji Market, Goa",lat:15.5004,lng:73.8212,createdBy:"Admin",createdAt:"2026-04-12"},
+];
 
 const D_SUP = [];
 
@@ -975,7 +989,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
                 </div>
                 {canSeeFinancials&&<div className="flex gap-2 mb-3">
                   <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-2.5 text-center"><p className="font-bold text-emerald-500 text-sm">{inr(c.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
@@ -1040,7 +1054,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
                 {d.replacement?.done&&(
