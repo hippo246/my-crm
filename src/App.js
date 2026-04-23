@@ -43,35 +43,47 @@ function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-let _writing = {}; // keys being written — suppress echo on listener
+// pendingWrites[key] = serialized JSON of the value we just wrote.
+// When Firebase echoes back, we compare — if it matches what we wrote, skip it
+// (we already have it in local state). Once a different/newer value arrives, clear it.
+let _pendingWrites = {};
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  // null until Firebase responds — never seeds from localStorage
   const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      if (_writing[key]) { setFbLoaded(true); return; }
       if (snap.exists()) {
         const raw = snap.val();
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
+        // If this is the echo of our own write, skip overwriting local state
+        if (_pendingWrites[key] !== undefined) {
+          const incomingStr = JSON.stringify(incoming);
+          if (incomingStr === _pendingWrites[key]) {
+            // Echo confirmed — safe to clear the guard now
+            delete _pendingWrites[key];
+            setFbLoaded(true);
+            return;
+          }
+          // Different value arrived (from another device/user) — accept it
+          delete _pendingWrites[key];
+        }
         setRaw(incoming);
       } else {
         // First ever load — seed Firebase with defaults
         const d = defRef.current;
-        _writing[key] = true;
+        _pendingWrites[key] = JSON.stringify(d);
         fbWrite(key, d)
-          .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
-          .catch(e => { console.warn("seed error:", e.message); _writing[key] = false; });
+          .catch(e => { console.warn("seed error:", e.message); delete _pendingWrites[key]; });
         setRaw(d);
       }
       setFbLoaded(true);
     }, (err) => {
       console.warn("Firebase error for", key, err.message);
-      setRaw(defRef.current); // fall back to defaults, never localStorage
+      setRaw(defRef.current);
       setFbLoaded(true);
     });
     return () => unsub();
@@ -80,15 +92,13 @@ function useStore(key, def) {
   const set = useCallback((next) => {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
-      _writing[key] = true;
+      _pendingWrites[key] = JSON.stringify(n);
       fbWrite(key, n)
-        .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
-        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = false; });
+        .catch(e => { console.warn("Firebase write error:", e.message); delete _pendingWrites[key]; });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // While waiting for Firebase show defaults, once loaded show real data
   return [fbLoaded ? (val ?? defRef.current) : defRef.current, set];
 }
 
