@@ -42,57 +42,41 @@ function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-// _seeded tracks keys we have already seeded this session so we never
-// re-seed just because Firebase momentarily returns snap.exists()===false
-// (which happens when all items are deleted — the node disappears).
-// _pendingWrites[key] = JSON of the last value WE wrote, used to suppress
-// the Firebase echo so it never overwrites our fresh local state.
-const _seeded = new Set();
-let _pendingWrites = {};
+let _writing = {}; // keys currently being written — ignore echoes
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  // Start null — never pre-seed from localStorage, always wait for Firebase
-  const [val, setRaw] = useState(null);
+  const [val, setRaw] = useState(() => ls(key, defRef.current));
   const [fbLoaded, setFbLoaded] = useState(false);
 
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
+      // Ignore echo of our own write
+      if (_writing[key]) {
+        setFbLoaded(true);
+        return;
+      }
       if (snap.exists()) {
         const raw = snap.val();
+        // Unwrap from {v: data} wrapper
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
-
-        // Is this the echo of our own write? Compare JSON.
-        if (_pendingWrites[key] !== undefined) {
-          if (JSON.stringify(incoming) === _pendingWrites[key]) {
-            delete _pendingWrites[key]; // confirmed echo — safe to clear
-            setFbLoaded(true);
-            return; // already have correct value in state, skip overwrite
-          }
-          delete _pendingWrites[key]; // genuinely different — accept it
-        }
         setRaw(incoming);
+        lsw(key, incoming);
       } else {
-        // Node missing in Firebase.
-        // Only seed defaults the very first time (never after a delete).
-        if (!_seeded.has(key)) {
-          _seeded.add(key);
-          const d = defRef.current;
-          _pendingWrites[key] = JSON.stringify(d);
-          fbWrite(key, d).catch(e => {
-            console.warn('seed error:', e.message);
-            delete _pendingWrites[key];
-          });
-          setRaw(d);
-        }
-        // If already seeded, node is empty because user deleted everything —
-        // leave state as-is (empty array/object), do NOT re-seed.
+        // Nothing in Firebase at all — first ever load, seed defaults once
+        const d = defRef.current;
+        _writing[key] = true;
+        fbWrite(key, d)
+          .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
+          .catch(e => { console.warn("seed error:", e.message); _writing[key] = false; });
+        setRaw(d);
+        lsw(key, d);
       }
       setFbLoaded(true);
     }, (err) => {
-      console.warn('Firebase read error for', key, err.message);
-      setRaw(defRef.current);
+      console.warn("Firebase error for", key, err.message);
+      setRaw(ls(key, defRef.current));
       setFbLoaded(true);
     });
     return () => unsub();
@@ -100,17 +84,19 @@ function useStore(key, def) {
 
   const set = useCallback((next) => {
     setRaw(prev => {
-      const n = typeof next === 'function' ? next(prev ?? defRef.current) : next;
-      _pendingWrites[key] = JSON.stringify(n);
-      fbWrite(key, n).catch(e => {
-        console.warn('Firebase write error for', key, e.message);
-        delete _pendingWrites[key];
-      });
+      const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
+      lsw(key, n);
+      // Block echo for this key while write is in flight
+      _writing[key] = true;
+      fbWrite(key, n)
+        .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
+        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = false; });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return [fbLoaded ? (val ?? defRef.current) : defRef.current, set];
+  const safeVal = fbLoaded ? val : ls(key, defRef.current);
+  return [safeVal ?? defRef.current, set];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -150,32 +136,13 @@ const D_PRODS = [
   {id:"paratha10", name:"Paratha Pack (10 pcs)", unit:"pack", prices:[130,140,150]},
 ];
 
-const D_CUST = [
-  {id:"c1",name:"Hotel Saffron",phone:"9876543210",address:"MG Road, Panaji, Goa",lat:15.4989,lng:73.8278,
-   orderLines:{roti:{qty:20,priceAmount:6},paratha5:{qty:4,priceAmount:75},paratha10:{qty:0,priceAmount:140}},
-   paid:1200,pending:300,notes:"Prefers crispy",active:true,joinDate:"2026-01-01"},
-  {id:"c2",name:"Sharma Tiffin",phone:"9123456789",address:"Panaji Market, Goa",lat:15.5004,lng:73.8212,
-   orderLines:{roti:{qty:0,priceAmount:5},paratha5:{qty:0,priceAmount:70},paratha10:{qty:3,priceAmount:130}},
-   paid:0,pending:390,notes:"",active:true,joinDate:"2026-02-15"},
-];
+const D_CUST = [];
 
-const D_DELIV = [
-  {id:"d1",customerId:"c1",customer:"Hotel Saffron",
-   orderLines:{roti:{qty:20,priceAmount:6},paratha5:{qty:4,priceAmount:75},paratha10:{qty:0,priceAmount:140}},
-   date:"2026-04-12",deliveryDate:"",status:"Pending",notes:"",address:"MG Road, Panaji, Goa",lat:15.4989,lng:73.8278,createdBy:"Admin",createdAt:"2026-04-12"},
-  {id:"d2",customerId:"c2",customer:"Sharma Tiffin",
-   orderLines:{roti:{qty:0,priceAmount:5},paratha5:{qty:0,priceAmount:70},paratha10:{qty:3,priceAmount:130}},
-   date:"2026-04-12",deliveryDate:"",status:"Delivered",notes:"",address:"Panaji Market, Goa",lat:15.5004,lng:73.8212,createdBy:"Admin",createdAt:"2026-04-12"},
-];
+const D_DELIV = [];
 
-const D_SUP = [
-  {id:"s1",item:"Wheat Flour",  qty:50,unit:"kg",date:"2026-04-10",supplier:"Ram Store",cost:2000,notes:""},
-  {id:"s2",item:"Oil (Refined)",qty:20,unit:"L", date:"2026-04-11",supplier:"Agro Mart",cost:1600,notes:""},
-];
+const D_SUP = [];
 
-const D_EXP = [
-  {id:"e1",category:"Gas",amount:800,date:"2026-04-10",notes:"Monthly LPG"},
-];
+const D_EXP = [];
 
 const D_USERS = [
   {id:"u1",username:"admin",   password:hashPw("TAS@admin2026"),role:"admin",  name:"Admin",         active:true,createdAt:"2026-01-01",permissions:ALL_TABS},
@@ -1008,7 +975,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {canSeeFinancials&&<div className="flex gap-2 mb-3">
                   <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-2.5 text-center"><p className="font-bold text-emerald-500 text-sm">{inr(c.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
@@ -1073,7 +1040,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
                 {d.replacement?.done&&(
