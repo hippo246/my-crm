@@ -26,30 +26,31 @@ function checkPw(input, stored) {
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 
 // ═══════════════════════════════════════════════════════════════
-//  localStorage — used ONLY for session + dark mode (per-device).
-//  All app data (customers, deliveries, supplies, expenses, etc.)
-//  lives exclusively in Firebase Realtime Database.
+//  FIREBASE REALTIME DATABASE
+//  Writes every change to Firebase immediately.
+//  All devices subscribe and receive updates in real-time.
+//  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
-// ═══════════════════════════════════════════════════════════════
-//  FIREBASE REALTIME DATABASE — sole source of truth for app data
-//  Wrap as {v: data} so empty arrays/objects survive Firebase's
-//  auto-delete behaviour. Unwrap with .v on read.
-// ═══════════════════════════════════════════════════════════════
+// Firebase deletes nodes when arrays/objects are empty, causing re-seed loops.
+// Fix: always wrap data as {v: data} before writing — empty arrays become {v:[]}
+// which Firebase stores correctly. Unwrap with .v on read.
 function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-// pendingWrites[key] = serialized JSON of the value we just wrote.
-// When Firebase echoes back, we compare — if it matches what we wrote, skip it
-// (we already have it in local state). Once a different/newer value arrives, clear it.
+// _pendingWrites[key] = JSON string of the last value WE wrote.
+// When Firebase echoes it back we skip it — we already have it in React state.
+// If a genuinely different value arrives (another device/user) we accept it.
+// No timeouts. No localStorage for app data. Zero race conditions.
 let _pendingWrites = {};
 
 function useStore(key, def) {
   const defRef = useRef(def);
+  // Start as null — never seed from localStorage, always wait for Firebase
   const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
@@ -59,30 +60,31 @@ function useStore(key, def) {
       if (snap.exists()) {
         const raw = snap.val();
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
-        // If this is the echo of our own write, skip overwriting local state
+        // Is this the echo of our own write?
         if (_pendingWrites[key] !== undefined) {
-          const incomingStr = JSON.stringify(incoming);
-          if (incomingStr === _pendingWrites[key]) {
-            // Echo confirmed — safe to clear the guard now
+          if (JSON.stringify(incoming) === _pendingWrites[key]) {
+            // It's our echo — safe to clear guard, skip overwrite
             delete _pendingWrites[key];
             setFbLoaded(true);
             return;
           }
-          // Different value arrived (from another device/user) — accept it
+          // Different value arrived (another device wrote) — accept it
           delete _pendingWrites[key];
         }
         setRaw(incoming);
       } else {
-        // First ever load — seed Firebase with defaults
+        // Key doesn't exist in Firebase yet — seed it with defaults
         const d = defRef.current;
         _pendingWrites[key] = JSON.stringify(d);
-        fbWrite(key, d)
-          .catch(e => { console.warn("seed error:", e.message); delete _pendingWrites[key]; });
+        fbWrite(key, d).catch(e => {
+          console.warn("seed error:", e.message);
+          delete _pendingWrites[key];
+        });
         setRaw(d);
       }
       setFbLoaded(true);
     }, (err) => {
-      console.warn("Firebase error for", key, err.message);
+      console.warn("Firebase read error for", key, ":", err.message);
       setRaw(defRef.current);
       setFbLoaded(true);
     });
@@ -92,13 +94,17 @@ function useStore(key, def) {
   const set = useCallback((next) => {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
+      // Record what we wrote so we can suppress the echo
       _pendingWrites[key] = JSON.stringify(n);
-      fbWrite(key, n)
-        .catch(e => { console.warn("Firebase write error:", e.message); delete _pendingWrites[key]; });
+      fbWrite(key, n).catch(e => {
+        console.warn("Firebase write error for", key, ":", e.message);
+        delete _pendingWrites[key];
+      });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Show defaults until Firebase responds, then show real data
   return [fbLoaded ? (val ?? defRef.current) : defRef.current, set];
 }
 
@@ -123,11 +129,11 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
   factory: ["Customers","Deliveries","Supplies","Wastage"],
-  agent:   ["Customers","Deliveries","Wastage"],
+  agent:   ["Customers","Deliveries"],
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -522,6 +528,15 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [wastage,   setWaste] =useStore("tas9_waste", D_WASTE);
   // Agent live locations — stored so admin can see all agents
   const [agentLocs, setAgentLocs]=useStore("tas9_locs",{});
+  const [notifs, setNotifs]=useStore("tas9_notifs",[]);
+  const [notifOpen, setNotifOpen]=useState(false);
+  const unreadNotifs=notifs.filter(n=>!n.read).length;
+  function addNotif(title,body,type="info"){
+    const n={id:uid(),title,body,type,ts:ts(),read:false};
+    setNotifs(p=>[n,...p.slice(0,49)]);
+  }
+  function markAllRead(){setNotifs(p=>p.map(n=>({...n,read:true})));}
+  function delNotif(id){setNotifs(p=>p.filter(n=>n.id!==id));}
 
   // Firebase handles all sync via useStore — no extra sync needed
 
@@ -609,10 +624,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
 
   // CUSTOMERS
-  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
+  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
   function togActive(c){setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
-  function recPay(){const a=+payAmt;if(!a||!paySh)return;setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);setPaySh(null);setPayAmt("");}
+  function recPay(){const a=+payAmt;if(!a||!paySh)return;setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
   function pickCust(name){const c=customers.find(x=>x.name===name);setDf(f=>({...f,customer:name,customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
@@ -624,11 +639,11 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       setCust(p=>p.map(c=>c.id===dF.customerId?{...c,pending:Math.max(0,c.pending-replAmt)}:c));
       addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
     }
-    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");}
+    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");}
     else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");}
     setDsh(null);
   }
-  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");}
+  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered")addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");});}
 
   // SUPPLIES
@@ -778,6 +793,36 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <a href={mapU("",activeAgents[0].lat,activeAgents[0].lng)} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] px-2.5 py-1 rounded-full bg-sky-500 text-white font-semibold">🗺 {activeAgents.length} Agent{activeAgents.length>1?"s":""}</a>
             )}
+            {/* BELL */}
+            <div className="relative">
+              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text}} className="w-8 h-8 rounded-full flex items-center justify-center text-base select-none relative">
+                🔔
+                {unreadNotifs>0&&<span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">{unreadNotifs>9?"9+":unreadNotifs}</span>}
+              </button>
+              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200}} className="absolute right-0 top-10 w-72 rounded-2xl shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.text}} className="text-sm font-bold">Notifications</span>
+                  <div className="flex gap-2">
+                    {notifs.length>0&&<button onClick={()=>setNotifs([])} style={{color:t.sub}} className="text-[11px]">Clear all</button>}
+                    <button onClick={()=>setNotifOpen(false)} style={{color:t.sub}} className="text-[11px] font-bold">✕</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:320,overflowY:"auto"}}>
+                  {notifs.length===0?<p style={{color:t.sub}} className="text-xs text-center py-6">No notifications</p>
+                  :notifs.map(n=>(
+                    <div key={n.id} style={{background:n.read?t.card:dm?"#1e1a0e":"#fffbeb",borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 flex gap-2">
+                      <span className="text-base mt-0.5 shrink-0">{n.type==="success"?"✅":n.type==="warning"?"⚠️":n.type==="error"?"❌":"ℹ️"}</span>
+                      <div className="flex-1 min-w-0">
+                        <p style={{color:t.text}} className="text-xs font-semibold">{n.title}</p>
+                        <p style={{color:t.sub}} className="text-[11px] mt-0.5">{n.body}</p>
+                        <p style={{color:t.sub}} className="text-[10px] mt-1">{n.ts}</p>
+                      </div>
+                      <button onClick={()=>delNotif(n.id)} style={{color:t.sub}} className="text-xs shrink-0">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>}
+            </div>
             <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text}} className="w-8 h-8 rounded-full flex items-center justify-center text-base select-none">{dm?"☀️":"🌙"}</button>
             <button onClick={onLogout} style={{background:t.inp,color:t.sub}} className="text-[11px] px-2.5 py-1 rounded-full font-semibold">Sign out</button>
           </div>
@@ -1023,7 +1068,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
                 {d.replacement?.done&&(
@@ -1171,11 +1216,9 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 </table>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-                    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-                    const burl=URL.createObjectURL(blob);
-                    const wa=document.createElement("a");wa.href=burl;wa.target="_blank";wa.rel="noopener";
-                    document.body.appendChild(wa);wa.click();document.body.removeChild(wa);
-                    setTimeout(()=>URL.revokeObjectURL(burl),60000);
+                    const w=window.open("","_blank","width=900,height=900,noopener");
+                    if(w){w.document.open();w.document.write(html);w.document.close();}
+                    else alert("Allow pop-ups then try again.");
                     addLog("Exported wastage","PDF report");
                   }}>PDF</Btn>
                   <Btn dm={dm} size="sm" onClick={()=>{setWF(blkW());setWSh("add");}}>+ Log Wastage</Btn>
@@ -1214,6 +1257,159 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             </>);
           })()}
         </>)}
+
+
+        {/* P&L TAB */}
+        {tab==="P&L"&&isAdmin&&(()=>{
+          const months=Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-i);return d.toISOString().slice(0,7);}).reverse();
+          const mData=months.map(m=>({
+            month:m.slice(5)+"/"+m.slice(2,4),
+            revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
+            supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),
+            expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),
+            wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),
+          })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost}));
+          const totRev=mData.reduce((s,m)=>s+m.revenue,0);
+          const totCost=mData.reduce((s,m)=>s+m.totalCost,0);
+          const totProfit=totRev-totCost;
+          return <>
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <StatCard dm={dm} label="6-Month Revenue" value={inr(totRev)} sub="All delivered orders" accent="#10b981"/>
+              <StatCard dm={dm} label="6-Month Costs" value={inr(totCost)} sub="Supplies+Ops+Waste" accent="#ef4444"/>
+              <StatCard dm={dm} label="Net Profit" value={inr(totProfit)} sub={totProfit>=0?"Profitable ✓":"Loss ⚠️"} accent={totProfit>=0?"#10b981":"#ef4444"}/>
+            </div>
+            {/* Monthly breakdown chart */}
+            <Card dm={dm} className="p-4">
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-3">Monthly P&L — Last 6 Months</p>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={mData} margin={{top:0,right:0,left:-15,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={t.border}/>
+                  <XAxis dataKey="month" tick={{fontSize:10,fill:t.sub}}/>
+                  <YAxis tick={{fontSize:10,fill:t.sub}}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:8,color:t.text,fontSize:11}}/>
+                  <Legend wrapperStyle={{fontSize:11}}/>
+                  <Bar dataKey="revenue" name="Revenue" fill="#10b981" radius={[4,4,0,0]}/>
+                  <Bar dataKey="totalCost" name="Total Cost" fill="#ef4444" radius={[4,4,0,0]}/>
+                  <Bar dataKey="profit" name="Profit" fill="#f59e0b" radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+            {/* Monthly table */}
+            <Card dm={dm} className="overflow-hidden">
+              <div className="p-4 pb-2"><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Monthly Breakdown</p></div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr style={{borderBottom:`2px solid ${t.border}`}}>
+                    {["Month","Revenue","Supply Cost","Expenses","Waste Cost","Total Cost","Profit/Loss"].map(h=><th key={h} style={{color:t.sub}} className="px-4 py-2 text-left font-semibold uppercase tracking-wide text-[10px]">{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {mData.map(m=>(
+                      <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`}}>
+                        <td style={{color:t.text}} className="px-4 py-2.5 font-semibold">{m.month}</td>
+                        <td className="px-4 py-2.5 text-emerald-500 font-semibold">{inr(m.revenue)}</td>
+                        <td className="px-4 py-2.5 text-purple-500">{inr(m.supplyCost)}</td>
+                        <td className="px-4 py-2.5 text-red-500">{inr(m.expenses)}</td>
+                        <td className="px-4 py-2.5 text-orange-500">{inr(m.wasteCost)}</td>
+                        <td className="px-4 py-2.5 text-red-500 font-semibold">{inr(m.totalCost)}</td>
+                        <td className={`px-4 py-2.5 font-bold ${m.profit>=0?"text-emerald-500":"text-red-500"}`}>{inr(m.profit)}</td>
+                      </tr>
+                    ))}
+                    <tr style={{borderTop:`2px solid ${t.border}`,background:dm?"#1a1a1a":"#fafafa"}}>
+                      <td style={{color:t.text}} className="px-4 py-3 font-black">TOTAL</td>
+                      <td className="px-4 py-3 text-emerald-500 font-black">{inr(totRev)}</td>
+                      <td className="px-4 py-3 text-purple-500 font-semibold">{inr(mData.reduce((s,m)=>s+m.supplyCost,0))}</td>
+                      <td className="px-4 py-3 text-red-500 font-semibold">{inr(mData.reduce((s,m)=>s+m.expenses,0))}</td>
+                      <td className="px-4 py-3 text-orange-500 font-semibold">{inr(mData.reduce((s,m)=>s+m.wasteCost,0))}</td>
+                      <td className="px-4 py-3 text-red-500 font-black">{inr(totCost)}</td>
+                      <td className={`px-4 py-3 font-black ${totProfit>=0?"text-emerald-500":"text-red-500"}`}>{inr(totProfit)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+            {/* Export P&L CSV */}
+            <Btn dm={dm} v="outline" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"month"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"}])} className="w-full">📊 Export P&L as CSV</Btn>
+          </>;
+        })()}
+
+
+        {/* ANALYTICS TAB */}
+        {tab==="Analytics"&&isAdmin&&(()=>{
+          // Best selling products
+          const prodSales=products.map(p=>{
+            const delivered=deliveries.filter(d=>d.status==="Delivered");
+            const qty=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0),0);
+            const rev=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
+            return {...p,totalQty:qty,totalRev:rev,deliveryCount:delivered.filter(d=>(safeO(d.orderLines)[p.id]?.qty||0)>0).length};
+          }).sort((a,b)=>b.totalQty-a.totalQty);
+          // Top customers by revenue
+          const custRev=customers.map(c=>({...c,totalOrders:deliveries.filter(d=>d.customerId===c.id).length,totalRev:deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)})).sort((a,b)=>b.totalRev-a.totalRev);
+          // Daily delivery trend last 14 days
+          const days14=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}).reverse();
+          const dailyData=days14.map(date=>({date:date.slice(5),deliveries:deliveries.filter(d=>d.date===date).length,delivered:deliveries.filter(d=>d.date===date&&d.status==="Delivered").length}));
+          return <>
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard dm={dm} label="Total Deliveries" value={deliveries.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} delivered`} accent="#10b981"/>
+              <StatCard dm={dm} label="Active Products" value={products.length} sub="In catalogue" accent="#f59e0b"/>
+              <StatCard dm={dm} label="Best Seller" value={prodSales[0]?.name||"—"} sub={prodSales[0]?`${prodSales[0].totalQty} units sold`:"No data"} accent="#8b5cf6"/>
+              <StatCard dm={dm} label="Top Customer" value={custRev[0]?.name||"—"} sub={custRev[0]?inr(custRev[0].totalRev)+" revenue":"No data"} accent="#0ea5e9"/>
+            </div>
+            {/* 14-day delivery trend */}
+            <Card dm={dm} className="p-4">
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-3">Delivery Trend — Last 14 Days</p>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={dailyData} margin={{top:0,right:0,left:-20,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={t.border}/>
+                  <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
+                  <YAxis tick={{fontSize:9,fill:t.sub}}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:8,color:t.text,fontSize:11}}/>
+                  <Bar dataKey="deliveries" name="Scheduled" fill={dm?"#444":"#e5e7eb"} radius={[3,3,0,0]}/>
+                  <Bar dataKey="delivered" name="Delivered" fill="#10b981" radius={[3,3,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+            {/* Product sales table */}
+            <Card dm={dm} className="overflow-hidden">
+              <div className="p-4 pb-2 flex items-center justify-between">
+                <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Product Sales</p>
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(prodSales,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty Sold",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Delivery Count",key:"deliveryCount"}])}>CSV</Btn>
+              </div>
+              {prodSales.map((p,i)=>(
+                <div key={p.id} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3 flex items-center gap-3">
+                  <span style={{color:t.sub}} className="text-lg font-black w-6 text-center">{i+1}</span>
+                  <div className="flex-1">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{p.name}</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{p.deliveryCount} deliveries · {p.totalQty} {p.unit} sold</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-amber-500">{inr(p.totalRev)}</p>
+                    <div className="w-20 h-1.5 rounded-full mt-1 overflow-hidden" style={{background:t.border}}>
+                      <div className="h-full rounded-full bg-amber-500 transition-all" style={{width:`${prodSales[0]?.totalQty>0?Math.round(p.totalQty/prodSales[0].totalQty*100):0}%`}}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </Card>
+            {/* Top customers */}
+            <Card dm={dm} className="overflow-hidden">
+              <div className="p-4 pb-2 flex items-center justify-between">
+                <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Top Customers by Revenue</p>
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(custRev,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Pending",key:"pending"}])}>CSV</Btn>
+              </div>
+              {custRev.slice(0,10).map((c,i)=>(
+                <div key={c.id} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3 flex items-center gap-3">
+                  <span style={{color:t.sub}} className="text-lg font-black w-6 text-center">{i+1}</span>
+                  <div className="flex-1">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{c.name}</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{c.totalOrders} orders{c.pending>0?` · ${inr(c.pending)} due`:""}</p>
+                  </div>
+                  <p className="text-sm font-black text-emerald-500">{inr(c.totalRev)}</p>
+                </div>
+              ))}
+            </Card>
+          </>;
+        })()}
 
         {/* SETTINGS */}
         {tab==="Settings"&&isAdmin&&(<>
