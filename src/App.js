@@ -42,15 +42,17 @@ function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-// _pendingWrites[key] = JSON string of the last value WE wrote.
-// When Firebase echoes it back we skip it — we already have it in React state.
-// If a genuinely different value arrives (another device/user) we accept it.
-// No timeouts. No localStorage for app data. Zero race conditions.
+// _seeded tracks keys we have already seeded this session so we never
+// re-seed just because Firebase momentarily returns snap.exists()===false
+// (which happens when all items are deleted — the node disappears).
+// _pendingWrites[key] = JSON of the last value WE wrote, used to suppress
+// the Firebase echo so it never overwrites our fresh local state.
+const _seeded = new Set();
 let _pendingWrites = {};
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  // Start as null — never seed from localStorage, always wait for Firebase
+  // Start null — never pre-seed from localStorage, always wait for Firebase
   const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
@@ -60,31 +62,36 @@ function useStore(key, def) {
       if (snap.exists()) {
         const raw = snap.val();
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
-        // Is this the echo of our own write?
+
+        // Is this the echo of our own write? Compare JSON.
         if (_pendingWrites[key] !== undefined) {
           if (JSON.stringify(incoming) === _pendingWrites[key]) {
-            // It's our echo — safe to clear guard, skip overwrite
-            delete _pendingWrites[key];
+            delete _pendingWrites[key]; // confirmed echo — safe to clear
             setFbLoaded(true);
-            return;
+            return; // already have correct value in state, skip overwrite
           }
-          // Different value arrived (another device wrote) — accept it
-          delete _pendingWrites[key];
+          delete _pendingWrites[key]; // genuinely different — accept it
         }
         setRaw(incoming);
       } else {
-        // Key doesn't exist in Firebase yet — seed it with defaults
-        const d = defRef.current;
-        _pendingWrites[key] = JSON.stringify(d);
-        fbWrite(key, d).catch(e => {
-          console.warn("seed error:", e.message);
-          delete _pendingWrites[key];
-        });
-        setRaw(d);
+        // Node missing in Firebase.
+        // Only seed defaults the very first time (never after a delete).
+        if (!_seeded.has(key)) {
+          _seeded.add(key);
+          const d = defRef.current;
+          _pendingWrites[key] = JSON.stringify(d);
+          fbWrite(key, d).catch(e => {
+            console.warn('seed error:', e.message);
+            delete _pendingWrites[key];
+          });
+          setRaw(d);
+        }
+        // If already seeded, node is empty because user deleted everything —
+        // leave state as-is (empty array/object), do NOT re-seed.
       }
       setFbLoaded(true);
     }, (err) => {
-      console.warn("Firebase read error for", key, ":", err.message);
+      console.warn('Firebase read error for', key, err.message);
       setRaw(defRef.current);
       setFbLoaded(true);
     });
@@ -93,18 +100,16 @@ function useStore(key, def) {
 
   const set = useCallback((next) => {
     setRaw(prev => {
-      const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
-      // Record what we wrote so we can suppress the echo
+      const n = typeof next === 'function' ? next(prev ?? defRef.current) : next;
       _pendingWrites[key] = JSON.stringify(n);
       fbWrite(key, n).catch(e => {
-        console.warn("Firebase write error for", key, ":", e.message);
+        console.warn('Firebase write error for', key, e.message);
         delete _pendingWrites[key];
       });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show defaults until Firebase responds, then show real data
   return [fbLoaded ? (val ?? defRef.current) : defRef.current, set];
 }
 
