@@ -251,9 +251,13 @@ ${type==="customer"?`<div class="sumbox">
 <div class="footer">Thank you for your business · ${co} · Generated ${new Date().toLocaleString("en-IN")}</div>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-  const w = window.open("","_blank","width=820,height=960,noopener");
-  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
-  else alert("Allow pop-ups for this site, then try again.");
+  // Use blob URL — works without pop-up permission, opens in new tab reliably
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
 function exportCSV(data, fname, cols) {
@@ -284,7 +288,9 @@ ${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit}</td><td>${r.qty}</td><td>${in
 ${type==="customer"?`<h2>Payment</h2><table><tr><td>Paid</td><td class="paid">${inr(record.paid||0)}</td><td>Pending</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${inr(record.pending||0)}</td><td>Status</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${(record.pending||0)>0?"UNPAID":"PAID"}</td></tr></table>`:""}
 <p style="margin-top:32pt;text-align:center;color:#a8a29e;font-size:9pt">Thank you · ${co} · ${new Date().toLocaleString("en-IN")}</p>
 </body></html>`;
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([html],{type:"application/msword"})); a.download=`invoice_${name.replace(/\s+/g,"_")}_${today()}.doc`; a.click(); URL.revokeObjectURL(a.href);
+  const blob2=new Blob([html],{type:"application/msword"});
+  const a2=document.createElement("a"); a2.href=URL.createObjectURL(blob2); a2.download=`invoice_${name.replace(/\s+/g,"_")}_${today()}.doc`;
+  document.body.appendChild(a2); a2.click(); setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(a2.href);},1000);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -727,9 +733,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 <div class="footer">${co} · Full Operations Report · Generated ${now} · TAS CRM</div>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-    const w=window.open("","_blank","width=1000,height=900,noopener");
-    if(w){w.document.open();w.document.write(html);w.document.close();}
-    else alert("Allow pop-ups for this site, then try again.");
+    const rblob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const rurl=URL.createObjectURL(rblob);
+    const ra=document.createElement("a"); ra.href=rurl; ra.target="_blank"; ra.rel="noopener";
+    document.body.appendChild(ra); ra.click();
+    setTimeout(()=>{document.body.removeChild(ra);URL.revokeObjectURL(rurl);},1000);
     addLog("Exported full report","PDF report generated");
     notify("Report opening…");
   }
@@ -812,7 +820,29 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
+          {/* TODAY SUMMARY BAR */}
+          {(()=>{
+            const todayStr=today();
+            const todayD=deliveries.filter(d=>d.date===todayStr);
+            const todayDel=todayD.filter(d=>d.status==="Delivered");
+            const todayPend=todayD.filter(d=>d.status==="Pending");
+            const todayRev=todayDel.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const todayRepl=todayD.filter(d=>d.replacement?.done).length;
+            if(todayD.length===0)return null;
+            return <div style={{background:dm?"#1a1a1a":"#fff7ed",border:dm?"1px solid #333":"1px solid #fed7aa"}} className="rounded-2xl px-4 py-3">
+              <p className="text-[11px] font-semibold text-amber-500 uppercase tracking-wider mb-2">📅 Today at a Glance</p>
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div><p style={{color:t.text}} className="font-black text-lg">{todayD.length}</p><p style={{color:t.sub}} className="text-[10px]">Deliveries</p></div>
+                <div><p className="font-black text-lg text-emerald-500">{todayDel.length}</p><p style={{color:t.sub}} className="text-[10px]">Done</p></div>
+                <div><p className="font-black text-lg text-amber-500">{todayPend.length}</p><p style={{color:t.sub}} className="text-[10px]">Pending</p></div>
+                {canSeeFinancials?<div><p className="font-black text-lg text-emerald-500">{inr(todayRev)}</p><p style={{color:t.sub}} className="text-[10px]">Collected</p></div>
+                :<div><p className="font-black text-lg text-orange-500">{todayRepl}</p><p style={{color:t.sub}} className="text-[10px]">Replaced</p></div>}
+              </div>
+            </div>;
+          })()}
           {widgets.includes("stats")&&<div className="grid grid-cols-2 gap-3">
+            {/* Replacement summary stat if any exist */}
+            {(()=>{const r=deliveries.filter(d=>d.replacement?.done);const rAmt=r.reduce((s,d)=>s+(+d.replacement?.amount||0),0);return r.length>0&&<><StatCard dm={dm} label="Replacements Made" value={r.length} sub={rAmt>0?`${inr(rAmt)} total deducted`:"No amount recorded"} accent="#f97316"/><StatCard dm={dm} label="Replacement Rate" value={Math.round(r.length/Math.max(deliveries.length,1)*100)+"%"} sub={`${deliveries.length} total deliveries`} accent="#f59e0b"/></>;})()}
             <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length} total`} accent="#d97706"/>
             <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} done`} accent="#ef4444"/>
             {canSeeFinancials&&<><StatCard dm={dm} label="Revenue" value={inr(totalRev)} sub="Collected" accent="#10b981"/>
@@ -912,6 +942,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     <p style={{color:t.text}} className="font-semibold">{c.name}</p>
                     <p style={{color:t.sub}} className="text-xs">{c.phone}{c.phone&&c.address?" · ":""}{c.address}</p>
                     {c.joinDate&&<p style={{color:t.sub}} className="text-[11px] mt-0.5">📅 Since {c.joinDate}</p>}
+                {(()=>{const dc=deliveries.filter(d=>d.customerId===c.id);const done=dc.filter(d=>d.status==="Delivered").length;return dc.length>0&&<p style={{color:t.sub}} className="text-[11px] mt-0.5">🚚 {dc.length} deliveries · {done} done</p>})()}
                   </div>
                   <Pill dm={dm} c={c.active?"green":"stone"}>{c.active?"Active":"Inactive"}</Pill>
                 </div>
@@ -924,7 +955,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {canSeeFinancials&&<div className="flex gap-2 mb-3">
                   <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-2.5 text-center"><p className="font-bold text-emerald-500 text-sm">{inr(c.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
@@ -989,11 +1020,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
                 {d.replacement?.done&&(
-                  <div style={{background:"#f97316" + "20",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
+                  <div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
                     <p className="text-[11px] font-semibold text-orange-500 mb-0.5">🔄 Replacement Made</p>
                     {d.replacement.item&&<p style={{color:t.sub}} className="text-xs">Item: {d.replacement.item}{d.replacement.qty?` · Qty: ${d.replacement.qty}`:""}{d.replacement.amount?` · ${inr(+d.replacement.amount)} deducted`:""}</p>}
                     {d.replacement.reason&&<p style={{color:t.sub}} className="text-xs">Reason: {d.replacement.reason}</p>}
@@ -1330,7 +1361,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Export as CSV/Excel</p>
             <div className="flex gap-2 flex-wrap">
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Join Date",key:"joinDate"},{label:"Notes",key:"notes"}])}>Customers</Btn>
-              <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
+              <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"}])}>Supplies</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>Expenses</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(actLog,"activity",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"}])}>Activity Log</Btn>
