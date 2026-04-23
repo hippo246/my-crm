@@ -26,57 +26,52 @@ function checkPw(input, stored) {
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 
 // ═══════════════════════════════════════════════════════════════
-//  FIREBASE REALTIME DATABASE
-//  Writes every change to Firebase immediately.
-//  All devices subscribe and receive updates in real-time.
-//  localStorage is NOT used as primary storage anymore.
+//  localStorage — used ONLY for session + dark mode (per-device).
+//  All app data (customers, deliveries, supplies, expenses, etc.)
+//  lives exclusively in Firebase Realtime Database.
 // ═══════════════════════════════════════════════════════════════
 function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
-// Firebase deletes nodes when arrays/objects are empty, causing re-seed loops.
-// Fix: always wrap data as {v: data} before writing — empty arrays become {v:[]}
-// which Firebase stores correctly. Unwrap with .v on read.
+// ═══════════════════════════════════════════════════════════════
+//  FIREBASE REALTIME DATABASE — sole source of truth for app data
+//  Wrap as {v: data} so empty arrays/objects survive Firebase's
+//  auto-delete behaviour. Unwrap with .v on read.
+// ═══════════════════════════════════════════════════════════════
 function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-let _writing = {}; // keys currently being written — ignore echoes
+let _writing = {}; // keys being written — suppress echo on listener
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  const [val, setRaw] = useState(() => ls(key, defRef.current));
+  // null until Firebase responds — never seeds from localStorage
+  const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      // Ignore echo of our own write
-      if (_writing[key]) {
-        setFbLoaded(true);
-        return;
-      }
+      if (_writing[key]) { setFbLoaded(true); return; }
       if (snap.exists()) {
         const raw = snap.val();
-        // Unwrap from {v: data} wrapper
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
         setRaw(incoming);
-        lsw(key, incoming);
       } else {
-        // Nothing in Firebase at all — first ever load, seed defaults once
+        // First ever load — seed Firebase with defaults
         const d = defRef.current;
         _writing[key] = true;
         fbWrite(key, d)
           .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
           .catch(e => { console.warn("seed error:", e.message); _writing[key] = false; });
         setRaw(d);
-        lsw(key, d);
       }
       setFbLoaded(true);
     }, (err) => {
       console.warn("Firebase error for", key, err.message);
-      setRaw(ls(key, defRef.current));
+      setRaw(defRef.current); // fall back to defaults, never localStorage
       setFbLoaded(true);
     });
     return () => unsub();
@@ -85,8 +80,6 @@ function useStore(key, def) {
   const set = useCallback((next) => {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
-      lsw(key, n);
-      // Block echo for this key while write is in flight
       _writing[key] = true;
       fbWrite(key, n)
         .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
@@ -95,8 +88,8 @@ function useStore(key, def) {
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const safeVal = fbLoaded ? val : ls(key, defRef.current);
-  return [safeVal ?? defRef.current, set];
+  // While waiting for Firebase show defaults, once loaded show real data
+  return [fbLoaded ? (val ?? defRef.current) : defRef.current, set];
 }
 
 // ═══════════════════════════════════════════════════════════════
