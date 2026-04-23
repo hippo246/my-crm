@@ -251,9 +251,13 @@ ${type==="customer"?`<div class="sumbox">
 <div class="footer">Thank you for your business · ${co} · Generated ${new Date().toLocaleString("en-IN")}</div>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-  const w = window.open("","_blank","width=820,height=960,noopener");
-  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
-  else alert("Allow pop-ups for this site, then try again.");
+  // Use blob URL — works without pop-up permission, opens in new tab reliably
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
 function exportCSV(data, fname, cols) {
@@ -284,7 +288,9 @@ ${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit}</td><td>${r.qty}</td><td>${in
 ${type==="customer"?`<h2>Payment</h2><table><tr><td>Paid</td><td class="paid">${inr(record.paid||0)}</td><td>Pending</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${inr(record.pending||0)}</td><td>Status</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${(record.pending||0)>0?"UNPAID":"PAID"}</td></tr></table>`:""}
 <p style="margin-top:32pt;text-align:center;color:#a8a29e;font-size:9pt">Thank you · ${co} · ${new Date().toLocaleString("en-IN")}</p>
 </body></html>`;
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([html],{type:"application/msword"})); a.download=`invoice_${name.replace(/\s+/g,"_")}_${today()}.doc`; a.click(); URL.revokeObjectURL(a.href);
+  const blob2=new Blob([html],{type:"application/msword"});
+  const a2=document.createElement("a"); a2.href=URL.createObjectURL(blob2); a2.download=`invoice_${name.replace(/\s+/g,"_")}_${today()}.doc`;
+  document.body.appendChild(a2); a2.click(); setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(a2.href);},1000);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -582,7 +588,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,notes:"",active:true,joinDate:today()});
-  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts()});
+  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""}});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:""});
   const blkP=()=>({id:"",name:"",unit:"pcs",prices:[5,6]});
@@ -607,7 +613,18 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   // DELIVERIES
   function pickCust(name){const c=customers.find(x=>x.name===name);setDf(f=>({...f,customer:name,customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
-  function saveD(){if(!dF.customer){notify("Select a customer");return;}if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");}else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");}setDsh(null);}
+  function saveD(){
+    if(!dF.customer){notify("Select a customer");return;}
+    // If replacement has an amount, deduct it from customer's pending balance
+    const replAmt = +dF.replacement?.amount||0;
+    if(replAmt>0 && dF.customerId){
+      setCust(p=>p.map(c=>c.id===dF.customerId?{...c,pending:Math.max(0,c.pending-replAmt)}:c));
+      addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
+    }
+    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");}
+    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");}
+    setDsh(null);
+  }
   function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");});}
 
@@ -650,6 +667,81 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   // EXPORT/IMPORT
   function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");}
+  function exportFullReport(){
+    const co=settings?.companyName||"TAS Healthy World";
+    const now=new Date().toLocaleString("en-IN");
+    const totalReplAmt=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+    const totalWasteQty=(wastage||[]).reduce((s,w)=>s+(w.qty||0),0);
+    const totalWasteCost=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
+    const delivWithRepl=deliveries.filter(d=>d.replacement?.done);
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Full Report — ${co}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:900px;margin:0 auto}
+h1{font-size:22px;font-weight:900;color:#92400e;margin-bottom:4px}
+.sub{font-size:11px;color:#78716c;margin-bottom:28px}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a8a29e;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #e7e5e4}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+.stat{background:#f5f5f4;border-radius:10px;padding:14px}.stat .val{font-size:20px;font-weight:900;color:#1c1917}.stat .lbl{font-size:10px;color:#78716c;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+table{width:100%;border-collapse:collapse;margin-top:4px}th{font-size:9px;text-transform:uppercase;color:#a8a29e;padding:6px 0;border-bottom:2px solid #e7e5e4;text-align:left}td{padding:7px 0;border-bottom:1px solid #f5f5f4;font-size:11px}
+.green{color:#059669}.red{color:#dc2626}.amber{color:#d97706}.orange{color:#ea580c}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700}
+.bg{background:#d1fae5;color:#065f46}.by{background:#fef3c7;color:#92400e}.bb{background:#dbeafe;color:#1e40af}.bo{background:#ffedd5;color:#9a3412}
+.footer{margin-top:36px;text-align:center;font-size:10px;color:#a8a29e;padding-top:16px;border-top:1px solid #e7e5e4}
+@media print{@page{margin:1.5cm}}</style></head><body>
+<h1>🫓 ${co} — Full Operations Report</h1>
+<div class="sub">Generated ${now} · Period: All time</div>
+
+<h2>Financial Summary</h2>
+<div class="grid">
+  <div class="stat"><div class="val green">₹${totalRev.toLocaleString("en-IN")}</div><div class="lbl">Total Revenue</div></div>
+  <div class="stat"><div class="val red">₹${(totalExpOp+totalSupC).toLocaleString("en-IN")}</div><div class="lbl">Total Costs</div></div>
+  <div class="stat"><div class="val ${netProfit>=0?"green":"red"}">₹${netProfit.toLocaleString("en-IN")}</div><div class="lbl">Net Profit</div></div>
+  <div class="stat"><div class="val red">₹${totalDue.toLocaleString("en-IN")}</div><div class="lbl">Outstanding Dues</div></div>
+  <div class="stat"><div class="val amber">₹${totalSupC.toLocaleString("en-IN")}</div><div class="lbl">Supply Costs</div></div>
+  <div class="stat"><div class="val red">₹${totalExpOp.toLocaleString("en-IN")}</div><div class="lbl">Operating Expenses</div></div>
+</div>
+
+<h2>Customers (${customers.length} total · ${activeC.length} active)</h2>
+<table><tr><th>Name</th><th>Phone</th><th>Address</th><th>Paid</th><th>Pending</th><th>Status</th><th>Since</th></tr>
+${customers.map(c=>`<tr><td><b>${c.name}</b></td><td>${c.phone||"—"}</td><td>${c.address||"—"}</td><td class="green">₹${(c.paid||0).toLocaleString("en-IN")}</td><td class="${(c.pending||0)>0?"red":"green"}">₹${(c.pending||0).toLocaleString("en-IN")}</td><td><span class="badge ${(c.pending||0)>0?"by":"bg"}">${(c.pending||0)>0?"UNPAID":"PAID"}</span></td><td>${c.joinDate||"—"}</td></tr>`).join("")}
+</table>
+
+<h2>Deliveries (${deliveries.length} total · ${deliveries.filter(d=>d.status==="Delivered").length} delivered · ${deliveries.filter(d=>d.status==="Pending").length} pending)</h2>
+<table><tr><th>Customer</th><th>Date</th><th>Status</th><th>Amount</th><th>Replacement</th><th>By</th></tr>
+${deliveries.map(d=>`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${lineTotal(d.orderLines).toLocaleString("en-IN")}</td><td>${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"Done"}${d.replacement.amount?` −₹${d.replacement.amount}`:""}</span>`:"—"}</td><td>${d.createdBy||"—"}</td></tr>`).join("")}
+</table>
+
+${delivWithRepl.length>0?`<h2>Replacements Summary (${delivWithRepl.length} replacements · ₹${totalReplAmt.toLocaleString("en-IN")} deducted)</h2>
+<table><tr><th>Customer</th><th>Date</th><th>Item Replaced</th><th>Qty</th><th>Amount Deducted</th><th>Reason</th></tr>
+${delivWithRepl.map(d=>`<tr><td>${d.customer}</td><td>${d.date}</td><td>${d.replacement.item||"—"}</td><td>${d.replacement.qty||"—"}</td><td class="orange">${d.replacement.amount?`₹${d.replacement.amount}`:"—"}</td><td>${d.replacement.reason||"—"}</td></tr>`).join("")}
+</table>`:""}
+
+<h2>Supplies (${supplies.length} items · ₹${totalSupC.toLocaleString("en-IN")} total cost)</h2>
+<table><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Supplier</th><th>Cost</th><th>Date</th></tr>
+${supplies.map(s=>`<tr><td>${s.item}</td><td>${s.qty}</td><td>${s.unit}</td><td>${s.supplier||"—"}</td><td class="red">₹${(s.cost||0).toLocaleString("en-IN")}</td><td>${s.date}</td></tr>`).join("")}
+</table>
+
+<h2>Expenses (${expenses.length} entries · ₹${totalExpOp.toLocaleString("en-IN")} total)</h2>
+<table><tr><th>Category</th><th>Amount</th><th>Date</th><th>Notes</th></tr>
+${expenses.map(e=>`<tr><td>${e.category}</td><td class="red">₹${(e.amount||0).toLocaleString("en-IN")}</td><td>${e.date}</td><td>${e.notes||"—"}</td></tr>`).join("")}
+</table>
+
+${(wastage&&wastage.length>0)?`<h2>Wastage (${wastage.length} records · ${totalWasteQty} units · ₹${totalWasteCost.toLocaleString("en-IN")} cost)</h2>
+<table><tr><th>Product</th><th>Type</th><th>Qty</th><th>Unit</th><th>Cost Loss</th><th>Shift</th><th>Date</th><th>Logged By</th></tr>
+${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><td>${w.unit}</td><td class="red">${w.cost?`₹${w.cost}`:"—"}</td><td>${w.shift||"—"}</td><td>${w.date}</td><td>${w.loggedBy||"—"}</td></tr>`).join("")}
+</table>`:""}
+
+<div class="footer">${co} · Full Operations Report · Generated ${now} · TAS CRM</div>
+<script>window.addEventListener("load",function(){window.print();});</script>
+</body></html>`;
+    const rblob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const rurl=URL.createObjectURL(rblob);
+    const ra=document.createElement("a"); ra.href=rurl; ra.target="_blank"; ra.rel="noopener";
+    document.body.appendChild(ra); ra.click();
+    setTimeout(()=>{document.body.removeChild(ra);URL.revokeObjectURL(rurl);},1000);
+    addLog("Exported full report","PDF report generated");
+    notify("Report opening…");
+  }
+
   function importAll(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.customers)setCust(d.customers);if(d.deliveries)setDeliv(d.deliveries);if(d.supplies)setSup(d.supplies);if(d.expenses)setExp(d.expenses);if(d.products)setProd(d.products);if(d.users)setUsers(d.users);if(d.wastage)setWaste(d.wastage);addLog("Imported backup","Full restore");notify("Imported ✓");}catch{notify("Invalid backup file");}};r.readAsText(f);e.target.value="";}
 
   const TABS=isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb));
@@ -728,7 +820,29 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
+          {/* TODAY SUMMARY BAR */}
+          {(()=>{
+            const todayStr=today();
+            const todayD=deliveries.filter(d=>d.date===todayStr);
+            const todayDel=todayD.filter(d=>d.status==="Delivered");
+            const todayPend=todayD.filter(d=>d.status==="Pending");
+            const todayRev=todayDel.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const todayRepl=todayD.filter(d=>d.replacement?.done).length;
+            if(todayD.length===0)return null;
+            return <div style={{background:dm?"#1a1a1a":"#fff7ed",border:dm?"1px solid #333":"1px solid #fed7aa"}} className="rounded-2xl px-4 py-3">
+              <p className="text-[11px] font-semibold text-amber-500 uppercase tracking-wider mb-2">📅 Today at a Glance</p>
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div><p style={{color:t.text}} className="font-black text-lg">{todayD.length}</p><p style={{color:t.sub}} className="text-[10px]">Deliveries</p></div>
+                <div><p className="font-black text-lg text-emerald-500">{todayDel.length}</p><p style={{color:t.sub}} className="text-[10px]">Done</p></div>
+                <div><p className="font-black text-lg text-amber-500">{todayPend.length}</p><p style={{color:t.sub}} className="text-[10px]">Pending</p></div>
+                {canSeeFinancials?<div><p className="font-black text-lg text-emerald-500">{inr(todayRev)}</p><p style={{color:t.sub}} className="text-[10px]">Collected</p></div>
+                :<div><p className="font-black text-lg text-orange-500">{todayRepl}</p><p style={{color:t.sub}} className="text-[10px]">Replaced</p></div>}
+              </div>
+            </div>;
+          })()}
           {widgets.includes("stats")&&<div className="grid grid-cols-2 gap-3">
+            {/* Replacement summary stat if any exist */}
+            {(()=>{const r=deliveries.filter(d=>d.replacement?.done);const rAmt=r.reduce((s,d)=>s+(+d.replacement?.amount||0),0);return r.length>0&&<><StatCard dm={dm} label="Replacements Made" value={r.length} sub={rAmt>0?`${inr(rAmt)} total deducted`:"No amount recorded"} accent="#f97316"/><StatCard dm={dm} label="Replacement Rate" value={Math.round(r.length/Math.max(deliveries.length,1)*100)+"%"} sub={`${deliveries.length} total deliveries`} accent="#f59e0b"/></>;})()}
             <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length} total`} accent="#d97706"/>
             <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} done`} accent="#ef4444"/>
             {canSeeFinancials&&<><StatCard dm={dm} label="Revenue" value={inr(totalRev)} sub="Collected" accent="#10b981"/>
@@ -828,6 +942,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
                     <p style={{color:t.text}} className="font-semibold">{c.name}</p>
                     <p style={{color:t.sub}} className="text-xs">{c.phone}{c.phone&&c.address?" · ":""}{c.address}</p>
                     {c.joinDate&&<p style={{color:t.sub}} className="text-[11px] mt-0.5">📅 Since {c.joinDate}</p>}
+                {(()=>{const dc=deliveries.filter(d=>d.customerId===c.id);const done=dc.filter(d=>d.status==="Delivered").length;return dc.length>0&&<p style={{color:t.sub}} className="text-[11px] mt-0.5">🚚 {dc.length} deliveries · {done} done</p>})()}
                   </div>
                   <Pill dm={dm} c={c.active?"green":"stone"}>{c.active?"Active":"Inactive"}</Pill>
                 </div>
@@ -840,7 +955,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {canSeeFinancials&&<div className="flex gap-2 mb-3">
                   <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-2.5 text-center"><p className="font-bold text-emerald-500 text-sm">{inr(c.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
@@ -874,7 +989,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
               <Pill dm={dm} c="green">{deliveries.filter(d=>d.status==="Delivered").length} done</Pill>
             </div>
             <div className="flex gap-2">
-              {isAdmin&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+              {isAdmin&&<Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
+              {isAdmin&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
             </div>
           </div>
@@ -904,12 +1020,19 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
                       {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
                     </div>
                   ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}{d.replacement?.done&&+d.replacement?.amount>0?<span className="text-orange-400 font-normal ml-1">(-{inr(+d.replacement.amount)})</span>:null}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
+                {d.replacement?.done&&(
+                  <div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
+                    <p className="text-[11px] font-semibold text-orange-500 mb-0.5">🔄 Replacement Made</p>
+                    {d.replacement.item&&<p style={{color:t.sub}} className="text-xs">Item: {d.replacement.item}{d.replacement.qty?` · Qty: ${d.replacement.qty}`:""}{d.replacement.amount?` · ${inr(+d.replacement.amount)} deducted`:""}</p>}
+                    {d.replacement.reason&&<p style={{color:t.sub}} className="text-xs">Reason: {d.replacement.reason}</p>}
+                  </div>
+                )}
                 <div className="flex gap-1.5 flex-wrap">
                   {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">📍 Navigate</a>}
-                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)}});setDsh(d);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
+                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
                   <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
                   <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">Word</button>
                   {isFactory&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
@@ -1230,6 +1353,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           <Card dm={dm}><div className="p-4 flex flex-col gap-3">
             <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Data Backup</p>
             <Btn dm={dm} v="outline" className="w-full" onClick={exportAll}>⬇️ Export Full Backup (JSON)</Btn>
+            <Btn v="purple" className="w-full" onClick={exportFullReport}>📊 Export Full Report (PDF — All Data)</Btn>
             <label style={{border:`1px solid ${t.border}`,color:t.text}} className="w-full text-sm font-semibold rounded-xl px-4 py-2.5 text-center cursor-pointer hover:opacity-80 transition-all">
               ⬆️ Import Backup (JSON)<input type="file" accept=".json" className="hidden" onChange={importAll}/>
             </label>
@@ -1237,7 +1361,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Export as CSV/Excel</p>
             <div className="flex gap-2 flex-wrap">
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Join Date",key:"joinDate"},{label:"Notes",key:"notes"}])}>Customers</Btn>
-              <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
+              <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"}])}>Supplies</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>Expenses</Btn>
               <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(actLog,"activity",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"}])}>Activity Log</Btn>
@@ -1362,6 +1486,31 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           {delivStats.map(s=><option key={s}>{s}</option>)}
         </Sel>
         <Inp dm={dm} label="Notes" value={dF.notes} onChange={e=>setDf({...dF,notes:e.target.value})} placeholder="e.g. Leave at gate, call before"/>
+        <Hr dm={dm}/>
+        {/* REPLACEMENT SECTION */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Replacement</p>
+            <button
+              onClick={()=>setDf(f=>({...f,replacement:{...(f.replacement||{}),done:!(f.replacement?.done)}}))}
+              style={dF.replacement?.done?{background:"#f97316",color:"#fff"}:{background:t.inp,color:t.sub}}
+              className="text-xs font-semibold px-3 py-1 rounded-lg transition-all">
+              {dF.replacement?.done?"✓ Replacement Done":"Mark as Replaced"}
+            </button>
+          </div>
+          {dF.replacement?.done&&(
+            <div className="flex flex-col gap-3">
+              <p style={{color:t.sub}} className="text-[11px]">Fill in what was replaced and why — this will show on the delivery card and be exportable.</p>
+              <Inp dm={dm} label="Replacement Item" value={dF.replacement?.item||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),item:e.target.value}}))} placeholder="e.g. Roti replaced with Paratha Pack"/>
+              <div className="grid grid-cols-2 gap-3">
+                <Inp dm={dm} label="Qty Replaced" value={dF.replacement?.qty||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),qty:e.target.value}}))} placeholder="e.g. 10 pcs"/>
+                <Inp dm={dm} label="Amount Diff (₹)" type="number" value={dF.replacement?.amount||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),amount:e.target.value}}))} placeholder="e.g. 50"/>
+              </div>
+              {(+dF.replacement?.amount)>0&&<div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2"><p className="text-[11px] text-orange-500 font-semibold">💡 {inr(+dF.replacement.amount)} will be deducted from customer pending on save.</p></div>}
+              <Inp dm={dm} label="Reason for Replacement" value={dF.replacement?.reason||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),reason:e.target.value}}))} placeholder="e.g. Customer requested, out of stock…"/>
+            </div>
+          )}
+        </div>
         <Btn dm={dm} onClick={saveD} className="w-full">Save Delivery</Btn>
       </Sheet>
 
