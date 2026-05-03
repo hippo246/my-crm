@@ -4835,38 +4835,37 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               </>;
             })()}
             {/* Header row */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex gap-2 flex-wrap items-center">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-0.5 flex-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
                 <Pill dm={dm} c="amber">{todayPT.length} today</Pill>
                 <Pill dm={dm} c={todayPT.length>0&&todayPT.every(x=>x.actual>=x.target)?"green":"red"}>
                   {todayPT.reduce((s,x)=>s+x.actual,0)} / {todayPT.reduce((s,x)=>s+x.target,0)} units
                 </Pill>
-                <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>∞ {prodTargets.length} records stored</span>
+                <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>∞ {prodTargets.length} records</span>
               </div>
-              <div className="flex gap-2 flex-wrap">
-                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Efficiency",val:r=>r.target>0?Math.round((r.actual/r.target)*100)+"%":"—"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>
-                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Notes",key:"notes"},{label:"Created At",key:"createdAt"}],settings)}>📊 XLS</Btn>
-                <Btn dm={dm} size="sm" onClick={()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");}}>+ Log Production</Btn>
+              <div className="flex gap-2 shrink-0">
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Efficiency",val:r=>r.target>0?Math.round((r.actual/r.target)*100)+"%":"—"},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
+                <Btn dm={dm} size="sm" onClick={()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");}}>+ Log</Btn>
               </div>
             </div>
 
             {/* Search + Auto-Deduct toggle */}
-            <div className="flex gap-2 flex-wrap items-center">
-              <div style={{flex:1,minWidth:180,background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px"}}>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div style={{flex:1,background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px",minHeight:48}}>
                 <span style={{color:t.sub,fontSize:14}}>🔍</span>
                 <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search product, shift, notes…"
-                  style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:13,padding:"10px 0"}}/>
-                {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,lineHeight:1,background:"none",border:"none",cursor:"pointer"}}>×</button>}
+                  style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:15,padding:"10px 0"}}/>
+                {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,lineHeight:1,background:"none",border:"none",cursor:"pointer",minWidth:28,minHeight:28}}>×</button>}
               </div>
               {/* Auto-Deduct toggle */}
-              <div style={{background:ptAutoDeduct?(dm?"#10b98120":"#ecfdf5"):(dm?"rgba(255,255,255,0.04)":"#f9f9f8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":t.border}`,borderRadius:12,padding:"8px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",transition:"all 0.2s"}}
+              <div style={{background:ptAutoDeduct?(dm?"#10b98120":"#ecfdf5"):(dm?"rgba(255,255,255,0.04)":"#f9f9f8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":t.border}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",transition:"all 0.2s",minHeight:48}}
                 onClick={()=>setPtAutoDeduct(v=>!v)}>
                 <div style={{width:36,height:20,borderRadius:99,background:ptAutoDeduct?"#10b981":t.border,padding:2,display:"flex",alignItems:"center",justifyContent:ptAutoDeduct?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0}}>
                   <div style={{width:16,height:16,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
                 </div>
                 <div>
-                  <p style={{color:ptAutoDeduct?"#10b981":t.text,fontSize:12,fontWeight:700,lineHeight:1}}>Smart Auto-Deduct</p>
-                  <p style={{color:t.sub,fontSize:10,marginTop:2}}>{ptAutoDeduct?"ON — deducts supply on save":"OFF — no supply changes"}</p>
+                  <p style={{color:ptAutoDeduct?"#10b981":t.text,fontSize:12,fontWeight:700,lineHeight:1}}>Auto-Deduct</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:2}}>{ptAutoDeduct?"ON":"OFF"}</p>
                 </div>
               </div>
             </div>
@@ -4989,9 +4988,9 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                         <p className={`text-sm font-black ${r.actual>=r.target?"text-emerald-500":r.actual>=r.target*0.75?"text-amber-500":"text-red-500"}`}>
                           {r.actual}<span style={{color:t.sub}} className="text-xs font-normal">/{r.target}</span>
                         </p>
-                        <div className="flex gap-1">
-                          <button onClick={()=>{setPtF({...r,target:String(r.target),actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2 py-1 rounded-lg">Edit</button>
-                          {can("prod_delete")&& <button onClick={()=>delPT(r)} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-red-600 text-white">Del</button>}
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={()=>{setPtF({...r,target:String(r.target),actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>Edit</button>
+                          {can("prod_delete")&&<button onClick={()=>delPT(r)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",border:"none"}}>Del</button>}
                         </div>
                       </div>
                     </div>
@@ -5392,19 +5391,19 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {/* ══ MAP ══ */}
             {gpsSection==="map"&&isAdmin&&<>
               {/* filters */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All agents</option>
                   {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
                 <select value={gpsActionFilter} onChange={e=>setGpsActionFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All actions</option>
                   {Object.entries(ACTION_META).map(([k,m])=><option key={k} value={k}>{m.icon} {m.label}</option>)}
                 </select>
                 <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All time</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
@@ -5413,33 +5412,35 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </select>
               </div>
               {/* stats */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   {label:"Showing",val:logsWithGps.length+" pins",color:t.text},
                   {label:"Delivered",val:logsWithGps.filter(l=>l.action==="marked_delivered").length,color:"#10b981"},
                   {label:"In Transit",val:logsWithGps.filter(l=>l.action==="marked_transit").length,color:"#0ea5e9"},
                   {label:"Sessions",val:logsWithGps.filter(l=>l.action==="session_start").length,color:"#6366f1"},
                 ].map(s=>(
-                  <div key={s.label} style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 14px",flex:1,minWidth:60,textAlign:"center"}}>
-                    <p style={{color:s.color}} className="text-sm font-black">{s.val}</p>
-                    <p style={{color:t.sub}} className="text-[10px] font-semibold">{s.label}</p>
+                  <div key={s.label} style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",textAlign:"center"}}>
+                    <p style={{color:s.color}} className="text-base font-black">{s.val}</p>
+                    <p style={{color:t.sub}} className="text-[10px] font-semibold mt-0.5">{s.label}</p>
                   </div>
                 ))}
               </div>
               {/* map + legend */}
-              <Card dm={dm}><div className="p-4">
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <Card dm={dm}><div className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-3 gap-2">
                   <p style={{color:t.text}} className="font-bold text-sm">🗺 GPS Trail Map</p>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2 overflow-x-auto" style={{scrollbarWidth:"none"}}>
                     {Object.entries(ACTION_META).filter(([k])=>logsWithGps.some(l=>l.action===k)).map(([k,m])=>(
-                      <span key={k} className="flex items-center gap-1" style={{fontSize:10,color:t.sub,fontWeight:600}}>
+                      <span key={k} className="flex items-center gap-1 shrink-0" style={{fontSize:10,color:t.sub,fontWeight:600}}>
                         <span style={{width:8,height:8,borderRadius:"50%",background:m.color,display:"inline-block"}}/>
                         {m.label}
                       </span>
                     ))}
                   </div>
                 </div>
-                <GPSMap dm={dm} logs={logsWithGps} actionMeta={ACTION_META} fallbackLat={settings?.weatherLat||15.4909} fallbackLng={settings?.weatherLng||73.8278}/>
+                <div style={{borderRadius:12,overflow:"hidden",height:"min(420px,60vw)",minHeight:260}}>
+                  <GPSMap dm={dm} logs={logsWithGps} actionMeta={ACTION_META} fallbackLat={settings?.weatherLat||15.4909} fallbackLng={settings?.weatherLng||73.8278}/>
+                </div>
                 {logsWithGps.length===0&&<p style={{color:t.sub,textAlign:"center",paddingTop:12,fontSize:12}}>No GPS data matches current filters</p>}
               </div></Card>
             </>}
@@ -5447,19 +5448,19 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {/* ══ AUDIT LOG ══ */}
             {gpsSection==="timeline"&&isAdmin&&<>
               {/* filters */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All agents</option>
                   {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
                 <select value={gpsActionFilter} onChange={e=>setGpsActionFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All actions</option>
                   {Object.entries(ACTION_META).map(([k,m])=><option key={k} value={k}>{m.icon} {m.label}</option>)}
                 </select>
                 <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All time</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
@@ -5496,11 +5497,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                         {l.heading!=null&&<p style={{color:t.sub}} className="text-[10px]">🧭 {l.heading}°</p>}
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                    <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
                       <a href={mapU("",l.lat,l.lng)} target="_blank" rel="noopener noreferrer"
-                        style={{background:"#0ea5e915",color:"#0ea5e9",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}}>Maps ↗</a>
+                        style={{background:"#0ea5e915",color:"#0ea5e9",borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,textDecoration:"none",minHeight:36,display:"flex",alignItems:"center"}}>Maps ↗</a>
                       <button onClick={()=>ask("Delete this entry?",()=>{setGpsLogs(p=>p.filter(x=>x.id!==l.id));notify("Deleted");})}
-                        style={{background:"none",border:"none",color:t.sub,fontSize:10,cursor:"pointer",padding:"2px 4px"}}>✕ remove</button>
+                        style={{background:"none",border:"none",color:t.sub,fontSize:11,cursor:"pointer",padding:"4px 6px",minHeight:28,WebkitTapHighlightColor:"transparent"}}>✕ remove</button>
                     </div>
                   </div></Card>;
                 })
@@ -5509,14 +5510,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
             {/* ══ DAILY REPORT ══ */}
             {gpsSection==="report"&&isAdmin&&<>
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All agents</option>
                   {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
                 <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
-                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:120}}>
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",fontSize:14,outline:"none",minHeight:48,WebkitAppearance:"none",appearance:"none"}}>
                   <option value="all">All time</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
@@ -5524,7 +5525,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   <option value="month">This month</option>
                 </select>
                 {logsWithGps.length>0&&<button onClick={printReport}
-                  style={{background:"#6366f1",color:"#fff",border:"none",borderRadius:10,padding:"6px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨 Print / PDF</button>}
+                  style={{background:"#6366f1",color:"#fff",border:"none",borderRadius:12,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer",minHeight:48,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🖨 Print / PDF</button>}
               </div>
 
               {getDailyBreakdown().length===0
