@@ -278,6 +278,7 @@ const D_SETTINGS = {
   weatherLat: 15.4909,
   weatherLng: 73.8278,
   weatherLabel: "Goa",
+  ablyKey: "",
 };
 
 // Default wastage data
@@ -884,6 +885,91 @@ export default function Root(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  GPSMap — Leaflet map showing colour-coded action breadcrumbs
+//  Leaflet loaded from CDN once, zero npm install needed
+// ═══════════════════════════════════════════════════════════════
+function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
+  const mapRef=useRef(null);
+  const leafRef=useRef(null);
+  const markersRef=useRef([]);
+  const [leafReady,setLeafReady]=useState(!!window.L);
+
+  // Load Leaflet CSS + JS from CDN once
+  useEffect(()=>{
+    if(window.L){setLeafReady(true);return;}
+    if(document.getElementById("leaflet-css")){ return; }
+    const css=document.createElement("link");
+    css.id="leaflet-css";css.rel="stylesheet";
+    css.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(css);
+    const js=document.createElement("script");
+    js.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    js.async=true;
+    js.onload=()=>setLeafReady(true);
+    document.head.appendChild(js);
+  },[]);
+
+  // Init map once Leaflet ready
+  useEffect(()=>{
+    if(!leafReady||!mapRef.current||leafRef.current) return;
+    const L=window.L; if(!L) return;
+    const map=L.map(mapRef.current,{zoomControl:true,attributionControl:false})
+      .setView([fallbackLat||15.4909,fallbackLng||73.8278],12);
+    L.tileLayer(dm
+      ?"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+      :"https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      {maxZoom:19}
+    ).addTo(map);
+    leafRef.current=map;
+    return()=>{if(leafRef.current){leafRef.current.remove();leafRef.current=null;}}
+  },[leafReady]);// eslint-disable-line
+
+  // Re-render pins whenever logs change
+  useEffect(()=>{
+    const L=window.L; if(!L||!leafRef.current) return;
+    const map=leafRef.current;
+    // Clear old markers
+    markersRef.current.forEach(m=>m.remove());
+    markersRef.current=[];
+    if(!logs||logs.length===0) return;
+    logs.forEach(log=>{
+      const meta=(actionMeta||{})[log.action]||{color:"#6b7280",icon:"📍",label:log.action};
+      const icon=L.divIcon({
+        className:"",
+        html:`<div title="${log.agentName} — ${meta.label}" style="position:relative">
+          <div style="width:16px;height:16px;border-radius:50%;background:${meta.color};border:3px solid #fff;box-shadow:0 2px 8px #0005;"></div>
+          <div style="position:absolute;top:-1px;left:-1px;width:18px;height:18px;border-radius:50%;border:2px solid ${meta.color};opacity:0.4;"></div>
+        </div>`,
+        iconSize:[16,16],iconAnchor:[8,8]
+      });
+      const speedStr=log.speed!=null?`<br/>💨 ${log.speed} km/h`:"";
+      const headingStr=log.heading!=null?` · ${log.heading}°`:"";
+      const popup=`<div style="font-family:system-ui,sans-serif;min-width:180px">
+        <p style="font-weight:800;font-size:13px;margin:0 0 4px">${log.agentName}</p>
+        <span style="background:${meta.color}22;color:${meta.color};padding:2px 8px;border-radius:5px;font-weight:700;font-size:11px">${meta.icon} ${meta.label}</span>
+        ${log.customer?`<p style="margin:6px 0 0;font-size:12px">📦 ${log.customer}</p>`:""}
+        <p style="margin:6px 0 0;font-size:11px;color:#6b7280">📅 ${log.tsDisplay}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280">📍 ${log.lat.toFixed(5)}, ${log.lng.toFixed(5)}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280">🎯 ±${log.acc}m accuracy${headingStr}${speedStr}</p>
+        <a href="https://maps.google.com/?q=${log.lat},${log.lng}" target="_blank" style="display:inline-block;margin-top:8px;background:#0ea5e9;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none">Open in Maps ↗</a>
+      </div>`;
+      const marker=L.marker([log.lat,log.lng],{icon})
+        .bindPopup(popup,{maxWidth:240})
+        .addTo(map);
+      markersRef.current.push(marker);
+    });
+    const coords=logs.map(l=>[l.lat,l.lng]);
+    try{map.fitBounds(L.latLngBounds(coords),{padding:[40,40],maxZoom:18});}catch{}
+  },[logs,actionMeta]);// eslint-disable-line
+
+  return <div ref={mapRef} style={{width:"100%",height:420,borderRadius:12,overflow:"hidden",background:dm?"#1a1a2e":"#e8f4f8"}}>
+    {!leafReady&&<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <p style={{color:"#6b7280",fontSize:13}}>Loading map…</p>
+    </div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  WeatherWidget — extracted so hooks are at component top-level
 // ═══════════════════════════════════════════════════════════════
 function WeatherWidget({dm,settings}){
@@ -949,8 +1035,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [actLog,    setAct]  =useStore("tas9_act",  []);
   const [wastage,   setWaste] =useStore("tas9_waste", D_WASTE);
   const [prodTargets, setProdTargets]=useStore("tas9_prodtargets", D_PROD_TARGETS);
-  // Agent live locations — stored so admin can see all agents
-  const [agentLocs, setAgentLocs]=useStore("tas9_locs",{});
+  // Agent live locations — kept in memory only, NOT stored in Firebase/cloud
+  // Uses Ably free-tier WebSockets for cross-device real-time relay
   const [notifs, setNotifs]=useStore("tas9_notifs",[]);
   // eslint-disable-next-line no-unused-vars
   const [qcLogs,    setQcLogs]   = useStore("tas9_qclogs", []);
@@ -989,50 +1075,64 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     setAct(p=>[e,...p.slice(0,999)]);
   }
 
-  // ── GPS TRACKING ──────────────────────────────────────────────
-  // HOW IT WORKS:
-  // 1. Agent taps "Track me" → browser asks for location permission
-  // 2. watchPosition() fires every few seconds with updated coordinates
-  // 3. Coordinates are saved to tas9_locs[sess.id] in localStorage
-  // 4. BroadcastChannel pushes the update to all open tabs instantly
-  // 5. On same device: admin tab sees agent location immediately
-  // 6. On different devices: requires a real backend (Firebase etc.)
-  //    The 4-second poll will pick it up IF both devices share storage
-  //    (only works on same browser/device — for true cross-device
-  //     you need the Firebase integration I can add separately)
-  const [loc,setLoc]=useState(null);
-  const [trk,setTrk]=useState(false);
-  const wRef=useRef(null);
-  function startTrk(){
-    if(!navigator.geolocation){notify("Geolocation not supported on this device");return;}
-    navigator.geolocation.getCurrentPosition(()=>{},{},{}); // warm up
-    setTrk(true);
-    wRef.current=navigator.geolocation.watchPosition(
-      pos=>{
-        const l={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy),at:new Date().toLocaleTimeString("en-IN"),ts:Date.now(),name:sess.name,role:sess.role};
-        setLoc(l);
-        setAgentLocs(prev=>({...prev,[sess.id]:l}));
-      },
-      err=>{notify(`Location error: ${err.message}`);setTrk(false);},
-      {enableHighAccuracy:true,timeout:15000,maximumAge:5000}
-    );
-    addLog("Started GPS tracking","Agent location sharing enabled");
-  }
-  function stopTrk(){if(wRef.current)navigator.geolocation.clearWatch(wRef.current);setTrk(false);setLoc(null);setAgentLocs(prev=>{const n={...prev};delete n[sess.id];return n;});addLog("Stopped GPS tracking","Agent location sharing disabled");}
-  useEffect(()=>()=>{if(wRef.current)navigator.geolocation.clearWatch(wRef.current);},[]);
+  // ── GPS LOCATION LOGS — Firebase-stored breadcrumb trail ──────
+  // Instead of live broadcasting, we capture a one-shot GPS snapshot
+  // each time an agent performs a key delivery action. This tells you
+  // exactly WHERE they were when they saved/dispatched/delivered — so
+  // you can verify they were actually at the customer's location.
+  //
+  // Triggers: session start · save delivery edit · mark In Transit · mark Delivered
+  // Storage: tas9_gpslogs in Firebase (tiny — one doc per action, ~200 bytes each)
+  // Each log: { id, agentId, agentName, action, customer, lat, lng, acc, ts, tsDisplay }
+  const [gpsLogs, setGpsLogs] = useStore("tas9_gpslogs", []);
+  const [gpsFilter, setGpsFilter] = useState("all"); // "all" | agentId
+  const [gpsActionFilter, setGpsActionFilter] = useState("all");
+  const [gpsDateFilter, setGpsDateFilter] = useState("all"); // "all"|"today"|"yesterday"|"week"|"month"
+  const [gpsSubSection, setGpsSubSection] = useState("overview"); // "overview"|"map"|"timeline"|"report"
 
-  // GPS TTL cleanup — remove agent locations older than 10 minutes
+  // Silent one-shot location capture — called on delivery actions
+  // action = "session_start" | "delivery_saved" | "marked_transit" | "marked_delivered"
+  // customer = customer name string (or "" for session start)
+  function captureGPS(action, customer=""){
+    if(!navigator.geolocation) return;
+    if(sess.role!=="agent") return; // delivery agents only — admins/factory never tracked
+    if(!can("gps_track")) return;
+    let bestPos=null; let attempts=0;
+    function commit(pos){
+      const log={
+        id:uid(), agentId:sess.id, agentName:sess.name, action, customer,
+        lat:pos.coords.latitude, lng:pos.coords.longitude,
+        acc:Math.round(pos.coords.accuracy),
+        speed:pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):null,
+        heading:pos.coords.heading!=null?Math.round(pos.coords.heading):null,
+        ts:Date.now(),
+        tsDisplay:new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}),
+      };
+      setGpsLogs(prev=>[log,...(prev||[]).slice(0,499)]);
+    }
+    function tryFix(){
+      navigator.geolocation.getCurrentPosition(
+        pos=>{
+          attempts++;
+          if(!bestPos||pos.coords.accuracy<bestPos.coords.accuracy) bestPos=pos;
+          if(attempts<3&&pos.coords.accuracy>20) setTimeout(tryFix,2000);
+          else commit(bestPos);
+        },
+        ()=>{ if(bestPos) commit(bestPos); },
+        {enableHighAccuracy:true,timeout:10000,maximumAge:0}
+      );
+    }
+    tryFix();
+  }
+
+  // Capture session-start location once when agent logs in
+  const sessionGpsCaptured = useRef(false);
   useEffect(()=>{
-    const interval=setInterval(()=>{
-      const TEN_MIN=10*60*1000;
-      setAgentLocs(prev=>{
-        const cleaned={...prev};let changed=false;
-        Object.entries(cleaned).forEach(([id,loc])=>{if(loc.ts&&Date.now()-loc.ts>TEN_MIN){delete cleaned[id];changed=true;}});
-        return changed?cleaned:prev;
-      });
-    },60000);
-    return()=>clearInterval(interval);
-  },[]);// eslint-disable-line
+    if(!sessionGpsCaptured.current && sess?.id){
+      sessionGpsCaptured.current=true;
+      captureGPS("session_start","");
+    }
+  },[sess?.id]);// eslint-disable-line
 
   // Offline indicator state
   const [isOffline,setIsOffline]=useState(false);
@@ -1147,19 +1247,19 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       setCust(p=>p.map(c=>c.id===dF.customerId?{...c,pending:Math.max(0,c.pending-replAmt)}:c));
       addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
     }
-    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");}
-    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");}
+    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");captureGPS("delivery_saved",dF.customer);}
+    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
     setDsh(null);
   }
-  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered")addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");}
+  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");});}
 
   // SUPPLIES
   function saveS(){
     if(!sF.item.trim()){notify("Item required");return;}
     const rec={...sF,qty:+sF.qty||0,cost:+sF.cost||0,minStock:sF.minStock?+sF.minStock:""};
-    if(sSh==="add"){setSup(p=>[...p,{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");}
-    else{setSup(p=>p.map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");}
+    if(sSh==="add"){setSup(p=>[...p,{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");captureGPS("supply_logged",sF.item);}
+    else{setSup(p=>p.map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");captureGPS("supply_logged",sF.item);}
     // Low stock push notification on save
     const threshold=+sF.minStock;
     if(threshold>0&&(+sF.qty||0)<=threshold){
@@ -1172,8 +1272,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   // EXPENSES
   function saveE(){if(!eF.amount){notify("Amount required");return;}
-    if(eSh==="add"){setExp(p=>[...p,{...eF,id:uid(),amount:+eF.amount}]);addLog("Added expense",`${eF.category} ${inr(eF.amount)}`);notify("Expense logged ✓");}
-    else{setExp(p=>p.map(x=>x.id===eSh.id?{...eF,id:x.id,amount:+eF.amount}:x));addLog("Edited expense",`${eF.category} ${inr(eF.amount)}`);notify("Updated ✓");}
+    if(eSh==="add"){setExp(p=>[...p,{...eF,id:uid(),amount:+eF.amount}]);addLog("Added expense",`${eF.category} ${inr(eF.amount)}`);notify("Expense logged ✓");captureGPS("expense_logged",eF.category);}
+    else{setExp(p=>p.map(x=>x.id===eSh.id?{...eF,id:x.id,amount:+eF.amount}:x));addLog("Edited expense",`${eF.category} ${inr(eF.amount)}`);notify("Updated ✓");captureGPS("expense_logged",eF.category);}
     setEsh(null);}
   function delE(e){ask(`Delete "${e.category} ${inr(e.amount)}"?`,()=>{setExp(p=>p.filter(x=>x.id!==e.id));addLog("Deleted expense",`${e.category} ${inr(e.amount)}`);notify("Deleted");});}
 
@@ -1181,8 +1281,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function saveW(){
     if(!wF.product.trim()||!wF.qty){notify("Product and quantity required");return;}
     const rec={...wF,qty:+wF.qty||0,cost:+wF.cost||0,loggedBy:sess.name};
-    if(wSh==="add"){setWaste(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Logged wastage",`${rec.qty} ${rec.unit} ${rec.product} — ${rec.type}`);notify("Wastage logged ✓");}
-    else{setWaste(p=>p.map(x=>x.id===wSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited wastage",`${rec.product} ${rec.qty} ${rec.unit}`);notify("Updated ✓");}
+    if(wSh==="add"){setWaste(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Logged wastage",`${rec.qty} ${rec.unit} ${rec.product} — ${rec.type}`);notify("Wastage logged ✓");captureGPS("wastage_logged",rec.product);}
+    else{setWaste(p=>p.map(x=>x.id===wSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited wastage",`${rec.product} ${rec.qty} ${rec.unit}`);notify("Updated ✓");captureGPS("wastage_logged",rec.product);}
     setWSh(null);
   }
   function delW(w){ask(`Delete wastage record for "${w.product}"?`,()=>{setWaste(p=>p.filter(x=>x.id!==w.id));addLog("Deleted wastage",`${w.product} ${w.qty} ${w.unit}`);notify("Deleted");});}
@@ -1193,6 +1293,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     const rec={...qcF,id:uid(),loggedBy:displayName,createdAt:ts()};
     setQcLogs(p=>[rec,...p]);
     addLog("QC check logged",`${rec.product} — Grade ${rec.grade}`);
+    captureGPS("qc_logged",rec.product);
     notify("QC log saved ✓");
     setQcSh(null);
   }
@@ -1200,8 +1301,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function savePT(){
     if(!ptF.product.trim()){notify("Product required");return;}
     const rec={...ptF,target:+ptF.target||0,actual:+ptF.actual||0};
-    if(ptSh==="add"){setProdTargets(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Production target set",`${rec.product} — ${rec.shift} ${rec.date}`);notify("Target saved ✓");}
-    else{setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Production target updated",`${rec.product}`);notify("Updated ✓");}
+    if(ptSh==="add"){setProdTargets(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Production target set",`${rec.product} — ${rec.shift} ${rec.date}`);notify("Target saved ✓");captureGPS("production_logged",rec.product);}
+    else{setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Production target updated",`${rec.product}`);notify("Updated ✓");captureGPS("production_logged",rec.product);}
     setPtSh(null);
   }
   function delPT(pt){ask(`Delete production record?`,()=>{setProdTargets(p=>p.filter(x=>x.id!==pt.id));addLog("Deleted production record",`${pt.product} ${pt.date}`);notify("Deleted");});}
@@ -1311,11 +1412,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const delivStats=settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"];
   const supUnits=settings?.supplyUnits||["kg","g","L","mL","pcs","bags","boxes","dozen"];
 
-  // Active agent locations for admin
-  const activeAgents=Object.values(safeO(agentLocs)).filter(l=>l&&l.lat);
-
   // Tab icons for nav
-  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅","Settings":"⚙️"};
+  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅","GPS":"📍","Settings":"⚙️"};
 
   // ═══════════════════════════════════════════════════════════════
   return (
@@ -1401,14 +1499,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <h1 style={{color:t.text}} className="font-black text-xl tracking-tight">{tab}</h1>
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            {can("gps_track")&&(trk
-              ?<button onClick={stopTrk} className="text-[11px] px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-semibold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"/>Live</button>
-              :<button onClick={startTrk} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold">📍 Track</button>
-            )}
-            {can("gps_seeAgents")&&activeAgents.length>0&&(
-              <a href={mapU("",activeAgents[0].lat,activeAgents[0].lng)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] px-3 py-1.5 rounded-xl bg-sky-500 text-white font-semibold hidden sm:inline-flex items-center gap-1">🗺 {activeAgents.length} online</a>
-            )}
             {/* BELL */}
             <div className="relative">
               <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl flex items-center justify-center text-[15px] select-none relative transition-colors hover:opacity-80">
@@ -1467,34 +1557,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               </div>
             </div>
             <button onClick={()=>setIsOffline(false)} className="text-xs text-red-400/60 hover:text-red-400 shrink-0">✕</button>
-          </div>
-        </div>
-      )}
-
-      {/* Agent GPS bar */}
-      {can("gps_track")&&trk&&loc&&(
-        <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-4 py-2.5 flex justify-between items-center">
-            <div>
-              <p className="text-xs font-semibold text-emerald-500">📍 Sharing location · {loc.at} · ±{loc.acc}m</p>
-              <p className="text-[11px] text-emerald-400">{loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}</p>
-            </div>
-            <a href={mapU("",loc.lat,loc.lng)} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-500 font-semibold underline">Open Maps</a>
-          </div>
-        </div>
-      )}
-
-      {/* Admin: active agent locations */}
-      {can("gps_seeAgents")&&activeAgents.length>0&&(
-        <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
-          <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl px-4 py-2.5">
-            <p className="text-xs font-semibold text-sky-500 mb-1">🗺 Live Agent Locations</p>
-            {activeAgents.map((l,i)=>(
-              <div key={i} className="flex justify-between items-center py-1">
-                <span style={{color:t.sub}} className="text-xs">{l.name} — {l.at} · ±{l.acc}m</span>
-                <a href={mapU("",l.lat,l.lng)} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-500 font-semibold underline">Maps</a>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -1584,7 +1646,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             }}
           />}
           {/* LOW STOCK ALERT CARD */}
-          {lowStockItems.filter(s=>s.minStock).length>0&&can("dash_seeWastage")&&(
+          {lowStockItems.filter(s=>s.minStock).length>0&&(isAdmin||isFactory)&&(
             <div style={{background:dm?"#1a0e0e":"#fff7f7",border:"1.5px solid #ef444430",borderRadius:20,padding:"14px 18px"}}>
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -1969,8 +2031,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <span style={{color:t.text}} className="text-xs font-bold">{bulkSelected.size} selected</span>
             </div>
             <div className="flex gap-2">
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">✓ Mark Delivered</button>
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">🚚 Set In Transit</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);captureGPS("marked_delivered",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">✓ Mark Delivered</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">🚚 Set In Transit</button>
             </div>
           </div>}
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status…"/>
@@ -2079,7 +2141,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
                   <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">Word</button>
                   <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{background:"#25D366"}}>WhatsApp</button>
-                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
+                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
                   {can("deliv_delete")&& <button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
                 </div>
               </div></Card>
@@ -3075,6 +3137,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 const rec={...hvF,id:uid(),createdAt:ts()};
                 setHandovers(p=>[rec,...p.slice(0,99)]);
                 addLog("Shift handover logged",`${rec.shift} → ${rec.nextShift||"next"}`);
+                captureGPS("handover_logged",`${rec.shift} shift`);
                 addNotif("Shift Handover",`${rec.shift} handover by ${rec.loggedBy}`,"info","newentry");
                 notify("Handover note saved ✓");
                 setHvSh(false);
@@ -3196,6 +3259,453 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 {q.notes&&<p style={{color:t.sub,background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:10}} className="text-xs">"{q.notes}"</p>}
               </div></Card>
             ))}
+          </>;
+        })()}
+
+        {/* GPS TAB */}
+        {tab==="GPS"&&(()=>{
+          const ACTION_META={
+            session_start:    {label:"Session Start",    color:"#6366f1", icon:"🔓"},
+            delivery_saved:   {label:"Delivery Saved",   color:"#f59e0b", icon:"💾"},
+            marked_transit:   {label:"In Transit",       color:"#0ea5e9", icon:"🚚"},
+            marked_delivered: {label:"Delivered",        color:"#10b981", icon:"✅"},
+            wastage_logged:   {label:"Wastage Logged",   color:"#f97316", icon:"🗑️"},
+            supply_logged:    {label:"Supply Logged",    color:"#8b5cf6", icon:"📦"},
+            expense_logged:   {label:"Expense Logged",   color:"#ec4899", icon:"💸"},
+            qc_logged:        {label:"QC Check",         color:"#14b8a6", icon:"🔬"},
+            production_logged:{label:"Production Log",   color:"#6366f1", icon:"🏭"},
+            handover_logged:  {label:"Shift Handover",   color:"#64748b", icon:"🔄"},
+          };
+
+          // ── helpers ──────────────────────────────────────────────
+          const allLogs = gpsLogs||[];
+          const agentUsers=[...new Set(allLogs.map(l=>l.agentId))].map(id=>{
+            const l=allLogs.find(x=>x.agentId===id);
+            return {id,name:l?.agentName||id};
+          });
+          const startOfToday=new Date(); startOfToday.setHours(0,0,0,0);
+          const startOfYesterday=new Date(startOfToday); startOfYesterday.setDate(startOfYesterday.getDate()-1);
+          const startOfWeek=new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate()-7);
+          const startOfMonth=new Date(startOfToday); startOfMonth.setDate(1);
+          function passesDate(l){
+            if(gpsDateFilter==="all") return true;
+            if(gpsDateFilter==="today") return l.ts>=startOfToday.getTime();
+            if(gpsDateFilter==="yesterday") return l.ts>=startOfYesterday.getTime()&&l.ts<startOfToday.getTime();
+            if(gpsDateFilter==="week") return l.ts>=startOfWeek.getTime();
+            if(gpsDateFilter==="month") return l.ts>=startOfMonth.getTime();
+            return true;
+          }
+          const filtered=allLogs
+            .filter(l=>gpsFilter==="all"||l.agentId===gpsFilter)
+            .filter(l=>gpsActionFilter==="all"||l.action===gpsActionFilter)
+            .filter(passesDate);
+          const logsWithGps=filtered.filter(l=>l.lat&&l.lng);
+
+          // per-agent stats (always from allLogs unfiltered for Overview cards)
+          const agentSummary=agentUsers.map(a=>{
+            const aLogs=allLogs.filter(l=>l.agentId===a.id&&l.lat&&l.lng);
+            const todayLogs=aLogs.filter(l=>l.ts>=startOfToday.getTime());
+            const lastLog=aLogs[0];
+            const firstToday=todayLogs[todayLogs.length-1];
+            const delivCount=aLogs.filter(l=>l.action==="marked_delivered").length;
+            const transitCount=aLogs.filter(l=>l.action==="marked_transit").length;
+            const sessionCount=aLogs.filter(l=>l.action==="session_start").length;
+            const delivToday=todayLogs.filter(l=>l.action==="marked_delivered").length;
+            // rough active duration today: last ping - first ping (minutes)
+            const activeMins=firstToday&&lastLog&&todayLogs.length>1?Math.round((lastLog.ts-firstToday.ts)/60000):null;
+            return {a,lastLog,firstToday,delivCount,transitCount,sessionCount,delivToday,activeMins,total:aLogs.length,todayTotal:todayLogs.length};
+          });
+
+          // daily breakdown for report view
+          function getDailyBreakdown(){
+            const map={};
+            logsWithGps.forEach(l=>{
+              const d=new Date(l.ts).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
+              if(!map[d]) map[d]={date:d,ts:l.ts,entries:[],agents:new Set(),delivered:0,transit:0,sessions:0};
+              map[d].entries.push(l);
+              map[d].agents.add(l.agentName);
+              if(l.action==="marked_delivered") map[d].delivered++;
+              if(l.action==="marked_transit") map[d].transit++;
+              if(l.action==="session_start") map[d].sessions++;
+            });
+            return Object.values(map).sort((a,b)=>b.ts-a.ts);
+          }
+
+          // exports
+          function exportGpsCSV(){
+            const rows=[["#","Agent","Role","Action","Detail / Customer","Date","Time","Latitude","Longitude","Accuracy (m)","Google Maps"]];
+            logsWithGps.forEach((l,i)=>{
+              const m=ACTION_META[l.action]||{label:l.action};
+              const d=new Date(l.ts);
+              rows.push([i+1,l.agentName,l.agentRole||"agent",m.label,l.customer||"—",
+                d.toLocaleDateString("en-IN"),d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
+                l.lat,l.lng,l.acc,`https://maps.google.com/?q=${l.lat},${l.lng}`]);
+            });
+            const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+            const blob=new Blob([csv],{type:"text/csv"});
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement("a"); a.href=url; a.download=`gps_trail_${today()}.csv`; a.click();
+            URL.revokeObjectURL(url);
+            notify("Exported ✓");
+          }
+
+          function printReport(){
+            const dateLabel=gpsDateFilter==="today"?"Today":gpsDateFilter==="yesterday"?"Yesterday":gpsDateFilter==="week"?"Last 7 Days":gpsDateFilter==="month"?"This Month":"All Time";
+            const agentLabel=gpsFilter==="all"?"All Agents":(agentUsers.find(a=>a.id===gpsFilter)?.name||"");
+            const rows=logsWithGps.map((l,i)=>{
+              const m=ACTION_META[l.action]||{label:l.action};
+              const d=new Date(l.ts);
+              return `<tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280">${i+1}</td>
+                <td style="padding:6px 10px;font-size:12px;font-weight:600">${l.agentName}</td>
+                <td style="padding:6px 10px;font-size:12px"><span style="background:${m.color}20;color:${m.color};padding:2px 8px;border-radius:5px;font-weight:700;font-size:11px">${m.icon} ${m.label}</span></td>
+                <td style="padding:6px 10px;font-size:12px">${l.customer||"—"}</td>
+                <td style="padding:6px 10px;font-size:12px">${d.toLocaleDateString("en-IN")}</td>
+                <td style="padding:6px 10px;font-size:12px">${d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280">${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280">±${l.acc}m</td>
+                <td style="padding:6px 10px;font-size:12px"><a href="https://maps.google.com/?q=${l.lat},${l.lng}" style="color:#0ea5e9;font-weight:600">View ↗</a></td>
+              </tr>`;
+            }).join("");
+            const html=`<!DOCTYPE html><html><head><title>GPS Location Report — ${settings?.appName||"TAS"}</title>
+            <style>body{font-family:system-ui,sans-serif;padding:32px;color:#111}h1{font-size:20px;font-weight:800;margin:0}h2{font-size:13px;color:#6b7280;font-weight:500;margin:4px 0 24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;padding:8px 10px;font-size:11px;font-weight:700;text-align:left;color:#374151;border-bottom:2px solid #e5e7eb}@media print{a{color:#0ea5e9}}</style>
+            </head><body>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+              <div><h1>📍 GPS Location Report</h1><h2>${settings?.appName||"TAS Healthy World"} · ${settings?.companySubtitle||""} · Generated ${ts()}</h2></div>
+              <div style="text-align:right;font-size:12px;color:#6b7280"><b>Period:</b> ${dateLabel}<br/><b>Agent:</b> ${agentLabel}<br/><b>Total entries:</b> ${logsWithGps.length}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+              ${[
+                {l:"Total Pings",v:logsWithGps.length,c:"#6366f1"},
+                {l:"Delivered",v:logsWithGps.filter(x=>x.action==="marked_delivered").length,c:"#10b981"},
+                {l:"In Transit",v:logsWithGps.filter(x=>x.action==="marked_transit").length,c:"#0ea5e9"},
+                {l:"Sessions",v:logsWithGps.filter(x=>x.action==="session_start").length,c:"#f59e0b"},
+              ].map(s=>`<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px"><p style="color:${s.c};font-size:22px;font-weight:800;margin:0">${s.v}</p><p style="color:#6b7280;font-size:11px;margin:2px 0 0;font-weight:600">${s.l}</p></div>`).join("")}
+            </div>
+            <table><thead><tr><th>#</th><th>Agent</th><th>Action</th><th>Detail</th><th>Date</th><th>Time</th><th>Coordinates</th><th>Accuracy</th><th>Map</th></tr></thead>
+            <tbody>${rows}</tbody></table>
+            <p style="margin-top:24px;font-size:11px;color:#9ca3af">Confidential · ${settings?.companyName||"TAS Healthy World"} · This report was auto-generated from the Operations CRM</p>
+            </body></html>`;
+            const w=window.open("","_blank"); w.document.write(html); w.document.close(); w.print();
+          }
+
+          // sub-nav sections
+          const GPS_SECTIONS=[
+            {id:"overview",label:"Overview",icon:"📊"},
+            {id:"map",label:"Live Map",icon:"🗺"},
+            {id:"timeline",label:"Audit Log",icon:"📋"},
+            {id:"report",label:"Daily Report",icon:"📄"},
+          ];
+          const gpsSection = gpsSubSection||"overview";
+
+          return <>
+            {/* ── Page header ── */}
+            <div style={{borderBottom:`1px solid ${t.border}`,paddingBottom:12,marginBottom:4}}>
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <p style={{color:t.text}} className="font-black text-lg tracking-tight">📍 Location Intelligence</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Real-time agent tracking · Full audit trail · GPS-verified delivery records</p>
+                </div>
+                {isAdmin&&logsWithGps.length>0&&<div className="flex gap-2">
+                  <button onClick={exportGpsCSV} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                  <button onClick={printReport} style={{background:"#6366f1",color:"#fff",borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer"}}>🖨 Print Report</button>
+                </div>}
+              </div>
+              {/* sub-nav */}
+              {isAdmin&&<div className="flex gap-1 mt-3 overflow-x-auto scrollbar-hide">
+                {GPS_SECTIONS.map(s=>(
+                  <button key={s.id} onClick={()=>setGpsSubSection(s.id)}
+                    style={{background:gpsSection===s.id?"#6366f1":t.inp,color:gpsSection===s.id?"#fff":t.sub,border:`1px solid ${gpsSection===s.id?"#6366f1":t.border}`,borderRadius:9,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                    {s.icon} {s.label}
+                  </button>
+                ))}
+              </div>}
+            </div>
+
+            {/* ══ OVERVIEW ══ */}
+            {(gpsSection==="overview"||!isAdmin)&&<>
+              {/* KPI strip */}
+              {isAdmin&&<div className="grid grid-cols-2 gap-3">
+                {[
+                  {label:"Total GPS Pings",val:allLogs.filter(l=>l.lat&&l.lng).length,sub:"all time",color:"#6366f1",icon:"📡"},
+                  {label:"Deliveries Confirmed",val:allLogs.filter(l=>l.action==="marked_delivered").length,sub:"GPS-verified",color:"#10b981",icon:"✅"},
+                  {label:"Active Today",val:allLogs.filter(l=>l.ts>=startOfToday.getTime()&&l.lat&&l.lng).length,sub:"pings today",color:"#f59e0b",icon:"🔥"},
+                  {label:"Agents Tracked",val:agentUsers.length,sub:"with GPS data",color:"#0ea5e9",icon:"👥"},
+                ].map(k=>(
+                  <div key={k.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"14px 16px"}}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">{k.label}</p>
+                      <span style={{fontSize:16}}>{k.icon}</span>
+                    </div>
+                    <p style={{color:k.color}} className="text-2xl font-black">{k.val}</p>
+                    <p style={{color:t.sub}} className="text-[10px] mt-0.5">{k.sub}</p>
+                  </div>
+                ))}
+              </div>}
+
+              {/* Agent cards */}
+              {isAdmin&&agentSummary.length>0&&<>
+                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mt-1">Agent Status</p>
+                <div className="flex flex-col gap-3">
+                  {agentSummary.map(({a,lastLog,delivCount,transitCount,sessionCount,delivToday,activeMins,total,todayTotal})=>{
+                    const isActiveToday=todayTotal>0;
+                    return <Card key={a.id} dm={dm}><div className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div style={{background:"#6366f120",color:"#6366f1",width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,flexShrink:0}}>
+                            {a.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
+                          </div>
+                          <div>
+                            <p style={{color:t.text}} className="text-sm font-bold">{a.name}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span style={{width:6,height:6,borderRadius:"50%",background:isActiveToday?"#10b981":"#6b7280",display:"inline-block"}}/>
+                              <p style={{color:isActiveToday?"#10b981":t.sub}} className="text-[10px] font-semibold">{isActiveToday?"Active today":"No activity today"}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={()=>ask(`Clear all GPS logs for ${a.name}?`,()=>{setGpsLogs(p=>p.filter(l=>l.agentId!==a.id));notify(`Logs cleared for ${a.name}`);})}
+                          style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>Clear</button>
+                      </div>
+                      {/* stat row */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                        {[
+                          {l:"Total Pings",v:total,c:"#6366f1"},
+                          {l:"Delivered",v:delivCount,c:"#10b981"},
+                          {l:"In Transit",v:transitCount,c:"#0ea5e9"},
+                          {l:"Sessions",v:sessionCount,c:"#f59e0b"},
+                        ].map(s=>(
+                          <div key={s.l} style={{background:t.inp,borderRadius:10,padding:"8px 6px",textAlign:"center"}}>
+                            <p style={{color:s.c}} className="text-base font-black">{s.v}</p>
+                            <p style={{color:t.sub}} className="text-[9px] font-semibold">{s.l}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {/* today row */}
+                      <div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:10}} className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">Today</p>
+                          <p style={{color:t.text}} className="text-xs font-semibold mt-0.5">{delivToday} deliveries · {todayTotal} pings{activeMins!==null?` · ~${activeMins}min active`:""}</p>
+                        </div>
+                        {lastLog&&<a href={mapU("",lastLog.lat,lastLog.lng)} target="_blank" rel="noopener noreferrer"
+                          style={{background:"#0ea5e915",color:"#0ea5e9",borderRadius:8,padding:"4px 11px",fontSize:11,fontWeight:700,textDecoration:"none"}}>Last location ↗</a>}
+                      </div>
+                      {lastLog&&<p style={{color:t.sub}} className="text-[10px]">Last ping: <span style={{color:t.text,fontWeight:600}}>{lastLog.tsDisplay}</span> · ±{lastLog.acc}m accuracy · {lastLog.lat?.toFixed(5)}, {lastLog.lng?.toFixed(5)}</p>}
+                    </div></Card>;
+                  })}
+                </div>
+              </>}
+
+              {agentSummary.length===0&&<div className="flex flex-col items-center gap-2 py-14">
+                <span className="text-5xl">📡</span>
+                <p style={{color:t.sub}} className="text-sm font-semibold">No agent data yet</p>
+                <p style={{color:t.sub}} className="text-[11px] text-center max-w-xs">GPS is captured automatically when delivery agents log in and take actions</p>
+              </div>}
+
+              {/* agent self-view */}
+              {can("gps_track")&&!isAdmin&&(
+                <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:14,padding:"14px 16px"}}>
+                  <p style={{color:t.text}} className="text-sm font-bold mb-1">📡 Location Tracking Active</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Your location is automatically captured when you log in, save deliveries, dispatch or mark delivered. No action needed from your end.</p>
+                </div>
+              )}
+            </>}
+
+            {/* ══ MAP ══ */}
+            {gpsSection==="map"&&isAdmin&&<>
+              {/* filters */}
+              <div className="flex gap-2 flex-wrap">
+                <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All agents</option>
+                  {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <select value={gpsActionFilter} onChange={e=>setGpsActionFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All actions</option>
+                  {Object.entries(ACTION_META).map(([k,m])=><option key={k} value={k}>{m.icon} {m.label}</option>)}
+                </select>
+                <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">Last 7 days</option>
+                  <option value="month">This month</option>
+                </select>
+              </div>
+              {/* stats */}
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  {label:"Showing",val:logsWithGps.length+" pins",color:t.text},
+                  {label:"Delivered",val:logsWithGps.filter(l=>l.action==="marked_delivered").length,color:"#10b981"},
+                  {label:"In Transit",val:logsWithGps.filter(l=>l.action==="marked_transit").length,color:"#0ea5e9"},
+                  {label:"Sessions",val:logsWithGps.filter(l=>l.action==="session_start").length,color:"#6366f1"},
+                ].map(s=>(
+                  <div key={s.label} style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 14px",flex:1,minWidth:60,textAlign:"center"}}>
+                    <p style={{color:s.color}} className="text-sm font-black">{s.val}</p>
+                    <p style={{color:t.sub}} className="text-[10px] font-semibold">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* map + legend */}
+              <Card dm={dm}><div className="p-4">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <p style={{color:t.text}} className="font-bold text-sm">🗺 GPS Trail Map</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {Object.entries(ACTION_META).filter(([k])=>logsWithGps.some(l=>l.action===k)).map(([k,m])=>(
+                      <span key={k} className="flex items-center gap-1" style={{fontSize:10,color:t.sub,fontWeight:600}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:m.color,display:"inline-block"}}/>
+                        {m.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <GPSMap dm={dm} logs={logsWithGps} actionMeta={ACTION_META} fallbackLat={settings?.weatherLat||15.4909} fallbackLng={settings?.weatherLng||73.8278}/>
+                {logsWithGps.length===0&&<p style={{color:t.sub,textAlign:"center",paddingTop:12,fontSize:12}}>No GPS data matches current filters</p>}
+              </div></Card>
+            </>}
+
+            {/* ══ AUDIT LOG ══ */}
+            {gpsSection==="timeline"&&isAdmin&&<>
+              {/* filters */}
+              <div className="flex gap-2 flex-wrap">
+                <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All agents</option>
+                  {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <select value={gpsActionFilter} onChange={e=>setGpsActionFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All actions</option>
+                  {Object.entries(ACTION_META).map(([k,m])=><option key={k} value={k}>{m.icon} {m.label}</option>)}
+                </select>
+                <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">Last 7 days</option>
+                  <option value="month">This month</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-between">
+                <p style={{color:t.sub}} className="text-[11px] font-semibold">{logsWithGps.length} entries</p>
+                {logsWithGps.length>0&&<button onClick={exportGpsCSV} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:9,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>}
+              </div>
+              {logsWithGps.length===0
+                ?<div className="flex flex-col items-center gap-2 py-12">
+                  <span className="text-4xl">🔍</span>
+                  <p style={{color:t.sub}} className="text-sm">No entries match filters</p>
+                </div>
+                :logsWithGps.map(l=>{
+                  const m=ACTION_META[l.action]||{label:l.action,color:"#6b7280",icon:"📍"};
+                  const d=new Date(l.ts);
+                  return <Card key={l.id} dm={dm}><div className="p-3.5 flex items-start gap-3">
+                    <div style={{background:m.color+"18",color:m.color,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{m.icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <p style={{color:t.text}} className="text-sm font-bold">{l.agentName}</p>
+                        <span style={{background:m.color+"18",color:m.color,borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{m.label}</span>
+                      </div>
+                      {l.customer&&<p style={{color:t.text}} className="text-xs font-medium">📦 {l.customer}</p>}
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        <p style={{color:t.sub}} className="text-[10px]">📅 {d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</p>
+                        <p style={{color:t.sub}} className="text-[10px]">🕐 {d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</p>
+                        <p style={{color:t.sub}} className="text-[10px]">📍 {l.lat?.toFixed(5)}, {l.lng?.toFixed(5)}</p>
+                        <p style={{color:t.sub}} className="text-[10px]">🎯 ±{l.acc}m</p>
+                        {l.speed!=null&&<p style={{color:t.sub}} className="text-[10px]">💨 {l.speed}km/h</p>}
+                        {l.heading!=null&&<p style={{color:t.sub}} className="text-[10px]">🧭 {l.heading}°</p>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                      <a href={mapU("",l.lat,l.lng)} target="_blank" rel="noopener noreferrer"
+                        style={{background:"#0ea5e915",color:"#0ea5e9",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}}>Maps ↗</a>
+                      <button onClick={()=>ask("Delete this entry?",()=>{setGpsLogs(p=>p.filter(x=>x.id!==l.id));notify("Deleted");})}
+                        style={{background:"none",border:"none",color:t.sub,fontSize:10,cursor:"pointer",padding:"2px 4px"}}>✕ remove</button>
+                    </div>
+                  </div></Card>;
+                })
+              }
+            </>}
+
+            {/* ══ DAILY REPORT ══ */}
+            {gpsSection==="report"&&isAdmin&&<>
+              <div className="flex gap-2 flex-wrap">
+                <select value={gpsFilter} onChange={e=>setGpsFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:100}}>
+                  <option value="all">All agents</option>
+                  {agentUsers.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <select value={gpsDateFilter} onChange={e=>setGpsDateFilter(e.target.value)}
+                  style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:12,outline:"none",flex:1,minWidth:120}}>
+                  <option value="all">All time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">Last 7 days</option>
+                  <option value="month">This month</option>
+                </select>
+                {logsWithGps.length>0&&<button onClick={printReport}
+                  style={{background:"#6366f1",color:"#fff",border:"none",borderRadius:10,padding:"6px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨 Print / PDF</button>}
+              </div>
+
+              {getDailyBreakdown().length===0
+                ?<div className="flex flex-col items-center gap-2 py-12"><span className="text-4xl">📄</span><p style={{color:t.sub}} className="text-sm">No data for selected period</p></div>
+                :getDailyBreakdown().map(day=>(
+                  <Card key={day.date} dm={dm}><div className="p-4">
+                    {/* day header */}
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div>
+                        <p style={{color:t.text}} className="text-sm font-black">{day.date}</p>
+                        <p style={{color:t.sub}} className="text-[10px]">{[...day.agents].join(", ")}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <span style={{background:"#10b98118",color:"#10b981",borderRadius:7,padding:"2px 9px",fontSize:10,fontWeight:700}}>✅ {day.delivered} delivered</span>
+                        <span style={{background:"#0ea5e918",color:"#0ea5e9",borderRadius:7,padding:"2px 9px",fontSize:10,fontWeight:700}}>🚚 {day.transit} transit</span>
+                        <span style={{background:"#6366f118",color:"#6366f1",borderRadius:7,padding:"2px 9px",fontSize:10,fontWeight:700}}>🔓 {day.sessions} sessions</span>
+                      </div>
+                    </div>
+                    {/* entries for this day */}
+                    <div className="flex flex-col gap-0">
+                      {day.entries.map((l,i)=>{
+                        const m=ACTION_META[l.action]||{label:l.action,color:"#6b7280",icon:"📍"};
+                        const d=new Date(l.ts);
+                        const isLast=i===day.entries.length-1;
+                        return <div key={l.id} className="flex items-start gap-2.5" style={{paddingBottom:isLast?0:8}}>
+                          {/* timeline dot + line */}
+                          <div className="flex flex-col items-center" style={{paddingTop:2,flexShrink:0}}>
+                            <div style={{width:8,height:8,borderRadius:"50%",background:m.color,flexShrink:0}}/>
+                            {!isLast&&<div style={{width:1,flex:1,background:t.border,minHeight:16,marginTop:2}}/>}
+                          </div>
+                          <div className="flex-1 min-w-0 pb-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p style={{color:t.text}} className="text-xs font-semibold">{l.agentName}</p>
+                              <span style={{background:m.color+"18",color:m.color,borderRadius:5,padding:"0px 6px",fontSize:9,fontWeight:700}}>{m.icon} {m.label}</span>
+                              {l.customer&&<span style={{color:t.sub}} className="text-[10px]">· {l.customer}</span>}
+                            </div>
+                            <div className="flex gap-3 mt-0.5 flex-wrap">
+                              <p style={{color:t.sub}} className="text-[10px]">{d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</p>
+                              <a href={mapU("",l.lat,l.lng)} target="_blank" rel="noopener noreferrer" style={{color:"#0ea5e9",fontSize:10,fontWeight:600,textDecoration:"none"}}>📍 {l.lat?.toFixed(4)}, {l.lng?.toFixed(4)} ↗</a>
+                              <p style={{color:t.sub}} className="text-[10px]">±{l.acc}m</p>
+                            </div>
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  </div></Card>
+                ))
+              }
+            </>}
+
+            {/* ── Danger zone ── */}
+            {isAdmin&&(gpsLogs||[]).length>0&&gpsSection==="overview"&&<div style={{borderTop:`1px solid ${t.border}`,paddingTop:12}}>
+              <div className="flex items-center justify-between">
+                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">Danger Zone</p>
+                <button onClick={()=>ask("Clear ALL GPS logs permanently? This cannot be undone.",()=>{setGpsLogs([]);notify("All GPS logs cleared");})}
+                  style={{background:"#ef444410",color:"#ef4444",border:`1px solid #ef444430`,borderRadius:10,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  🗑 Clear all GPS logs
+                </button>
+              </div>
+            </div>}
           </>;
         })()}
 
@@ -3790,7 +4300,10 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             </div>
           )}
         </div>
-        <Btn dm={dm} onClick={saveD} className="w-full">Save Delivery</Btn>
+        <div className="flex gap-2">
+          {dSh!=="add"&&can("deliv_report")&&<Btn dm={dm} v="outline" onClick={()=>exportPDF(dSh,products,"delivery",settings)} className="flex-1">🧾 Invoice</Btn>}
+          <Btn dm={dm} onClick={saveD} className="flex-1">Save Delivery</Btn>
+        </div>
       </Sheet>
 
       {/* Supply Sheet */}
