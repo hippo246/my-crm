@@ -42,7 +42,7 @@ function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-let _writing = {}; // keys currently being written — ignore echoes
+let _writing = {}; // write counters per key — ignore echoes while counter > 0
 let _lastSyncTs = null;
 const _syncListeners = new Set();
 function _notifySync(){_lastSyncTs=new Date();_syncListeners.forEach(fn=>fn(_lastSyncTs));}
@@ -56,7 +56,7 @@ function useStore(key, def) {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
       // Ignore echo of our own write
-      if (_writing[key]) {
+      if (_writing[key] > 0) {
         setFbLoaded(true);
         return;
       }
@@ -69,10 +69,10 @@ function useStore(key, def) {
       } else {
         // Nothing in Firebase at all — first ever load, seed defaults once
         const d = defRef.current;
-        _writing[key] = true;
+        _writing[key] = (_writing[key]||0) + 1;
         fbWrite(key, d)
-          .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
-          .catch(e => { console.warn("seed error:", e.message); _writing[key] = false; });
+          .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
+          .catch(e => { console.warn("seed error:", e.message); _writing[key] = Math.max(0,(_writing[key]||1)-1); });
         setRaw(d);
         lsw(key, d);
       }
@@ -82,6 +82,8 @@ function useStore(key, def) {
       console.warn("Firebase error for", key, err.message);
       setRaw(ls(key, defRef.current));
       setFbLoaded(true);
+      // Surface offline state to consumers via a global flag they can read
+      if(typeof window!=="undefined") window.__fbOffline=true;
     });
     return () => unsub();
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,10 +93,10 @@ function useStore(key, def) {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
       lsw(key, n);
       // Block echo for this key while write is in flight
-      _writing[key] = true;
+      _writing[key] = (_writing[key]||0) + 1;
       fbWrite(key, n)
-        .then(() => setTimeout(() => { _writing[key] = false; }, 2000))
-        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = false; });
+        .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
+        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = Math.max(0,(_writing[key]||1)-1); });
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,11 +126,11 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","QC","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","QC","GPS","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
   factory: ["Dashboard","Customers","Deliveries","Supplies","Wastage","Production"],
-  agent:   ["Dashboard","Customers","Deliveries"],
+  agent:   ["Dashboard","Customers","Deliveries","GPS"],
 };
 
 // Fine-grained permission keys — stored as finePerms:{key:bool} on each user
@@ -252,11 +254,13 @@ const D_SETTINGS = {
   supplyUnits:["kg","g","L","mL","pcs","bags","boxes","dozen"],
   companyName:"TAS Healthy World",
   companySubtitle:"Malabar Paratha Factory · Goa, India",
+  companyGST:"",
+  companyPhone:"",
   showWastageTo:["admin","factory"],
   wastageTypes:["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"],
   shifts:["Morning","Afternoon","Evening","Night"],
-  staffLoginMode:"picker",
-  staffNames:["Zeba","Zoya"],
+  staffLoginMode:"individual",
+  staffNames:[],
   lowStockThreshold: 5,
   churnDays: 14,
   qcMode: "detailed",
@@ -271,6 +275,9 @@ const D_SETTINGS = {
   briefingDismissedDate: "",
   pinMode: false,
   quickActions: ["newDelivery","markDone","logWastage","addExpense"],
+  weatherLat: 15.4909,
+  weatherLng: 73.8278,
+  weatherLabel: "Goa",
 };
 
 // Default wastage data
@@ -289,6 +296,9 @@ function exportPDF(record, products, type, settings) {
   const name   = record.name || record.customer || "—";
   const co     = settings?.companyName    || "TAS Healthy World";
   const cosub  = settings?.companySubtitle|| "Malabar Paratha Factory · Goa, India";
+  const gst    = settings?.companyGST     || "";
+  const coPhone= settings?.companyPhone   || "";
+  const invoiceNo=`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice — ${name}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:680px;margin:0 auto}
@@ -310,8 +320,9 @@ td{padding:9px 0;border-bottom:1px solid #f5f5f4;font-size:12px}
 @media print{@page{margin:1cm}body{padding:0}}
 </style></head><body>
 <div class="hdr">
-  <div><div class="brand">🫓 ${co}</div><div class="bsub">${cosub}</div></div>
+  <div><div class="brand">🫓 ${co}</div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
   <div><div class="ititle">INVOICE</div>
+  <div class="imeta">${invoiceNo}</div>
   <div class="imeta">Date: ${record.date||today()}</div>
   <div class="imeta">Ref: #${(record.id||"").slice(-8)}</div>
   ${record.deliveryDate?`<div class="imeta">Deliver by: ${record.deliveryDate}</div>`:""}
@@ -331,6 +342,10 @@ ${type==="customer"?`<div class="sumbox">
 <div><div class="sl">Amount Paid</div><div class="sv" style="color:#059669">${inr(record.paid||0)}</div></div>
 <div><div class="sl">Amount Pending</div><div class="sv" style="color:${(record.pending||0)>0?"#dc2626":"#059669"}">${inr(record.pending||0)}</div></div>
 <div><div class="sl">Payment Status</div><div class="sv" style="color:${(record.pending||0)>0?"#dc2626":"#059669"};font-size:13px">${(record.pending||0)>0?"UNPAID":"✓ PAID"}</div></div>
+</div>`:type==="delivery"?`<div class="sumbox">
+<div><div class="sl">Order Total</div><div class="sv">${inr(total)}</div></div>
+<div><div class="sl">Status</div><div class="sv" style="color:${record.status==="Delivered"?"#059669":record.status==="In Transit"?"#2563eb":"#d97706"}">${record.status||"Pending"}</div></div>
+${record.deliveryDate?`<div><div class="sl">Deliver By</div><div class="sv">${record.deliveryDate}</div></div>`:""}
 </div>`:""}
 <div class="footer">Thank you for your business · ${co} · Generated ${new Date().toLocaleString("en-IN")}</div>
 <script>window.addEventListener("load",function(){window.print();});</script>
@@ -693,7 +708,7 @@ function Login({users,onLogin,dm,settings}){
     setPinVal(next);
     if(next.length===4){
       setTimeout(()=>{
-        if(pinTarget&&pinTarget.pin===next){onLogin({...pinTarget,loginAt:Date.now()});}
+        if(pinTarget&&pinTarget.pin===next&&pinTarget.active){onLogin({...pinTarget,loginAt:Date.now()});}
         else{setErr("Incorrect PIN. Try again.");setPinVal("");}
       },200);
     }
@@ -848,24 +863,40 @@ export default function Root(){
   const [users,setUsers]=useStore("tas9_users",D_USERS);
   const [settings,setSettings]=useStore("tas10_settings",D_SETTINGS);
   const [sess,setSess]=useState(()=>{const s=ls("tas9_sess",null);return s&&Date.now()-s.loginAt<SESSION_TTL?s:null;});
+  const [fbReady, setFbReady] = useState(false);
+  useEffect(()=>{
+    // Give Firebase up to 3s to respond before showing login — prevents picker flash
+    const t = setTimeout(()=>setFbReady(true), 3000);
+    // Also mark ready as soon as settings differ from defaults (Firebase responded)
+    if(JSON.stringify(settings)!==JSON.stringify(D_SETTINGS)||JSON.stringify(users)!==JSON.stringify(D_USERS)) setFbReady(true);
+    return ()=>clearTimeout(t);
+  },[settings,users]);
   useEffect(()=>lsw("tas_dm",dm),[dm]);
   useEffect(()=>{if(sess)lsw("tas9_sess",sess);else lsdel("tas9_sess");},[sess]);
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
-  if(!sess)return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
-  return <CRM sess={sess} onLogout={()=>setSess(null)} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
+  if(!sess){
+    if(!fbReady) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>;
+    return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
+  }  return <CRM sess={sess} onLogout={()=>setSess(null)} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  WeatherWidget — extracted so hooks are at component top-level
 // ═══════════════════════════════════════════════════════════════
-function WeatherWidget({dm}){
+function WeatherWidget({dm,settings}){
   const t=T(dm);
   const [wx,setWx]=useState(null);
   const [wxLoad,setWxLoad]=useState(true);
+  const lat=settings?.weatherLat||15.4909;
+  const lng=settings?.weatherLng||73.8278;
+  const locLabel=settings?.weatherLabel||"Goa";
   useEffect(()=>{
-    fetch("https://api.open-meteo.com/v1/forecast?latitude=15.4909&longitude=73.8278&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m&timezone=Asia%2FKolkata")
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m&timezone=Asia%2FKolkata`)
       .then(r=>r.json()).then(d=>{setWx(d.current);setWxLoad(false);}).catch(()=>setWxLoad(false));
-  },[]);
+  },[lat,lng]);
   const wCode=wx?.weathercode||0;
   const wIcon=wCode===0?"☀️":wCode<=3?"⛅":wCode<=48?"🌫️":wCode<=67?"🌧️":wCode<=77?"❄️":wCode<=82?"🌦️":"⛈️";
   const wDesc=wCode===0?"Clear skies":wCode<=3?"Partly cloudy":wCode<=48?"Foggy / hazy":wCode<=67?"Rain expected":wCode<=77?"Sleet/Snow":wCode<=82?"Showers":wCode<=99?"Thunderstorm":"Stormy";
@@ -874,7 +905,7 @@ function WeatherWidget({dm}){
   return <div style={{background:dm?"linear-gradient(135deg,#0c1a2e,#111820)":"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:dm?"1px solid #1e3a5f":"1px solid #bfdbfe",borderRadius:20,padding:"16px 20px"}}>
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-1">🌤 Goa Weather · Now</p>
+        <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-1">🌤 {locLabel} Weather · Now</p>
         {wxLoad?<p style={{color:t.sub}} className="text-sm">Loading…</p>:<>
           <div className="flex items-center gap-3">
             <span style={{fontSize:36,lineHeight:1}}>{wIcon}</span>
@@ -900,7 +931,6 @@ function WeatherWidget({dm}){
 function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
   const isFactory=sess.role==="factory";
-  const isAgent=sess.role==="agent";
   const userPerms=sess.permissions||ROLE_DEF[sess.role]||ROLE_DEF.agent;
   const t=T(dm);
 
@@ -979,7 +1009,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     setTrk(true);
     wRef.current=navigator.geolocation.watchPosition(
       pos=>{
-        const l={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy),at:new Date().toLocaleTimeString("en-IN"),name:sess.name,role:sess.role};
+        const l={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy),at:new Date().toLocaleTimeString("en-IN"),ts:Date.now(),name:sess.name,role:sess.role};
         setLoc(l);
         setAgentLocs(prev=>({...prev,[sess.id]:l}));
       },
@@ -991,7 +1021,27 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function stopTrk(){if(wRef.current)navigator.geolocation.clearWatch(wRef.current);setTrk(false);setLoc(null);setAgentLocs(prev=>{const n={...prev};delete n[sess.id];return n;});addLog("Stopped GPS tracking","Agent location sharing disabled");}
   useEffect(()=>()=>{if(wRef.current)navigator.geolocation.clearWatch(wRef.current);},[]);
 
-  // Stats
+  // GPS TTL cleanup — remove agent locations older than 10 minutes
+  useEffect(()=>{
+    const interval=setInterval(()=>{
+      const TEN_MIN=10*60*1000;
+      setAgentLocs(prev=>{
+        const cleaned={...prev};let changed=false;
+        Object.entries(cleaned).forEach(([id,loc])=>{if(loc.ts&&Date.now()-loc.ts>TEN_MIN){delete cleaned[id];changed=true;}});
+        return changed?cleaned:prev;
+      });
+    },60000);
+    return()=>clearInterval(interval);
+  },[]);// eslint-disable-line
+
+  // Offline indicator state
+  const [isOffline,setIsOffline]=useState(false);
+
+  // Sync offline flag from Firebase errors
+  useEffect(()=>{
+    const interval=setInterval(()=>{if(window.__fbOffline){setIsOffline(true);window.__fbOffline=false;}},3000);
+    return()=>clearInterval(interval);
+  },[]);
   const activeC=customers.filter(c=>c.active);
   const totalRev=customers.reduce((a,c)=>a+(c.paid||0),0);
   const totalDue=customers.reduce((a,c)=>a+(c.pending||0),0);
@@ -1043,7 +1093,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,notes:"",active:true,joinDate:today()});
   const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""}});
-  const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:""});
+  const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:""});
   const blkP=()=>({id:"",name:"",unit:"pcs",prices:[5,6]});
   const blkU=()=>({username:"",password:"",name:"",role:"agent",active:true,permissions:[...ROLE_DEF.agent]});
@@ -1105,7 +1155,19 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");});}
 
   // SUPPLIES
-  function saveS(){if(!sF.item.trim()){notify("Item required");return;}const rec={...sF,qty:+sF.qty||0,cost:+sF.cost||0};if(sSh==="add"){setSup(p=>[...p,{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");}else{setSup(p=>p.map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");}setSsh(null);}
+  function saveS(){
+    if(!sF.item.trim()){notify("Item required");return;}
+    const rec={...sF,qty:+sF.qty||0,cost:+sF.cost||0,minStock:sF.minStock?+sF.minStock:""};
+    if(sSh==="add"){setSup(p=>[...p,{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");}
+    else{setSup(p=>p.map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");}
+    // Low stock push notification on save
+    const threshold=+sF.minStock;
+    if(threshold>0&&(+sF.qty||0)<=threshold){
+      sendBrowserNotif(`⚠️ Low Stock: ${sF.item}`,`Only ${sF.qty} ${sF.unit} left — below threshold of ${threshold}`);
+      addNotif(`⚠️ Low Stock: ${sF.item}`,`Only ${sF.qty} ${sF.unit} remaining`,"warning","lowstock");
+    }
+    setSsh(null);
+  }
   function delS(s){ask(`Delete supply "${s.item}"?`,()=>{setSup(p=>p.filter(x=>x.id!==s.id));addLog("Deleted supply",s.item);notify("Deleted");});}
 
   // EXPENSES
@@ -1393,6 +1455,22 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       </header>
 
+      {/* Offline banner */}
+      {isOffline&&(
+        <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📡</span>
+              <div>
+                <p className="text-xs font-semibold text-red-400">You're offline — changes are saved locally</p>
+                <p className="text-[11px] text-red-400/70">Data will sync automatically when connection is restored</p>
+              </div>
+            </div>
+            <button onClick={()=>setIsOffline(false)} className="text-xs text-red-400/60 hover:text-red-400 shrink-0">✕</button>
+          </div>
+        </div>
+      )}
+
       {/* Agent GPS bar */}
       {can("gps_track")&&trk&&loc&&(
         <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
@@ -1426,7 +1504,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
           {/* WEATHER WIDGET */}
-          {widgets.includes("weather")&&<WeatherWidget dm={dm}/>}
+          {widgets.includes("weather")&&<WeatherWidget dm={dm} settings={settings}/>}
 
           {/* QUICK ACTIONS */}
           {widgets.includes("quickActions")&&(()=>{
@@ -1505,6 +1583,30 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               noticeCount:(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id)).length,
             }}
           />}
+          {/* LOW STOCK ALERT CARD */}
+          {lowStockItems.filter(s=>s.minStock).length>0&&can("dash_seeWastage")&&(
+            <div style={{background:dm?"#1a0e0e":"#fff7f7",border:"1.5px solid #ef444430",borderRadius:20,padding:"14px 18px"}}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:"#ef4444"}} className="text-[10px] font-bold uppercase tracking-widest mb-0.5">⚠️ Low Stock Alert</p>
+                  <p style={{color:t.text}} className="font-bold text-sm">{lowStockItems.filter(s=>s.minStock).length} item{lowStockItems.filter(s=>s.minStock).length!==1?"s":""} need restocking</p>
+                </div>
+                <Btn dm={dm} size="sm" v="ghost" onClick={()=>setTab("Supplies")}>View →</Btn>
+              </div>
+              {lowStockItems.filter(s=>s.minStock).map(s=>(
+                <div key={s.id} className="flex items-center justify-between py-2" style={{borderTop:`1px solid ${t.border}`}}>
+                  <div>
+                    <p style={{color:t.text}} className="text-sm font-semibold">{s.item}</p>
+                    {s.supplier&&<p style={{color:t.sub}} className="text-[11px]">{s.supplier}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p style={{color:"#ef4444"}} className="font-bold text-sm">{s.qty} {s.unit}</p>
+                    <p style={{color:t.sub}} className="text-[10px]">min: {s.minStock} {s.unit}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {/* TODAY SUMMARY HERO BANNER */}
           {(()=>{
             const todayStr=today();
@@ -2034,7 +2136,10 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <Card key={s.id} dm={dm}><div className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <p style={{color:t.text}} className="font-semibold">{s.item}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p style={{color:t.text}} className="font-semibold">{s.item}</p>
+                    {s.minStock&&(+s.qty||0)<=(+s.minStock)&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>⚠️ Low Stock</span>}
+                  </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                     {s.supplier&&<span style={{color:t.sub}} className="text-xs">🏭 {s.supplier}</span>}
                     {s.date&&<span style={{color:t.sub}} className="text-xs">📅 {s.date}</span>}
@@ -3210,7 +3315,6 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             const agentTabDef  = settings?.agentDefaultPerms   || ROLE_DEF.agent;
 
             function RoleDefaultsCard({role,color,emoji,title,subtitle,tabDef,fpDef,tabDefKey,fpDefKey,accounts}){
-              const sections=[...new Set(FINE_PERM_DEFS.map(d=>d.section))];
               const [openSec,setOpenSec]=useState(null);
               return <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-3" style={{borderBottom:`1px solid ${t.border}`}}>
@@ -3417,6 +3521,15 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               <Inp dm={dm} label="Emoji/Icon" value={settings?.appEmoji||""} onChange={e=>setSettings(s=>({...s,appEmoji:e.target.value}))} placeholder="🫓"/>
               <Inp dm={dm} label="Company Name (invoices)" value={settings?.companyName||""} onChange={e=>setSettings(s=>({...s,companyName:e.target.value}))} placeholder="TAS Healthy World"/>
               <Inp dm={dm} label="Company Subtitle (invoices)" value={settings?.companySubtitle||""} onChange={e=>setSettings(s=>({...s,companySubtitle:e.target.value}))} placeholder="Malabar Paratha Factory · Goa, India"/>
+            </div></Card>
+            <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+              <p style={{color:t.text}} className="text-sm font-bold">🌤 Weather Widget Location</p>
+              <p style={{color:t.sub}} className="text-[11px]">Set the location for the weather widget on the Dashboard. Latitude and longitude can be found via Google Maps.</p>
+              <Inp dm={dm} label="Location Label" value={settings?.weatherLabel||"Goa"} onChange={e=>setSettings(s=>({...s,weatherLabel:e.target.value}))} placeholder="Goa"/>
+              <div className="grid grid-cols-2 gap-3">
+                <Inp dm={dm} label="Latitude" value={settings?.weatherLat??15.4909} onChange={e=>setSettings(s=>({...s,weatherLat:+e.target.value||15.4909}))} placeholder="15.4909"/>
+                <Inp dm={dm} label="Longitude" value={settings?.weatherLng??73.8278} onChange={e=>setSettings(s=>({...s,weatherLng:+e.target.value||73.8278}))} placeholder="73.8278"/>
+              </div>
             </div></Card>
             <Card dm={dm}><div className="p-4">
               <p style={{color:t.text}} className="text-sm font-bold mb-3">Dashboard Widgets</p>
@@ -3695,6 +3808,11 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           <Inp dm={dm} label="Date" type="date" value={sF.date} onChange={e=>setSf({...sF,date:e.target.value})}/>
         </div>
         <Inp dm={dm} label="Notes" value={sF.notes} onChange={e=>setSf({...sF,notes:e.target.value})}/>
+        <div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
+          <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-1">Low Stock Alert</p>
+          <p style={{color:t.sub}} className="text-[11px] mb-2">Get notified when stock drops to or below this level. Leave blank to disable.</p>
+          <Inp dm={dm} label="Min Stock Threshold" type="number" value={sF.minStock||""} onChange={e=>setSf({...sF,minStock:e.target.value})} placeholder="e.g. 10"/>
+        </div>
         <Btn dm={dm} onClick={saveS} className="w-full">Save Supply</Btn>
       </Sheet>
 
