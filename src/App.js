@@ -1699,6 +1699,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   const widgets=settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"];
   const q=srch.toLowerCase();
+  const [delivStatusFilter,setDelivStatusFilter]=useState("all");
   const fCust=useMemo(()=>customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone?.includes(q)||c.address?.toLowerCase().includes(q)),[customers,q]);
   const fDeliv=useMemo(()=>deliveries.filter(d=>{
     const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q);
@@ -1757,8 +1758,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [clvSort,setClvSort]=useState("clv");
   const [clvFilter,setClvFilter]=useStore("tas_pref_clvFilter_"+sess.id,"og"); // "og"=original cards, "standard"=ranked list, "clv"=CLV detail
   const setClvFilterP = setClvFilter;
-  // Delivery status filter
-  const [delivStatusFilter,setDelivStatusFilter]=useState("all");
+  // Delivery status filter state moved above fDeliv useMemo
   // Overdue Payment Alerts
   const [overdueAlertDays,setOverdueAlertDays]=useState(7);
   // Bulk Order Entry
