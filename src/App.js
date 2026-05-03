@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
 import { ref, onValue, set as fbSet } from "firebase/database";
 
@@ -44,9 +44,6 @@ const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 //  All devices subscribe and receive updates in real-time.
 //  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
-function ls(k, d) { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } }
-function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
-function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
 // Firebase deletes nodes when arrays/objects are empty, causing re-seed loops.
 // Fix: always wrap data as {v: data} before writing — empty arrays become {v:[]}
@@ -62,40 +59,30 @@ function _notifySync(){_lastSyncTs=new Date();_syncListeners.forEach(fn=>fn(_las
 
 function useStore(key, def) {
   const defRef = useRef(def);
-  const [val, setRaw] = useState(() => ls(key, defRef.current));
+  const [val, setRaw] = useState(null);
   const [fbLoaded, setFbLoaded] = useState(false);
 
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      // Ignore echo of our own write
-      if (_writing[key] > 0) {
-        setFbLoaded(true);
-        return;
-      }
+      if (_writing[key] > 0) { setFbLoaded(true); return; }
       if (snap.exists()) {
         const raw = snap.val();
-        // Unwrap from {v: data} wrapper
         const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
         setRaw(incoming);
-        lsw(key, incoming);
       } else {
-        // Nothing in Firebase at all — first ever load, seed defaults once
         const d = defRef.current;
         _writing[key] = (_writing[key]||0) + 1;
         fbWrite(key, d)
           .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
           .catch(e => { console.warn("seed error:", e.message); _writing[key] = Math.max(0,(_writing[key]||1)-1); });
         setRaw(d);
-        lsw(key, d);
       }
       setFbLoaded(true);
       _notifySync();
     }, (err) => {
       console.warn("Firebase error for", key, err.message);
-      setRaw(ls(key, defRef.current));
       setFbLoaded(true);
-      // Surface offline state to consumers via a global flag they can read
       if(typeof window!=="undefined") window.__fbOffline=true;
     });
     return () => unsub();
@@ -104,8 +91,6 @@ function useStore(key, def) {
   const set = useCallback((next) => {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
-      lsw(key, n);
-      // Block echo for this key while write is in flight
       _writing[key] = (_writing[key]||0) + 1;
       fbWrite(key, n)
         .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
@@ -114,8 +99,7 @@ function useStore(key, def) {
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const safeVal = fbLoaded ? val : ls(key, defRef.current);
-  return [safeVal ?? defRef.current, set];
+  return [fbLoaded ? (val ?? defRef.current) : defRef.current, set, fbLoaded];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -405,26 +389,218 @@ function exportWord(record, products, type, settings) {
   const total= lineTotal(record.orderLines||{});
   const name = record.name||record.customer||"—";
   const co   = settings?.companyName||"TAS Healthy World";
+  const cosub= settings?.companySubtitle||"Malabar Paratha Factory · Goa, India";
+  const gst  = settings?.companyGST||"";
+  const coPhone=settings?.companyPhone||"";
+  const invoiceNo=`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
   const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
-<head><meta charset='utf-8'><title>Invoice</title>
-<style>body{font-family:Arial;font-size:12pt}h1{color:#92400e;font-size:15pt}h2{font-size:9pt;text-transform:uppercase;letter-spacing:2px;color:#a8a29e;margin-top:16pt}table{border-collapse:collapse;width:100%;margin-top:5pt}th{background:#f5f5f4;font-size:9pt;padding:5pt;border:1pt solid #e7e5e4}td{padding:5pt;border:1pt solid #e7e5e4;font-size:11pt}.tot{font-weight:bold;font-size:13pt}.paid{color:#059669;font-weight:bold}.unpaid{color:#dc2626;font-weight:bold}</style>
-</head><body>
-<h1>🫓 ${co}</h1>
-<h1 style="font-size:20pt;float:right;margin-top:-30pt">INVOICE</h1>
-<p style="clear:both;font-size:10pt;color:#78716c">Date: ${record.date||today()} | Ref: #${(record.id||"").slice(-8)}${record.deliveryDate?` | Deliver by: ${record.deliveryDate}`:""}</p>
-<h2>Bill To</h2>
-<p><b style="font-size:13pt">${name}</b>${record.phone?`<br>📞 ${record.phone}`:""}${record.address?`<br>📍 ${record.address}`:""}${record.joinDate?`<br>Since: ${record.joinDate}`:""}</p>
-${record.status?`<p><b>Status:</b> ${record.status}</p>`:""}
-<h2>Items</h2>
-<table><tr><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr>
-${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit}</td><td>${r.qty}</td><td>${inr(r.priceAmount)}</td><td>${inr(r.qty*r.priceAmount)}</td></tr>`).join("")}
-<tr class="tot"><td colspan="4">Total</td><td>${inr(total)}</td></tr></table>
-${type==="customer"?`<h2>Payment</h2><table><tr><td>Paid</td><td class="paid">${inr(record.paid||0)}</td><td>Pending</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${inr(record.pending||0)}</td><td>Status</td><td class="${(record.pending||0)>0?"unpaid":"paid"}">${(record.pending||0)>0?"UNPAID":"PAID"}</td></tr></table>`:""}
-<p style="margin-top:32pt;text-align:center;color:#a8a29e;font-size:9pt">Thank you · ${co} · ${new Date().toLocaleString("en-IN")}</p>
+<head><meta charset='utf-8'><title>Invoice — ${name}</title>
+<style>
+  @page{size:A4;margin:2cm 2.2cm}
+  body{font-family:'Calibri',Arial,sans-serif;font-size:11pt;color:#1c1917;line-height:1.5}
+  .header-table{width:100%;border-collapse:collapse;margin-bottom:20pt}
+  .brand{font-size:18pt;font-weight:700;color:#78350f;letter-spacing:-0.3pt}
+  .brand-sub{font-size:9pt;color:#78716c;margin-top:2pt}
+  .inv-title{font-size:28pt;font-weight:700;color:#1c1917;text-align:right;letter-spacing:-1pt}
+  .inv-meta{font-size:9pt;color:#78716c;text-align:right;margin-top:2pt}
+  .divider{border:none;border-top:2pt solid #e7e5e4;margin:14pt 0}
+  .section-label{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5pt;color:#a8a29e;margin:14pt 0 6pt 0}
+  .bill-name{font-size:14pt;font-weight:700;color:#1c1917}
+  .bill-detail{font-size:10pt;color:#78716c;margin-top:2pt}
+  table.items{width:100%;border-collapse:collapse;margin-top:6pt}
+  table.items th{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:0.8pt;color:#a8a29e;padding:7pt 8pt;border-bottom:2pt solid #e7e5e4;text-align:left}
+  table.items th.r{text-align:right}
+  table.items td{padding:8pt 8pt;border-bottom:1pt solid #f5f5f4;font-size:11pt;color:#1c1917}
+  table.items td.r{text-align:right}
+  table.items tr.total-row td{font-weight:700;font-size:13pt;border-bottom:none;border-top:2pt solid #1c1917;padding-top:10pt}
+  .summary-box{background:#f9f7f5;border:1pt solid #e7e5e4;border-radius:6pt;padding:12pt 16pt;margin-top:16pt}
+  .summary-label{font-size:9pt;color:#78716c;text-transform:uppercase;letter-spacing:0.5pt}
+  .summary-value{font-size:15pt;font-weight:700;color:#1c1917;margin-top:2pt}
+  .paid-val{color:#059669}
+  .due-val{color:#dc2626}
+  .footer{margin-top:36pt;text-align:center;font-size:8.5pt;color:#a8a29e;border-top:1pt solid #e7e5e4;padding-top:14pt}
+</style></head><body>
+<table class="header-table"><tr>
+  <td style="vertical-align:top;width:55%">
+    <div class="brand">🫓 ${co}</div>
+    <div class="brand-sub">${cosub}</div>
+    ${coPhone?`<div class="brand-sub">📞 ${coPhone}</div>`:""}
+    ${gst?`<div class="brand-sub">GST: ${gst}</div>`:""}
+  </td>
+  <td style="vertical-align:top;width:45%">
+    <div class="inv-title">INVOICE</div>
+    <div class="inv-meta">${invoiceNo}</div>
+    <div class="inv-meta">Date: ${record.date||today()}</div>
+    ${record.deliveryDate?`<div class="inv-meta">Deliver by: ${record.deliveryDate}</div>`:""}
+    <div class="inv-meta">Ref: #${(record.id||"").slice(-8)}</div>
+  </td>
+</tr></table>
+<hr class="divider"/>
+<div class="section-label">Bill To</div>
+<div class="bill-name">${name}</div>
+${record.phone?`<div class="bill-detail">📞 ${record.phone}</div>`:""}
+${record.address?`<div class="bill-detail">📍 ${record.address}</div>`:""}
+${record.joinDate?`<div class="bill-detail">Customer since: ${record.joinDate}</div>`:""}
+${record.status?`<div class="bill-detail" style="margin-top:6pt"><b>Status:</b> ${record.status}</div>`:""}
+<div class="section-label" style="margin-top:18pt">Items</div>
+<table class="items">
+  <tr><th>Product</th><th>Unit</th><th class="r">Qty</th><th class="r">Unit Price</th><th class="r">Amount</th></tr>
+  ${rows.map(r=>`<tr><td><b>${r.name}</b></td><td>${r.unit}</td><td class="r">${r.qty}</td><td class="r">${inr(r.priceAmount)}</td><td class="r">${inr(r.qty*r.priceAmount)}</td></tr>`).join("")}
+  <tr class="total-row"><td colspan="4"><b>Total</b></td><td class="r"><b>${inr(total)}</b></td></tr>
+</table>
+${type==="customer"?`
+<div class="section-label" style="margin-top:18pt">Payment Summary</div>
+<div class="summary-box">
+  <table style="width:100%;border-collapse:collapse">
+    <tr>
+      <td style="width:33%;text-align:center">
+        <div class="summary-label">Paid</div>
+        <div class="summary-value paid-val">${inr(record.paid||0)}</div>
+      </td>
+      <td style="width:33%;text-align:center;border-left:1pt solid #e7e5e4">
+        <div class="summary-label">Outstanding</div>
+        <div class="summary-value ${(record.pending||0)>0?"due-val":"paid-val"}">${inr(record.pending||0)}</div>
+      </td>
+      <td style="width:33%;text-align:center;border-left:1pt solid #e7e5e4">
+        <div class="summary-label">Status</div>
+        <div class="summary-value ${(record.pending||0)>0?"due-val":"paid-val"}">${(record.pending||0)>0?"UNPAID":"✓ PAID"}</div>
+      </td>
+    </tr>
+  </table>
+</div>`:``}
+<div class="footer">Thank you for your business · ${co} · ${new Date().toLocaleString("en-IN")}</div>
 </body></html>`;
-  const blob2=new Blob([html],{type:"application/msword"});
+  const blob2=new Blob(["\ufeff"+html],{type:"application/msword"});
   const a2=document.createElement("a"); a2.href=URL.createObjectURL(blob2); a2.download=`invoice_${name.replace(/\s+/g,"_")}_${today()}.doc`;
   document.body.appendChild(a2); a2.click(); setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(a2.href);},1000);
+}
+
+// ─── HIGH-QUALITY TAB EXPORT — PDF ──────────────────────────────────────────
+function exportTabPDF(tabName, data, columns, settings, extraHtml="") {
+  const co  = settings?.companyName||"TAS Healthy World";
+  const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const rows = data.map(row=>
+    `<tr>${columns.map(c=>{
+      const v=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+      return `<td class="${c.cls||""}">${v}</td>`;
+    }).join("")}</tr>`
+  ).join("");
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${tabName} — ${co}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+body{font-family:'Inter',Arial,sans-serif;color:#0f172a;background:#fff;padding:0}
+.cover{background:linear-gradient(135deg,#0f1923 0%,#1e3a5f 100%);color:#fff;padding:40px 48px 36px;position:relative;overflow:hidden}
+.cover::after{content:'';position:absolute;top:-60px;right:-60px;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,0.04)}
+.co-name{font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.6;margin-bottom:10px}
+.report-title{font-size:34px;font-weight:900;letter-spacing:-0.03em;line-height:1.1;margin-bottom:6px}
+.report-meta{font-size:12px;opacity:0.5;margin-top:10px}
+.content{padding:40px 48px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:32px}
+.stat-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px}
+.stat-val{font-size:22px;font-weight:900;color:#0f172a;line-height:1}
+.stat-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-top:5px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead tr{background:#f1f5f9}
+th{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;padding:10px 14px;text-align:left;border-bottom:2px solid #e2e8f0}
+td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even) td{background:#f8fafc}
+.r{text-align:right}
+.c{text-align:center}
+.green{color:#059669;font-weight:700}
+.red{color:#dc2626;font-weight:700}
+.amber{color:#d97706;font-weight:700}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9.5px;font-weight:700}
+.badge-g{background:#dcfce7;color:#15803d}
+.badge-r{background:#fee2e2;color:#b91c1c}
+.badge-y{background:#fef9c3;color:#92400e}
+.badge-b{background:#dbeafe;color:#1e40af}
+.footer{padding:24px 48px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;margin-top:32px}
+@media print{@page{size:A4 landscape;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cover{padding:28px 36px}}
+</style></head><body>
+<div class="cover">
+  <div class="co-name">🫓 ${co}</div>
+  <div class="report-title">${tabName}<br>Report</div>
+  <div class="report-meta">Generated ${now} &nbsp;·&nbsp; ${data.length} records</div>
+</div>
+<div class="content">
+  ${extraHtml}
+  <table>
+    <thead><tr>${columns.map(c=>`<th class="${c.cls||""}">${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>
+<div class="footer">
+  <span>${co} &mdash; Confidential</span>
+  <span>${tabName} Export &nbsp;·&nbsp; ${today()}</span>
+</div>
+</body></html>`;
+  const w=window.open("","_blank");
+  if(!w){alert("Allow popups to view PDF");return;}
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),600);
+}
+
+// ─── HIGH-QUALITY TAB EXPORT — EXCEL (XLSX-compatible) ──────────────────────
+function exportTabExcel(tabName, data, columns, settings) {
+  const co  = settings?.companyName||"TAS Healthy World";
+  const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  // Build XML for a real .xlsx using SpreadsheetML
+  const esc = v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const isNum = v=>v!==null&&v!==undefined&&v!==""&&!isNaN(Number(String(v).replace(/[₹,]/g,"")));
+  const numVal= v=>Number(String(v).replace(/[₹,]/g,""));
+
+  // Header row style index 1 = header; 0 = data
+  const headerRow=`<Row ss:Index="3" ss:StyleID="s2">
+    ${columns.map(c=>`<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`).join("")}
+  </Row>`;
+  const dataRows=data.map((row,ri)=>{
+    const cells=columns.map(c=>{
+      const raw=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+      const v=String(raw==null?"":raw);
+      if(isNum(v)&&c.num!==false){return `<Cell ss:StyleID="s3"><Data ss:Type="Number">${numVal(v)}</Data></Cell>`;}
+      return `<Cell ss:StyleID="${ri%2===0?"s3":"s4"}"><Data ss:Type="String">${esc(v)}</Data></Cell>`;
+    });
+    return `<Row>${cells.join("")}</Row>`;
+  }).join("\n");
+
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Title>${esc(tabName)} — ${esc(co)}</Title>
+  <Author>${esc(co)}</Author>
+  <Created>${new Date().toISOString()}</Created>
+</DocumentProperties>
+<Styles>
+  <Style ss:ID="s1"><Font ss:Bold="1" ss:Size="14"/><Alignment ss:Horizontal="Left"/></Style>
+  <Style ss:ID="s2"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F1923" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#3B82F6"/></Borders></Style>
+  <Style ss:ID="s3"><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
+  <Style ss:ID="s4"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
+  <Style ss:ID="s5"><Font ss:Italic="1" ss:Color="#94A3B8" ss:Size="9"/></Style>
+</Styles>
+<Worksheet ss:Name="${esc(tabName)}">
+<Table>
+  <Row ss:StyleID="s1">
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">🫓 ${esc(co)} — ${esc(tabName)} Report</Data></Cell>
+  </Row>
+  <Row ss:StyleID="s5">
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Generated: ${esc(now)} · ${data.length} records</Data></Cell>
+  </Row>
+  ${headerRow}
+  ${dataRows}
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+  <FreezePanes/><FrozenNoSplit/><SplitHorizontal>3</SplitHorizontal><TopRowBottomPane>3</TopRowBottomPane>
+</WorksheetOptions>
+</Worksheet>
+</Workbook>`;
+  const blob=new Blob([xml],{type:"application/vnd.ms-excel;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${tabName.replace(/\s+/g,"_")}_${today()}.xls`;
+  document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(a.href);},1000);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -941,29 +1117,36 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
   `;
   document.head.appendChild(_ms);
 }
+// Generate a stable device ID for this browser tab (sessionStorage only — not localStorage)
+// This lets multiple devices have independent sessions in Firebase
+function getDeviceId(){
+  let id=sessionStorage.getItem("tas_device_id");
+  if(!id){id=Date.now().toString(36)+Math.random().toString(36).slice(2,8);sessionStorage.setItem("tas_device_id",id);}
+  return id;
+}
+const DEVICE_ID=getDeviceId();
+
 export default function Root(){
-  const [dm,setDm]=useState(()=>ls("tas_dm",false));
-  const [users,setUsers]=useStore("tas9_users",D_USERS);
-  const [settings,setSettings]=useStore("tas10_settings",D_SETTINGS);
-  const [sess,setSess]=useState(()=>{const s=ls("tas9_sess",null);return s&&Date.now()-s.loginAt<SESSION_TTL?s:null;});
-  const [fbReady, setFbReady] = useState(false);
-  useEffect(()=>{
-    // Give Firebase up to 3s to respond before showing login — prevents picker flash
-    const t = setTimeout(()=>setFbReady(true), 3000);
-    // Also mark ready as soon as settings differ from defaults (Firebase responded)
-    if(JSON.stringify(settings)!==JSON.stringify(D_SETTINGS)||JSON.stringify(users)!==JSON.stringify(D_USERS)) setFbReady(true);
-    return ()=>clearTimeout(t);
-  },[settings,users]);
-  useEffect(()=>lsw("tas_dm",dm),[dm]);
-  useEffect(()=>{if(sess)lsw("tas9_sess",sess);else lsdel("tas9_sess");},[sess]);
+  const [dm,setDm]=useStore("tas_pref_dm",false);
+  const [users,setUsers,usersLoaded]=useStore("tas9_users",D_USERS);
+  const [settings,setSettings,settingsLoaded]=useStore("tas10_settings",D_SETTINGS);
+  // Session stored in Firebase under a device-specific key — zero localStorage
+  const sessKey="tas9_sess_"+DEVICE_ID;
+  const [sessRaw,setSessRaw,sessLoaded]=useStore(sessKey,null);
+  // Treat null or expired session as logged out
+  const sess=(sessRaw&&Date.now()-sessRaw.loginAt<SESSION_TTL)?sessRaw:null;
+  const setSess=(s)=>setSessRaw(s||null);
+  // Show spinner until Firebase has responded for all critical keys
+  const fbReady=usersLoaded&&settingsLoaded&&sessLoaded;
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
-  if(!sess){
-    if(!fbReady) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>;
-    return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
-  }  return <CRM sess={sess} onLogout={()=>setSess(null)} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
+  const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+    <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
+    <p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Connecting to cloud…</p>
+    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  </div>;
+  if(!fbReady) return spinner;
+  if(!sess) return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
+  return <CRM sess={sess} onLogout={()=>setSess(null)} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1130,8 +1313,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [qcLogs,    setQcLogs]   = useStore("tas9_qclogs", []);
   const [handovers, setHandovers]= useStore("tas9_handovers", []);
   const [notices,   setNotices]  = useStore("tas9_notices", []);
-  const [briefingDismissed, setBriefingDismissed] = useState(() => ls("tas_briefing_dismissed",""));
-  const [briefingPinned, setBriefingPinned] = useState(() => ls("tas_briefing_pinned", true));
+  const [briefingDismissed, setBriefingDismissed] = useStore("tas_pref_briefing_dismissed_"+sess.id,"");
+  const [briefingPinned, setBriefingPinned] = useStore("tas_pref_briefing_pinned_"+sess.id, true);
   const [notifOpen, setNotifOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
   function addNotif(title,body,type="info",notifType="newentry"){
@@ -1327,12 +1510,23 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [changePwSh,setChangePwSh]=useState(false);
   const [changePwF,setChangePwF]=useState({current:"",next:"",confirm:""});
   const [settingsSection,setSettingsSection]=useState("account");
-  const [lastBackupDate,setLastBackupDate]=useState(()=>ls("tas_last_backup",""));
+  const [lastBackupDate,setLastBackupDate]=useStore("tas_pref_last_backup","");
   // Admin Tools modals
   const [adminToolSheet,setAdminToolSheet]=useState(null); // null | tool key string
   const [adminToolData,setAdminToolData]=useState(null);   // computed result data for open tool
   // Reschedule
   const [rescheduleDate,setRescheduleDate]=useState("");
+  // CLV Dashboard
+  const [clvSort,setClvSort]=useState("clv");
+  const [clvFilter,setClvFilter]=useStore("tas_pref_clvFilter_"+sess.id,"og"); // "og"=original cards, "standard"=ranked list, "clv"=CLV detail
+  const setClvFilterP = setClvFilter;
+  // Overdue Payment Alerts
+  const [overdueAlertDays,setOverdueAlertDays]=useState(7);
+  // Bulk Order Entry
+  const [bulkOrderSh,setBulkOrderSh]=useState(false);
+  const [bulkOrderDate,setBulkOrderDate]=useState(today());
+  const [bulkOrderStatus,setBulkOrderStatus]=useState("Pending");
+  const [bulkOrderRows,setBulkOrderRows]=useState([]);
   // Bulk agent reassign
   const [bulkAgentFrom,setBulkAgentFrom]=useState("");
   const [bulkAgentTo,setBulkAgentTo]=useState("");
@@ -1345,6 +1539,17 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Product sales date range
   const [salesFrom,setSalesFrom]=useState("");
   const [salesTo,setSalesTo]=useState("");
+  // P&L flexible period selector
+  // eslint-disable-next-line no-unused-vars
+  const [plRange,setPlRange]=useState(6); // kept for CSV export compat
+  const [plPeriod,setPlPeriod]=useState("6m");
+  const [plCustomFrom,setPlCustomFrom]=useState("");
+  const [plCustomTo,setPlCustomTo]=useState(today());
+  // Production search + auto-deduct toggle
+  const [ptSearch,setPtSearch]=useState("");
+  const [ptAutoDeduct,setPtAutoDeduct]=useState(false);
+  const [ptCustomFrom,setPtCustomFrom]=useState("");
+  const [ptCustomTo,setPtCustomTo]=useState(today());
   // Bulk delete cutoff
   const [bulkDelMonths,setBulkDelMonths]=useState("3");
   // Reset password
@@ -1355,7 +1560,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
   function togActive(c){setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
-  function recPay(){const a=+payAmt;if(!a||!paySh)return;setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
+  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
   function pickCust(name){const c=customers.find(x=>x.name===name);setDf(f=>({...f,customer:name,customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
@@ -1374,6 +1579,23 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");});}
 
+  // BULK ORDER ENTRY
+  function initBulkRows(){
+    const rows=customers.filter(c=>c.active).map(c=>({customerId:c.id,customer:c.name,address:c.address||"",lat:c.lat||0,lng:c.lng||0,orderLines:{...safeO(c.orderLines)},include:false}));
+    setBulkOrderRows(rows);
+    setBulkOrderDate(today());
+    setBulkOrderStatus("Pending");
+    setBulkOrderSh(true);
+  }
+  function saveBulkOrders(){
+    const toAdd=bulkOrderRows.filter(r=>r.include&&r.customer&&Object.values(safeO(r.orderLines)).some(l=>(l.qty||0)>0));
+    if(!toAdd.length){notify("Select at least one customer");return;}
+    const newDelivs=toAdd.map(r=>({...r,id:uid(),date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts()}));
+    setDeliv(p=>[...p,...newDelivs]);
+    addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate}`);
+    notify(`${newDelivs.length} orders created ✓`);
+    setBulkOrderSh(false);
+  }
   // SUPPLIES
   function saveS(){
     if(!sF.item.trim()){notify("Item required");return;}
@@ -1418,11 +1640,63 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     setQcSh(null);
   }
   function delQC(q){ask(`Delete QC record for "${q.product}"?`,()=>{setQcLogs(p=>p.filter(x=>x.id!==q.id));addLog("Deleted QC log",q.product);notify("Deleted");});}
+  // ── Smart Auto-Deduct ─────────────────────────────────────────
+  // Returns deduction info object so savePT can store it on the record
+  function runAutoDeduct(productName,actualQty,prevActual,currentSupplies){
+    if(!ptAutoDeduct||actualQty<=0) return null;
+    const deductQty=prevActual!=null?Math.max(0,actualQty-prevActual):actualQty;
+    if(deductQty<=0){notify("✓ No additional deduction (qty unchanged)");return null;}
+    const pn=productName.toLowerCase();
+    // Use currentSupplies if provided (avoids stale closure bug on rapid saves)
+    const supList=currentSupplies||supplies;
+    const scored=supList.map(s=>{
+      const sn=(s.item||"").toLowerCase();
+      let score=0;
+      if(sn===pn) score=100;
+      else if(sn.includes(pn)||pn.includes(sn)) score=60;
+      else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}
+      return{...s,_score:score};
+    }).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
+    if(scored.length===0){
+      addNotif("Auto-Deduct","No matching supply for \""+productName+"\"","warning");
+      notify("✓ Saved · ⚠️ No matching supply for auto-deduct");
+      return null;
+    }
+    const best=scored[0];
+    const qtyBefore=best.qty||0;
+    const newQty=Math.max(0,qtyBefore-deductQty);
+    // Use functional update to avoid stale state when multiple saves happen quickly
+    setSup(p=>p.map(s=>s.id===best.id?{...s,qty:Math.max(0,(s.qty||0)-deductQty)}:s));
+    addLog("Auto-deducted supply",`${best.item}: ${qtyBefore}→${newQty} (${productName} ×${deductQty})`);
+    const lowWarn=best.minStock>0&&newQty<=best.minStock?" · ⚠️ Low stock!":"";
+    if(best.minStock>0&&newQty<=best.minStock) addNotif(`⚠️ Low Stock: ${best.item}`,`Only ${newQty} ${best.unit||""} left after auto-deduct`,"warning","lowstock");
+    notify(`✓ ${actualQty} produced · "${best.item}": ${qtyBefore}→${newQty}${lowWarn}`);
+    // Return deduction record to be stored on the production entry
+    return {supplyItem:best.item,supplyId:best.id,qtyBefore,qtyAfter:newQty,deducted:deductQty,ts:ts()};
+  }
+
   function savePT(){
     if(!ptF.product.trim()){notify("Product required");return;}
-    const rec={...ptF,target:+ptF.target||0,actual:+ptF.actual||0};
-    if(ptSh==="add"){setProdTargets(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Production target set",`${rec.product} — ${rec.shift} ${rec.date}`);notify("Target saved ✓");captureGPS("production_logged",rec.product);}
-    else{setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Production target updated",`${rec.product}`);notify("Updated ✓");captureGPS("production_logged",rec.product);}
+    const productName=ptF.product==="__custom__"?(ptF.customProduct||"").trim():ptF.product;
+    if(!productName){notify("Product name required");return;}
+    const rec={...ptF,product:productName,target:+ptF.target||0,actual:+ptF.actual||0};
+    if(ptSh==="add"){
+      const deduction=runAutoDeduct(productName,rec.actual,null);
+      const saved={...rec,id:uid(),createdAt:ts(),deduction:deduction||null};
+      setProdTargets(p=>[saved,...p]);
+      addLog("Production logged",`${rec.product} — ${rec.shift} ${rec.date} — ${rec.actual}/${rec.target} units`);
+      captureGPS("production_logged",rec.product);
+      if(!ptAutoDeduct) notify("Production saved ✓");
+    } else {
+      const prev=prodTargets.find(x=>x.id===ptSh.id);
+      const deduction=runAutoDeduct(productName,rec.actual,prev?.actual);
+      // Merge deduction: keep old if nothing new happened
+      const mergedDeduction=deduction||(prev?.deduction||null);
+      setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
+      addLog("Production updated",`${rec.product} — ${rec.actual}/${rec.target} units`);
+      captureGPS("production_logged",rec.product);
+      if(!ptAutoDeduct) notify("Updated ✓");
+    }
     setPtSh(null);
   }
   function delPT(pt){ask(`Delete production record?`,()=>{setProdTargets(p=>p.filter(x=>x.id!==pt.id));addLog("Deleted production record",`${pt.product} ${pt.date}`);notify("Deleted");});}
@@ -1449,7 +1723,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function delU(u){if(u.id===sess.id){notify("Cannot delete your own account");return;}if(u.role==="admin"&&users.filter(x=>x.role==="admin"&&x.active).length<=1){notify("Cannot remove last admin");return;}ask(`Delete user "@${u.username}"?`,()=>{setUsers(p=>p.filter(x=>x.id!==u.id));addLog("Deleted user",`@${u.username}`);notify("Deleted");});}
 
   // EXPORT/IMPORT
-  function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");setLastBackupDate(today());lsw("tas_last_backup",today());}
+  function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");setLastBackupDate(today());}
   function exportFullReport(){
     const co=settings?.companyName||"TAS Healthy World";
     const now=new Date().toLocaleString("en-IN");
@@ -1525,7 +1799,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
     notify("Report opening…");
   }
 
-  function importAll(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.customers)setCust(d.customers);if(d.deliveries)setDeliv(d.deliveries);if(d.supplies)setSup(d.supplies);if(d.expenses)setExp(d.expenses);if(d.products)setProd(d.products);if(d.users)setUsers(d.users);if(d.wastage)setWaste(d.wastage);addLog("Imported backup","Full restore");notify("Imported ✓");}catch{notify("Invalid backup file");}};r.readAsText(f);e.target.value="";}
+  function importAll(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.customers&&!d.deliveries&&!d.products){notify("Invalid backup file — missing data");return;}ask("⚠️ This will overwrite ALL current data with the backup. This cannot be undone. Are you sure?",()=>{if(d.customers)setCust(d.customers);if(d.deliveries)setDeliv(d.deliveries);if(d.supplies)setSup(d.supplies);if(d.expenses)setExp(d.expenses);if(d.products)setProd(d.products);if(d.users)setUsers(d.users);if(d.wastage)setWaste(d.wastage);addLog("Imported backup","Full restore");notify("Imported ✓");});}catch{notify("Invalid backup file");}};r.readAsText(f);e.target.value="";}
 
   const TABS=isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb));
   const expCats=settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"];
@@ -1750,8 +2024,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           {can("dash_seeBriefing")&&(briefingPinned||briefingDismissed!==today())&&<MorningBriefing
             dm={dm}
             pinned={briefingPinned}
-            onDismiss={()=>{setBriefingDismissed(today());lsw("tas_briefing_dismissed",today());}}
-            onUnpin={()=>{const v=!briefingPinned;setBriefingPinned(v);lsw("tas_briefing_pinned",v);}}
+            onDismiss={()=>{setBriefingDismissed(today());}}
+            onUnpin={()=>{const v=!briefingPinned;setBriefingPinned(v);}}
             data={{
               pendingCount:pendingD.length,
               todayRev:deliveries.filter(d=>d.date===today()&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
@@ -2679,23 +2953,217 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
         {/* CUSTOMERS */}
         {tab==="Customers"&&(<>
+          {/* OVERDUE PAYMENT ALERT BANNER */}
+          {canSeeFinancials&&(()=>{
+            const overdueC=customers.filter(c=>c.pending>0&&c.active);
+            const totalOverdue=overdueC.reduce((s,c)=>s+(c.pending||0),0);
+            if(!overdueC.length) return null;
+            return <div style={{background:dm?"rgba(239,68,68,0.08)":"#fff1f1",border:"1.5px solid rgba(239,68,68,0.3)",borderRadius:16,padding:"14px 18px"}}>
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <div>
+                  <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest mb-0.5">🔴 Overdue Payments</p>
+                  <p style={{color:t.text}} className="font-bold text-sm">{overdueC.length} customer{overdueC.length!==1?"s":""} owe a total of <span className="text-red-500">{inr(totalOverdue)}</span></p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label style={{color:t.sub,fontSize:11}}>Over</label>
+                  <select value={overdueAlertDays} onChange={e=>setOverdueAlertDays(+e.target.value)}
+                    style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:12,borderRadius:8,padding:"4px 8px",outline:"none"}}>
+                    {[1,3,7,14,30].map(d=><option key={d} value={d}>{d}d</option>)}
+                  </select>
+                  <label style={{color:t.sub,fontSize:11}}>days</label>
+                  <Btn dm={dm} v="danger" size="sm" onClick={()=>{
+                    const cols=[{label:"Customer",key:"name"},{label:"Phone",key:"phone"},{label:"Pending (₹)",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"}];
+                    exportTabPDF("Overdue Payments",overdueC.sort((a,b)=>b.pending-a.pending),cols,settings,`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:20px"><b style="color:#b91c1c">Total Outstanding: ${inr(totalOverdue)}</b> across ${overdueC.length} customers</div>`);
+                  }}>PDF</Btn>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 mt-1">
+                {overdueC.sort((a,b)=>b.pending-a.pending).slice(0,5).map(c=>(
+                  <div key={c.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{background:dm?"rgba(239,68,68,0.06)":"rgba(239,68,68,0.04)",border:"1px solid rgba(239,68,68,0.15)"}}>
+                    <div>
+                      <span style={{color:t.text,fontWeight:600,fontSize:13}}>{c.name}</span>
+                      {c.phone&&<span style={{color:t.sub,fontSize:11,marginLeft:8}}>📞 {c.phone}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</span>
+                      <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500 text-white">+ Pay</button>
+                    </div>
+                  </div>
+                ))}
+                {overdueC.length>5&&<p style={{color:t.sub}} className="text-[11px] text-center mt-1">+{overdueC.length-5} more customers with outstanding payments</p>}
+              </div>
+            </div>;
+          })()}
+
+          {/* CLV DASHBOARD — hidden in Old View */}
+          {canSeeFinancials&&clvFilter!=="og"&&(()=>{
+            const clvData=customers.map(c=>{
+              const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+              const cDone=cDelivs.filter(d=>d.status==="Delivered");
+              const revenue=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              const orderCount=cDelivs.length;
+              const avgOrderVal=cDone.length>0?Math.round(revenue/cDone.length):0;
+              const lastD=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const daysSinceLast=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):999;
+              const joinDays=c.joinDate?Math.max(1,Math.floor((new Date()-new Date(c.joinDate))/86400000)):90;
+              const ordersPerMonth=orderCount>0?(orderCount/(joinDays/30)).toFixed(1):0;
+              const clvScore=Math.round(revenue+(avgOrderVal*+ordersPerMonth*3));
+              return {c,revenue,orderCount,avgOrderVal,daysSinceLast,ordersPerMonth,clvScore};
+            });
+            const sorted=[...clvData].sort((a,b)=>{
+              if(clvSort==="clv") return b.clvScore-a.clvScore;
+              if(clvSort==="orders") return b.orderCount-a.orderCount;
+              if(clvSort==="pending") return (b.c.pending||0)-(a.c.pending||0);
+              if(clvSort==="days") return a.daysSinceLast-b.daysSinceLast;
+              return 0;
+            });
+            const totalCLV=clvData.reduce((s,x)=>s+x.clvScore,0);
+            const avgCLV=clvData.length>0?Math.round(totalCLV/clvData.length):0;
+            // clvFilter: "standard" = normal card view, "clv" = CLV detail view
+            return <Card dm={dm} className="overflow-hidden">
+              <div className="px-4 pt-4 pb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">💰 Customer Value</p>
+                    <p style={{color:t.sub}} className="text-[11px]">Projected 3-month lifetime value</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Two-option toggle */}
+                    <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2}}>
+                      {[["og","📋 Old View"],["standard","Standard"],["clv","CLV View"]].map(([val,lbl])=>(
+                        <button key={val} onClick={()=>setClvFilterP(val)}
+                          style={clvFilter===val
+                            ?{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,transition:"all 0.15s"}
+                            :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:600,transition:"all 0.15s"}
+                          }>{lbl}</button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                        const cols=[{label:"Customer",val:x=>x.c.name},{label:"CLV Score (₹)",key:"clvScore",num:true},{label:"Revenue (₹)",key:"revenue",num:true},{label:"Orders",key:"orderCount",num:true},{label:"Avg Order (₹)",key:"avgOrderVal",num:true},{label:"Days Since Last",key:"daysSinceLast",num:true},{label:"Orders/Month",key:"ordersPerMonth"},{label:"Pending (₹)",val:x=>x.c.pending||0,num:true}];
+                        exportTabPDF("Customer Value",sorted,cols,settings,`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px"><div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${inr(totalCLV)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Portfolio CLV</div></div><div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#0369a1">${inr(avgCLV)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Avg per Customer</div></div></div>`);
+                      }}>📄</Btn>
+                      <Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                        const cols=[{label:"Customer",val:x=>x.c.name},{label:"Phone",val:x=>x.c.phone||""},{label:"CLV Score",key:"clvScore",num:true},{label:"Revenue",key:"revenue",num:true},{label:"Orders",key:"orderCount",num:true},{label:"Avg Order",key:"avgOrderVal",num:true},{label:"Days Since Last",key:"daysSinceLast",num:true},{label:"Orders/Mo",key:"ordersPerMonth"},{label:"Pending",val:x=>x.c.pending||0,num:true}];
+                        exportTabExcel("Customer Value",sorted,cols,settings);
+                      }}>📊</Btn>
+                    </div>
+                  </div>
+                </div>
+                {/* Summary strip */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div style={{background:"#fef3c720",border:"1px solid #fde68a40",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                    <p className="font-black text-amber-500 text-sm">{inr(totalCLV)}</p>
+                    <p style={{color:t.sub}} className="text-[10px] mt-0.5">Portfolio CLV</p>
+                  </div>
+                  <div style={{background:t.inp,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                    <p style={{color:t.text}} className="font-black text-sm">{inr(avgCLV)}</p>
+                    <p style={{color:t.sub}} className="text-[10px] mt-0.5">Avg per Customer</p>
+                  </div>
+                </div>
+                {/* Sort (only shown in CLV view) */}
+                {clvFilter==="clv"&&<select value={clvSort} onChange={e=>setClvSort(e.target.value)}
+                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"5px 10px",outline:"none",width:"100%"}}>
+                  <option value="clv">Sort by CLV Score</option>
+                  <option value="orders">Sort by Orders</option>
+                  <option value="pending">Sort by Pending</option>
+                  <option value="days">Sort by Last Active</option>
+                </select>}
+              </div>
+              <Hr dm={dm}/>
+              {clvFilter==="standard"
+                /* ── STANDARD VIEW: simple ranked list ── */
+                ?sorted.map(({c:cust,revenue,orderCount,daysSinceLast},ci)=>(
+                  <div key={cust.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span style={{color:t.sub,fontWeight:700,fontSize:12,width:20,textAlign:"right",flexShrink:0}}>{ci+1}</span>
+                      <div style={{background:t.inp,width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:t.text,flexShrink:0}}>{cust.name.charAt(0).toUpperCase()}</div>
+                      <div className="min-w-0">
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}} className="truncate">{cust.name}</p>
+                        <p style={{color:t.sub,fontSize:10}}>{orderCount} orders · {daysSinceLast===999?"no orders yet":daysSinceLast===0?"today":daysSinceLast+"d ago"}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-black text-emerald-500 text-sm leading-none">{inr(revenue)}</p>
+                      <p style={{color:t.sub}} className="text-[10px] mt-0.5">revenue</p>
+                    </div>
+                  </div>
+                ))
+                /* ── CLV VIEW: full breakdown with score bar ── */
+                :sorted.map(({c:cust,revenue,orderCount,avgOrderVal,daysSinceLast,ordersPerMonth,clvScore},ci)=>{
+                  const accent=dm?"#3b82f6":"#1e3a5f";
+                  const maxScore=Math.max(...sorted.map(x=>x.clvScore),1);
+                  return <div key={cust.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0">
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div style={{background:`${accent}18`,color:accent,width:32,height:32,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:12,flexShrink:0}}>{ci+1}</div>
+                        <div className="min-w-0">
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}} className="truncate">{cust.name}</p>
+                          {cust.phone&&<span style={{color:t.sub,fontSize:10}}>📞 {cust.phone}</span>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p style={{color:accent}} className="font-black text-base leading-none">{inr(clvScore)}</p>
+                        <p style={{color:t.sub}} className="text-[10px] mt-0.5">CLV score</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                      <div style={{background:t.inp,borderRadius:8,padding:"5px 7px",textAlign:"center"}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:11}} className="leading-none">{inr(revenue)}</p>
+                        <p style={{color:t.sub,fontSize:9}} className="mt-0.5">Revenue</p>
+                      </div>
+                      <div style={{background:t.inp,borderRadius:8,padding:"5px 7px",textAlign:"center"}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:11}} className="leading-none">{orderCount}</p>
+                        <p style={{color:t.sub,fontSize:9}} className="mt-0.5">Orders</p>
+                      </div>
+                      <div style={{background:t.inp,borderRadius:8,padding:"5px 7px",textAlign:"center"}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:11}} className="leading-none">{inr(avgOrderVal)}</p>
+                        <p style={{color:t.sub,fontSize:9}} className="mt-0.5">Avg Order</p>
+                      </div>
+                      <div style={{background:daysSinceLast>14?"#ef444415":t.inp,borderRadius:8,padding:"5px 7px",textAlign:"center"}}>
+                        <p style={{color:daysSinceLast>14?"#ef4444":t.text,fontWeight:700,fontSize:11}} className="leading-none">{daysSinceLast===999?"—":daysSinceLast+"d"}</p>
+                        <p style={{color:t.sub,fontSize:9}} className="mt-0.5">Last Order</p>
+                      </div>
+                    </div>
+                    <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}>
+                      <div style={{width:`${Math.round(clvScore/maxScore*100)}%`,background:`linear-gradient(90deg,${accent},${accent}88)`,height:"100%",borderRadius:4,transition:"width 0.6s ease"}}/>
+                    </div>
+                  </div>;
+                })
+              }
+            </Card>;
+          })()}
+
           {/* Summary bar */}
           {canSeeFinancials&&<div className="grid grid-cols-3 gap-3">
             <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.filter(c=>!c.active).length} inactive`} accent="#d97706"/>
             <StatCard dm={dm} label="Total Collected" value={inr(customers.reduce((s,c)=>s+(c.paid||0),0))} sub="All time" accent="#10b981"/>
             <StatCard dm={dm} label="Outstanding" value={inr(customers.reduce((s,c)=>s+(c.pending||0),0))} sub={`${customers.filter(c=>c.pending>0).length} unpaid`} accent="#ef4444"/>
           </div>}
-          <div className="flex gap-2 items-center justify-between">
-            <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 items-center justify-between flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               <Pill dm={dm} c="amber">{activeC.length} active</Pill>
               <Pill dm={dm} c="stone">{customers.filter(c=>!c.active).length} inactive</Pill>
+              {/* Standard / CLV toggle — also accessible here */}
+              <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2}}>
+                {[["og","📋 Old View"],["standard","☰ Standard"],["clv","💰 CLV"]].map(([val,lbl])=>(
+                  <button key={val} onClick={()=>setClvFilterP(val)}
+                    style={clvFilter===val
+                      ?{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,transition:"all 0.15s"}
+                      :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:600,transition:"all 0.15s"}
+                    }>{lbl}</button>
+                ))}
+              </div>
             </div>
-            <div className="flex gap-2">
-              {can("cust_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines)},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+            <div className="flex gap-2 flex-wrap">
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Customers",customers,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid (₹)",key:"paid",num:true},{label:"Pending (₹)",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},{label:"Since",key:"joinDate"}],settings,`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px"><div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${activeC.length}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Active Customers</div></div><div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#059669">${inr(customers.reduce((s,c)=>s+(c.paid||0),0))}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Collected</div></div><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#b91c1c">${inr(customers.reduce((s,c)=>s+(c.pending||0),0))}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Outstanding</div></div></div>`)}>📄 PDF</Btn>}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Customers",customers,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}],settings)}>📊 XLS</Btn>}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines)},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ Customer</Btn>
             </div>
           </div>
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…"/>
+          {clvFilter==="og"&&<>
           {fCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {fCust.map(c=>{
@@ -2781,6 +3249,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             );
           })}
           </div>
+          </>}
         </>)}
 
         {/* DELIVERIES */}
@@ -2796,6 +3265,30 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] transition-all">{delivCalendar?"📋 List":"📅 Calendar"}</button>
               {can("deliv_report")&& <Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
               {can("deliv_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
+              {/* Export buttons */}
+              {can("deliv_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];
+                const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px">
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+                    <div style="font-size:22px;font-weight:900;color:#0f172a">${deliveries.length}</div>
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div>
+                  </div>
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+                    <div style="font-size:22px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div>
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div>
+                  </div>
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+                    <div style="font-size:22px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div>
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div>
+                  </div>
+                </div>`;
+                exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);
+              }}>PDF</Btn>}
+              {can("deliv_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];
+                exportTabExcel("Deliveries",deliveries,cols,settings);
+              }}>XLS</Btn>}
+              {can("deliv_add")&&<Btn dm={dm} v="amber" size="sm" onClick={initBulkRows}>📋 Bulk</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
             </div>
           </div>
@@ -2983,6 +3476,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               {canSeeFinancials&&<Pill dm={dm} c="purple">{inr(totalSupC)} total</Pill>}
             </div>
             <div className="flex gap-2">
+              {can("sup_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Supplies",supplies,[{label:"Item",key:"item"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost (₹)",key:"cost",num:true},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>}
+              {can("sup_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Supplies",supplies,[{label:"Item",key:"item"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost",num:true},{label:"Min Stock",key:"minStock"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)}>📊 XLS</Btn>}
               {can("sup_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setSf(blkS());setSsh("add");}}>+ Supply</Btn>
             </div>
@@ -3075,6 +3570,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <Pill dm={dm} c={netProfit>=0?"green":"red"}>Profit {inr(netProfit)}</Pill>
             </div>
             <div className="flex gap-2">
+              <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Expenses",expenses,[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount",num:true},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>
+              <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Expenses",expenses,[{label:"Category",key:"category"},{label:"Amount",key:"amount",num:true},{label:"Date",key:"date"},{label:"Receipt",key:"receipt"},{label:"Notes",key:"notes"}],settings)}>📊 XLS</Btn>
               <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>CSV</Btn>
               <Btn dm={dm} size="sm" onClick={()=>{setEf(blkE());setEsh("add");}}>+ Expense</Btn>
             </div>
@@ -3144,7 +3641,17 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               {/* Controls */}
               <div className="flex gap-2 items-center justify-between flex-wrap">
                 <Pill dm={dm} c="red">{wastage.length} total records</Pill>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                    const cols=[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Type",key:"type"},{label:"Reason",key:"reason"},{label:"Cost (₹)",key:"cost",num:true},{label:"Logged By",key:"loggedBy"}];
+                    const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px"><div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#c2410c">${totalWasteQty}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Qty Wasted</div></div><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#b91c1c">${inr(totalWasteCost)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Cost Loss</div></div><div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${todayWaste.reduce((s,w)=>s+(w.qty||0),0)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Today's Wastage</div></div></div>`;
+                    exportTabPDF("Wastage",wastage,cols,settings,statsHtml);
+                    addLog("Exported wastage","PDF report");
+                  }}>📄 PDF</Btn>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                    exportTabExcel("Wastage",wastage,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Type",key:"type"},{label:"Reason",key:"reason"},{label:"Cost",key:"cost",num:true},{label:"Logged By",key:"loggedBy"},{label:"Created At",key:"createdAt"}],settings);
+                    addLog("Exported wastage","XLS export");
+                  }}>📊 XLS</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>{
                     exportCSV(wastage,"wastage",[
                       {label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},
@@ -3152,36 +3659,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       {label:"Reason",key:"reason"},{label:"Cost (₹)",key:"cost"},{label:"Logged By",key:"loggedBy"},
                       {label:"Time",key:"createdAt"}
                     ]);addLog("Exported wastage","CSV export");}}>CSV</Btn>
-                  <Btn dm={dm} v="purple" size="sm" onClick={()=>{
-                    const rows=wastage.slice(0,500);
-                    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Wastage Report</title>
-<style>*{box-sizing:border-box}body{font-family:Arial;padding:24px;color:#1c1917;max-width:800px;margin:0 auto}
-h1{color:#92400e;font-size:18px}h2{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#a8a29e;margin:16px 0 6px}
-table{width:100%;border-collapse:collapse}th{font-size:9px;text-transform:uppercase;padding:6px 0;border-bottom:2px solid #e7e5e4;text-align:left;color:#a8a29e}
-td{padding:8px 0;border-bottom:1px solid #f5f5f4;font-size:12px}
-.tot{font-weight:800;font-size:13px;border-top:2px solid #1c1917;border-bottom:none}
-.summary{display:flex;gap:16px;margin-top:16px;padding:12px;background:#f5f5f4;border-radius:8px}
-.sv{font-size:16px;font-weight:900}.sl{font-size:10px;color:#78716c}
-@media print{@page{margin:1cm}}</style></head><body>
-<h1>🗑️ Wastage Report — ${settings?.appName||"TAS Healthy World"}</h1>
-<p style="font-size:11px;color:#78716c">Generated: ${new Date().toLocaleString("en-IN")} · ${rows.length} records</p>
-<div class="summary">
-  <div><div class="sl">Total Qty Wasted</div><div class="sv">${totalWasteQty}</div></div>
-  ${isAdmin?`<div><div class="sl">Total Cost Loss</div><div class="sv" style="color:#dc2626">${inr(totalWasteCost)}</div></div>`:""}
-  <div><div class="sl">Today</div><div class="sv">${todayWaste.reduce((s,w)=>s+(w.qty||0),0)}</div></div>
-</div>
-<h2>All Records</h2>
-<table><tr><th>Date</th><th>Shift</th><th>Product</th><th>Qty</th><th>Type</th><th>Reason</th>${isAdmin?"<th>Cost</th>":""}<th>Logged By</th></tr>
-${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}</td><td>${w.qty} ${w.unit}</td><td>${w.type}</td><td>${w.reason||"—"}</td>${isAdmin?`<td>${inr(w.cost)}</td>`:""}<td>${w.loggedBy||"—"}</td></tr>`).join("")}
-<tr class="tot"><td colspan="${isAdmin?7:6}">Total Wasted</td><td>${totalWasteQty} units${isAdmin?` · ${inr(totalWasteCost)} loss`:""}</td></tr>
-</table>
-<script>window.addEventListener("load",function(){window.print();});</script>
-</body></html>`;
-                    const w=window.open("","_blank","width=900,height=900,noopener");
-                    if(w){w.document.open();w.document.write(html);w.document.close();}
-                    else alert("Allow pop-ups then try again.");
-                    addLog("Exported wastage","PDF report");
-                  }}>PDF</Btn>
                   <Btn dm={dm} size="sm" onClick={()=>{setWF(blkW());setWSh("add");}}>+ Log Wastage</Btn>
                 </div>
               </div>
@@ -3222,7 +3699,26 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
         {/* P&L TAB */}
         {tab==="P&L"&&isAdmin&&(()=>{
-          const months=Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-i);return d.toISOString().slice(0,7);}).reverse();
+          // ── Compute date window ──────────────────────────────────────
+          const nowD=new Date();
+          let dateFrom, dateTo=today();
+          if(plPeriod==="1d"){const d=new Date(nowD);d.setDate(d.getDate()-1);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="1w"){const d=new Date(nowD);d.setDate(d.getDate()-6);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="1m"){const d=new Date(nowD);d.setMonth(d.getMonth()-1);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="2m"){const d=new Date(nowD);d.setMonth(d.getMonth()-2);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="3m"){const d=new Date(nowD);d.setMonth(d.getMonth()-3);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="6m"){const d=new Date(nowD);d.setMonth(d.getMonth()-6);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="12m"){const d=new Date(nowD);d.setFullYear(d.getFullYear()-1);dateFrom=d.toISOString().slice(0,10);}
+          else if(plPeriod==="custom"){dateFrom=plCustomFrom||today();dateTo=plCustomTo||today();}
+          else{const d=new Date(nowD);d.setMonth(d.getMonth()-6);dateFrom=d.toISOString().slice(0,10);}
+
+          // ── Build monthly buckets for charts ────────────────────────
+          const months=[];
+          const mCur=new Date(dateFrom.slice(0,7)+"-01");
+          const mEnd=new Date(dateTo.slice(0,7)+"-01");
+          while(mCur<=mEnd){months.push(mCur.toISOString().slice(0,7));mCur.setMonth(mCur.getMonth()+1);}
+          if(months.length===0) months.push(today().slice(0,7));
+
           const mData=months.map(m=>({
             month:m.slice(5)+"/"+m.slice(2,4),
             monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),
@@ -3231,82 +3727,230 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),
             wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),
             deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length,
-            pendingCollected:customers.reduce((s,c)=>s+(c.paid||0),0), // approximation
-          })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0}));
-          const totRev=mData.reduce((s,m)=>s+m.revenue,0);
-          const totCost=mData.reduce((s,m)=>s+m.totalCost,0);
+          })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0}));
+
+          // ── Period-filtered totals ──────────────────────────────────
+          const filtD=deliveries.filter(d=>d.date>=dateFrom&&d.date<=dateTo&&d.status==="Delivered");
+          const filtS=supplies.filter(s=>s.date>=dateFrom&&s.date<=dateTo);
+          const filtE=expenses.filter(e=>e.date>=dateFrom&&e.date<=dateTo);
+          const filtW=(wastage||[]).filter(w=>w.date>=dateFrom&&w.date<=dateTo);
+          const totRev=filtD.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const totSupC=filtS.reduce((s,x)=>s+(x.cost||0),0);
+          const totExpC=filtE.reduce((s,e)=>s+(e.amount||0),0);
+          const totWasteC=filtW.reduce((s,w)=>s+(w.cost||0),0);
+          const totCost=totSupC+totExpC+totWasteC;
           const totProfit=totRev-totCost;
           const totMargin=totRev>0?Math.round(totProfit/totRev*100):0;
           const totDue=customers.reduce((s,c)=>s+(c.pending||0),0);
           const totCollected=customers.reduce((s,c)=>s+(c.paid||0),0);
           const collectionRate=totCollected+totDue>0?Math.round(totCollected/(totCollected+totDue)*100):100;
+
+          // MoM comparison
+          const lastM=mData[mData.length-1]||{revenue:0,profit:0,margin:0};
+          const prevM=mData[mData.length-2]||null;
+          const momRev=prevM&&prevM.revenue>0?Math.round((lastM.revenue-prevM.revenue)/prevM.revenue*100):null;
+          const momProfit=prevM&&prevM.profit!==0?Math.round((lastM.profit-prevM.profit)/Math.abs(prevM.profit)*100):null;
+
+          const activeMonths=mData.filter(m=>m.revenue>0);
+          const avgMonthlyRev=activeMonths.length>0?Math.round(totRev/activeMonths.length):0;
+          const avgMonthlyProfit=activeMonths.length>0?Math.round(totProfit/activeMonths.length):0;
+          const avgMonthlyCost=activeMonths.length>0?Math.round(totCost/activeMonths.length):0;
           const bestMonth=mData.reduce((b,m)=>m.profit>b.profit?m:b,mData[0]||{profit:0,monthFull:"—"});
           const worstMonth=mData.reduce((b,m)=>m.profit<b.profit?m:b,mData[0]||{profit:0,monthFull:"—"});
-          const avgMonthlyRev=mData.length>0?Math.round(totRev/mData.filter(m=>m.revenue>0).length||1):0;
-          // Cost breakdown for pie-like display
-          const totSupC=mData.reduce((s,m)=>s+m.supplyCost,0);
-          const totExpC=mData.reduce((s,m)=>s+m.expenses,0);
-          const totWasteC=mData.reduce((s,m)=>s+m.wasteCost,0);
+          const recentHalf=mData.slice(Math.floor(mData.length/2));
+          const olderHalf=mData.slice(0,Math.floor(mData.length/2));
+          const recentRevAvg=recentHalf.length>0?recentHalf.reduce((s,m)=>s+m.revenue,0)/recentHalf.length:0;
+          const olderRevAvg=olderHalf.length>0?olderHalf.reduce((s,m)=>s+m.revenue,0)/olderHalf.length:0;
+          const trendUp=recentRevAvg>=olderRevAvg;
+
+          const healthScore=Math.min(100,Math.max(0,
+            (totMargin>=30?30:totMargin>=15?20:totMargin>=0?10:0)+
+            (collectionRate>=95?25:collectionRate>=80?15:5)+
+            (trendUp?20:0)+
+            (totWasteC/Math.max(totCost,1)<0.05?15:totWasteC/Math.max(totCost,1)<0.15?10:0)+
+            (activeMonths.length>=Math.round(months.length*0.7)?10:5)
+          ));
+          const healthColor=healthScore>=75?"#10b981":healthScore>=50?"#f59e0b":"#ef4444";
+          const healthLabel=healthScore>=75?"Healthy":healthScore>=50?"Moderate":"Needs Attention";
+
+          const insights=[];
+          if(totMargin<15&&totRev>0) insights.push({icon:"⚠️",text:`Margin is ${totMargin}% — below the 15% healthy threshold. Review cost structure.`});
+          if(totMargin>=30) insights.push({icon:"✅",text:`Strong ${totMargin}% margin. Business is performing well above benchmark.`});
+          if(totDue>totRev*0.15) insights.push({icon:"🔴",text:`Outstanding dues (${inr(totDue)}) are ${Math.round(totDue/Math.max(totRev,1)*100)}% of revenue. Prioritise collection.`});
+          if(trendUp&&recentRevAvg>olderRevAvg*1.1) insights.push({icon:"📈",text:`Revenue growing — recent avg ${inr(Math.round(recentRevAvg))} vs ${inr(Math.round(olderRevAvg))} prior.`});
+          if(!trendUp&&olderRevAvg>recentRevAvg*1.1) insights.push({icon:"📉",text:`Revenue declining — recent avg ${inr(Math.round(recentRevAvg))} vs ${inr(Math.round(olderRevAvg))} prior.`});
+          if(totWasteC>totCost*0.1) insights.push({icon:"🗑️",text:`Wastage (${inr(totWasteC)}) is ${Math.round(totWasteC/Math.max(totCost,1)*100)}% of costs — worth reducing.`});
+
+          const cashCollected=customers.reduce((s,c)=>s+(c.paid||0),0);
+          const cashPending=customers.reduce((s,c)=>s+(c.pending||0),0);
+          const cashFlowPct=cashCollected+cashPending>0?Math.round(cashCollected/(cashCollected+cashPending)*100):100;
+          const burnRate=activeMonths.length>0?Math.round(totCost/activeMonths.length):0;
+          if(burnRate>0&&avgMonthlyRev<burnRate) insights.push({icon:"🔥",text:`Burn rate (${inr(burnRate)}/mo) exceeds avg revenue (${inr(avgMonthlyRev)}). Spending more than earning.`});
+          if(cashPending>cashCollected*0.3) insights.push({icon:"💸",text:`${inr(cashPending)} in uncollected cash. Accelerate collections.`});
+
+          const PL_PERIODS=[["1d","Day"],["1w","Week"],["1m","Month"],["2m","2M"],["3m","3M"],["6m","6M"],["12m","12M"],["custom","Custom ✦"]];
+          const periodLabel=plPeriod==="custom"?`${plCustomFrom||"—"} → ${plCustomTo}`:PL_PERIODS.find(p=>p[0]===plPeriod)?.[1]||"";
+
           return <>
-            {/* Hero KPI banner */}
-            <div style={{background:dm?"linear-gradient(135deg,#0d1f12,#0d1219)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:dm?"1px solid #1e3a28":"1px solid #bbf7d0",borderRadius:20,padding:"20px 22px"}}>
-              <div className="flex items-center justify-between mb-4">
+            {/* ── PERIOD SELECTOR + EXPORT ── */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p style={{color:t.text}} className="font-black text-base">Profit & Loss</p>
+                <p style={{color:t.sub}} className="text-xs">INR · Accrual · {periodLabel}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2,flexWrap:"wrap"}}>
+                  {PL_PERIODS.map(([v,l])=>(
+                    <button key={v} onClick={()=>setPlPeriod(v)}
+                      style={plPeriod===v
+                        ?{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}
+                        :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}}>{l}</button>
+                  ))}
+                </div>
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 CSV</Btn>
+              </div>
+            </div>
+            {/* ── Custom date inputs ── */}
+            {plPeriod==="custom"&&<div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <span style={{color:t.sub,fontSize:12,fontWeight:600}}>From</span>
+              <input type="date" value={plCustomFrom} onChange={e=>setPlCustomFrom(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none",touchAction:"manipulation"}}/>
+              <span style={{color:t.sub,fontSize:12,fontWeight:600}}>To</span>
+              <input type="date" value={plCustomTo} max={today()} onChange={e=>setPlCustomTo(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none",touchAction:"manipulation"}}/>
+              {plCustomFrom&&plCustomTo&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ {Math.round((new Date(plCustomTo)-new Date(plCustomFrom))/86400000)+1} days</span>}
+            </div>}
+
+            {/* ── HERO KPI BANNER ── */}
+            <div style={{background:dm?"linear-gradient(135deg,#0a1628,#0d1f12)":"linear-gradient(135deg,#eff6ff,#f0fdf4)",border:dm?"1px solid #1e3a5f":"1px solid #bfdbfe",borderRadius:20,padding:"20px 22px"}}>
+              <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
                 <div>
-                  <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-0.5">📈 Profit & Loss Summary</p>
-                  <p style={{color:t.text}} className="font-black text-lg">Last 6 Months Performance</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span style={{background:healthColor+"20",color:healthColor,borderRadius:8,padding:"2px 10px",fontSize:11,fontWeight:700}}>{healthLabel}</span>
+                    <span style={{color:t.sub,fontSize:11}}>Health Score: <strong style={{color:healthColor}}>{healthScore}/100</strong></span>
+                  </div>
+                  <p style={{color:t.text}} className="font-black text-xl leading-tight">
+                    {inr(totProfit)} <span style={{color:totProfit>=0?"#10b981":"#ef4444",fontSize:13}}>{totMargin}% margin</span>
+                  </p>
+                  <p style={{color:t.sub}} className="text-xs mt-0.5">Net profit over last {plRange} months</p>
+                  {momProfit!==null&&<p style={{color:momProfit>=0?"#10b981":"#ef4444",fontSize:11,marginTop:4,fontWeight:700}}>{momProfit>=0?"▲":"▼"} {Math.abs(momProfit)}% profit vs prior month</p>}
                 </div>
-                <div className="text-right">
-                  <p style={{color:totProfit>=0?"#10b981":"#ef4444"}} className="text-3xl font-black leading-none">{inr(totProfit)}</p>
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold mt-0.5">net profit · {totMargin}% margin</p>
+                <div className="grid grid-cols-2 gap-2 shrink-0">
+                  {[
+                    {label:"Revenue",val:inr(totRev),color:"#10b981",sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% MoM`:null},
+                    {label:"Total Costs",val:inr(totCost),color:"#ef4444",sub:`avg ${inr(avgMonthlyCost)}/mo`},
+                    {label:"Collection Rate",val:`${collectionRate}%`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",sub:`${inr(totDue)} due`},
+                    {label:"Avg Monthly Rev",val:inr(avgMonthlyRev),color:"#f59e0b",sub:`avg profit ${inr(avgMonthlyProfit)}/mo`},
+                  ].map(x=><div key={x.label} style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.75)",borderRadius:12,padding:"10px 14px",minWidth:120}}>
+                    <p style={{color:x.color}} className="font-black text-base leading-none">{x.val}</p>
+                    <p style={{color:t.sub}} className="text-[10px] font-semibold mt-0.5">{x.label}</p>
+                    {x.sub&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{x.sub}</p>}
+                  </div>)}
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  {label:"Total Revenue",val:inr(totRev),color:"#10b981",icon:"💰"},
-                  {label:"Total Costs",val:inr(totCost),color:"#ef4444",icon:"💸"},
-                  {label:"Collection Rate",val:`${collectionRate}%`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",icon:"🏦"},
-                  {label:"Outstanding Dues",val:inr(totDue),color:totDue>0?"#ef4444":"#10b981",icon:"⚠️"},
-                ].map(x=><div key={x.label} style={{background:dm?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.7)",borderRadius:12,padding:"12px 14px"}}>
-                  <p className="text-base mb-1">{x.icon}</p>
-                  <p style={{color:x.color}} className="font-black text-lg leading-none">{x.val}</p>
-                  <p style={{color:t.sub}} className="text-[10px] font-semibold mt-1">{x.label}</p>
-                </div>)}
+              {/* Revenue vs cost stacked bar */}
+              {totRev>0&&<div>
+                <div className="flex justify-between mb-1"><span style={{color:t.sub,fontSize:10}}>Revenue allocation</span><span style={{color:t.sub,fontSize:10}}>{inr(totRev)} total</span></div>
+                <div style={{height:12,borderRadius:12,overflow:"hidden",display:"flex",gap:1}}>
+                  <div title="Profit" style={{width:`${Math.max(0,Math.round(totProfit/totRev*100))}%`,background:"#10b981",borderRadius:"12px 0 0 12px",transition:"width 0.6s ease"}}/>
+                  <div title="Supply" style={{width:`${Math.round(totSupC/totRev*100)}%`,background:"#8b5cf6"}}/>
+                  <div title="Expenses" style={{width:`${Math.round(totExpC/totRev*100)}%`,background:"#ef4444"}}/>
+                  <div title="Waste" style={{width:`${Math.round(totWasteC/totRev*100)}%`,background:"#f97316",borderRadius:"0 12px 12px 0"}}/>
+                </div>
+                <div className="flex gap-3 mt-1.5 flex-wrap">
+                  {[["#10b981","Profit",Math.max(0,totMargin)],["#8b5cf6","Supply",Math.round(totSupC/totRev*100)],["#ef4444","Expenses",Math.round(totExpC/totRev*100)],["#f97316","Waste",Math.round(totWasteC/totRev*100)]].map(([c,l,p])=>(
+                    <div key={l} className="flex items-center gap-1"><div style={{width:8,height:8,borderRadius:2,background:c}}/><span style={{color:t.sub,fontSize:9}}>{l} {p}%</span></div>
+                  ))}
+                </div>
+              </div>}
+            </div>
+
+            {/* ── SMART INSIGHTS ── */}
+            {insights.length>0&&<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+              <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mb-2">💡 Smart Insights</p>
+              <div className="flex flex-col gap-2">
+                {insights.map((ins,i)=>(
+                  <div key={i} className="flex items-start gap-2">
+                    <span style={{fontSize:14,lineHeight:1.4}}>{ins.icon}</span>
+                    <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>}
+
+            {/* ── CASH FLOW + BURN RATE ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Cash Flow */}
+              <div style={{background:dm?"linear-gradient(135deg,#0a1628,#0a2010)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:dm?"1px solid #1e3a5f":"1px solid #bbf7d0",borderRadius:18,padding:"16px 18px"}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>💵 Cash Flow Status</p>
+                <div className="flex items-end justify-between mb-3">
+                  <div>
+                    <p style={{color:"#10b981"}} className="font-black text-xl leading-none">{inr(cashCollected)}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Collected from customers</p>
+                  </div>
+                  <div className="text-right">
+                    <p style={{color:cashPending>0?"#ef4444":"#10b981"}} className="font-black text-base leading-none">{inr(cashPending)}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Pending / due</p>
+                  </div>
+                </div>
+                <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
+                  <div style={{width:`${cashFlowPct}%`,background:"#10b981",borderRadius:"8px 0 0 8px",transition:"width 0.6s"}}/>
+                  <div style={{width:`${100-cashFlowPct}%`,background:"#ef4444",borderRadius:"0 8px 8px 0"}}/>
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>{cashFlowPct}% collected</span>
+                  <span style={{color:"#ef4444",fontSize:10,fontWeight:700}}>{100-cashFlowPct}% outstanding</span>
+                </div>
+              </div>
+              {/* Burn Rate */}
+              <div style={{background:dm?"linear-gradient(135deg,#1a0a0a,#1a100a)":"linear-gradient(135deg,#fff7ed,#fef2f2)",border:dm?"1px solid #3a1a1a":"1px solid #fecaca",borderRadius:18,padding:"16px 18px"}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>🔥 Burn Rate & Efficiency</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p style={{color:burnRate>avgMonthlyRev?"#ef4444":"#f59e0b"}} className="font-black text-xl leading-none">{inr(burnRate)}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Avg monthly burn</p>
+                  </div>
+                  <div>
+                    <p style={{color:"#10b981"}} className="font-black text-xl leading-none">{inr(avgMonthlyRev)}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Avg monthly revenue</p>
+                  </div>
+                  <div>
+                    <p style={{color:totMargin>=15?"#10b981":"#ef4444"}} className="font-black text-base leading-none">{totMargin}%</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Net margin</p>
+                  </div>
+                  <div>
+                    <p style={{color:"#8b5cf6"}} className="font-black text-base leading-none">{inr(Math.max(0,avgMonthlyRev-burnRate))}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>Monthly surplus</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Insights row */}
+            {/* ── MONTH HIGHLIGHTS ── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">🏆 Best Month</p>
-                <p style={{color:t.text}} className="font-black text-base">{bestMonth?.monthFull||"—"}</p>
-                <p className="text-emerald-500 font-semibold text-sm">{inr(bestMonth?.profit||0)} profit</p>
-              </div>
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">📉 Weakest Month</p>
-                <p style={{color:t.text}} className="font-black text-base">{worstMonth?.monthFull||"—"}</p>
-                <p className={`font-semibold text-sm ${(worstMonth?.profit||0)>=0?"text-emerald-500":"text-red-500"}`}>{inr(worstMonth?.profit||0)}</p>
-              </div>
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">📊 Avg Monthly Revenue</p>
-                <p style={{color:t.text}} className="font-black text-base">{inr(avgMonthlyRev)}</p>
-                <p style={{color:t.sub}} className="text-sm font-medium">per active month</p>
-              </div>
+              {[
+                {label:"🏆 Best Month",name:bestMonth?.monthFull,val:inr(bestMonth?.profit||0),color:"#10b981",sub:"highest profit"},
+                {label:"📉 Weakest Month",name:worstMonth?.monthFull,val:inr(worstMonth?.profit||0),color:(worstMonth?.profit||0)>=0?"#10b981":"#ef4444",sub:"lowest profit"},
+                {label:"📊 Revenue Trend",name:trendUp?"Growing ▲":"Declining ▼",val:inr(Math.round(recentRevAvg)),color:trendUp?"#10b981":"#ef4444",sub:"recent avg/month"},
+              ].map(x=><div key={x.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">{x.label}</p>
+                <p style={{color:t.text}} className="font-black text-base leading-none">{x.name}</p>
+                <p style={{color:x.color}} className="font-semibold text-sm mt-0.5">{x.val} <span style={{color:t.sub,fontWeight:400,fontSize:10}}>{x.sub}</span></p>
+              </div>)}
             </div>
 
-            {/* Monthly Revenue vs Cost vs Profit chart */}
+            {/* ── MONTHLY P&L CHART ── */}
             <Card dm={dm} className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Monthly P&L — Revenue vs Costs vs Profit</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Last 6 months breakdown</p>
+                  <p style={{color:t.text}} className="font-bold text-sm">Revenue · Cost · Profit — {plRange} Month View</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Stacked monthly breakdown</p>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={mData} margin={{top:4,right:0,left:-10,bottom:0}} barGap={3}>
+                <BarChart data={mData} margin={{top:4,right:4,left:-10,bottom:0}} barGap={2}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
                   <XAxis dataKey="monthFull" tick={{fontSize:10,fill:t.sub}}/>
                   <YAxis tick={{fontSize:10,fill:t.sub}} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`}/>
-                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v)=>inr(v)}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>[inr(v),n]}/>
                   <Legend wrapperStyle={{fontSize:11,paddingTop:8}}/>
                   <Bar dataKey="revenue" name="Revenue" fill="#10b981" radius={[4,4,0,0]}/>
                   <Bar dataKey="totalCost" name="Total Cost" fill="#ef4444" radius={[4,4,0,0]}/>
@@ -3315,101 +3959,106 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               </ResponsiveContainer>
             </Card>
 
-            {/* Profit Margin Line Chart */}
+            {/* ── MARGIN TREND LINE ── */}
             <Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-1">Profit Margin Trend</p>
-              <p style={{color:t.sub}} className="text-[11px] mb-3">Month-by-month margin % — target: 30%+</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={mData} margin={{top:4,right:8,left:-20,bottom:0}}>
+              <p style={{color:t.text}} className="font-bold text-sm mb-0.5">Profit Margin Trend</p>
+              <p style={{color:t.sub}} className="text-[11px] mb-3">Month-by-month · dashed line = 30% healthy target</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={mData} margin={{top:8,right:8,left:-20,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
                   <XAxis dataKey="monthFull" tick={{fontSize:10,fill:t.sub}}/>
-                  <YAxis tick={{fontSize:10,fill:t.sub}} tickFormatter={v=>`${v}%`}/>
-                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v)=>`${v}%`}/>
-                  <Line type="monotone" dataKey="margin" name="Margin %" stroke="#f59e0b" strokeWidth={2.5} dot={{fill:"#f59e0b",r:4}} activeDot={{r:6}}/>
+                  <YAxis tick={{fontSize:10,fill:t.sub}} tickFormatter={v=>`${v}%`} domain={['auto','auto']}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>[`${v}%`,n]}/>
+                  <Legend wrapperStyle={{fontSize:11,paddingTop:6}}/>
+                  <ReferenceLine y={30} stroke="#10b981" strokeDasharray="6 3" strokeWidth={1.5} label={{value:"Target 30%",position:"right",fill:"#10b981",fontSize:9,fontWeight:700}}/>
+                  <Line type="monotone" dataKey="margin" name="Net Margin %" stroke="#f59e0b" strokeWidth={2.5} dot={{fill:"#f59e0b",r:4}} activeDot={{r:6}}/>
+                  <Line type="monotone" dataKey="grossMargin" name="Gross Margin %" stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="4 2" dot={false}/>
                 </LineChart>
               </ResponsiveContainer>
             </Card>
 
-            {/* Cost Structure breakdown */}
+            {/* ── COST STRUCTURE ── */}
             <Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-4">Cost Structure — 6 Month Total</p>
+              <p style={{color:t.text}} className="font-bold text-sm mb-4">Cost Structure — {plRange}-Month Total</p>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
-                  {label:"Supply Costs",val:totSupC,color:"#8b5cf6",pct:totCost>0?Math.round(totSupC/totCost*100):0},
-                  {label:"Operating Expenses",val:totExpC,color:"#ef4444",pct:totCost>0?Math.round(totExpC/totCost*100):0},
-                  {label:"Wastage Losses",val:totWasteC,color:"#f97316",pct:totCost>0?Math.round(totWasteC/totCost*100):0},
-                ].map(x=><div key={x.label} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div style={{width:10,height:10,borderRadius:3,background:x.color,flexShrink:0}}/>
-                    <span style={{color:t.sub}} className="text-[10px] font-semibold leading-tight">{x.label}</span>
-                  </div>
+                  {label:"Supply Costs",val:totSupC,color:"#8b5cf6",pct:totCost>0?Math.round(totSupC/totCost*100):0,sub:"Raw material"},
+                  {label:"Operating Expenses",val:totExpC,color:"#ef4444",pct:totCost>0?Math.round(totExpC/totCost*100):0,sub:"Gas, labour, etc."},
+                  {label:"Wastage Losses",val:totWasteC,color:"#f97316",pct:totCost>0?Math.round(totWasteC/totCost*100):0,sub:"Avoidable losses"},
+                ].map(x=><div key={x.label} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderTop:`3px solid ${x.color}`}}>
                   <p style={{color:x.color}} className="font-black text-base leading-none">{inr(x.val)}</p>
-                  <p style={{color:t.sub}} className="text-[11px] mt-1">{x.pct}% of costs</p>
-                  <div style={{background:t.border,height:3,borderRadius:3,marginTop:8,overflow:"hidden"}}><div style={{width:`${x.pct}%`,background:x.color,height:"100%",borderRadius:3}}/></div>
+                  <p style={{color:t.text}} className="text-[11px] font-semibold mt-1">{x.label}</p>
+                  <p style={{color:t.sub,fontSize:10}}>{x.sub}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <div style={{flex:1,background:t.border,height:3,borderRadius:3,overflow:"hidden",marginRight:6}}><div style={{width:`${x.pct}%`,background:x.color,height:"100%",borderRadius:3}}/></div>
+                    <span style={{color:x.color,fontSize:11,fontWeight:800}}>{x.pct}%</span>
+                  </div>
                 </div>)}
               </div>
-              {/* Cost split visual bar */}
-              {totCost>0&&<div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",gap:2}}>
-                <div style={{width:`${Math.round(totSupC/totCost*100)}%`,background:"#8b5cf6",borderRadius:"10px 0 0 10px"}}/>
-                <div style={{width:`${Math.round(totExpC/totCost*100)}%`,background:"#ef4444"}}/>
-                <div style={{width:`${Math.round(totWasteC/totCost*100)}%`,background:"#f97316",borderRadius:"0 10px 10px 0"}}/>
-              </div>}
+              {totCost>0&&<>
+                <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",gap:1}}>
+                  <div style={{width:`${Math.round(totSupC/totCost*100)}%`,background:"#8b5cf6",borderRadius:"10px 0 0 10px"}}/>
+                  <div style={{width:`${Math.round(totExpC/totCost*100)}%`,background:"#ef4444"}}/>
+                  <div style={{width:`${Math.round(totWasteC/totCost*100)}%`,background:"#f97316",borderRadius:"0 10px 10px 0"}}/>
+                </div>
+                <p style={{color:t.sub,fontSize:10,marginTop:6,textAlign:"right"}}>Total costs: {inr(totCost)}</p>
+              </>}
             </Card>
 
-            {/* Monthly detailed table */}
+            {/* ── MONTHLY DETAILED TABLE ── */}
             <Card dm={dm} className="overflow-hidden">
-              <div className="p-4 pb-2 flex items-center justify-between">
+              <div className="p-4 pb-2 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p style={{color:t.text}} className="text-sm font-bold">Monthly Detailed Breakdown</p>
-                  <p style={{color:t.sub}} className="text-[11px]">All figures in INR · Margin = Profit ÷ Revenue</p>
+                  <p style={{color:t.text}} className="text-sm font-bold">Monthly Breakdown Table</p>
+                  <p style={{color:t.sub}} className="text-[11px]">All figures INR · ▲▼ = change vs prior month</p>
                 </div>
                 <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 CSV</Btn>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead><tr style={{borderBottom:`2px solid ${t.border}`,background:dm?"#111":"#f9f9f8"}}>
-                    {["Month","Deliveries","Revenue","Supply Cost","Op Expenses","Waste Loss","Total Cost","Profit/Loss","Margin"].map(h=><th key={h} style={{color:t.sub}} className="px-3 py-2.5 text-left font-bold uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>)}
+                    {["Month","Deliveries","Revenue","Supply","Expenses","Waste","Total Cost","Profit / Loss","Margin"].map(h=><th key={h} style={{color:t.sub}} className="px-3 py-2.5 text-left font-bold uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {mData.map((m,i)=>{
                       const prev=mData[i-1];
-                      function arrow(curr,p){if(!p||p===0)return null;const up=curr>p;const pct=Math.round(Math.abs(curr-p)/Math.max(p,1)*100);return <span style={{color:up?"#10b981":"#ef4444",fontSize:9,marginLeft:3,fontWeight:700}}>{up?"▲":"▼"}{pct}%</span>;}
-                      return <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?"transparent":dm?"#ffffff04":"#00000004"}}>
+                      const arrow=(curr,p)=>{if(!p||p===0||curr===p)return null;const up=curr>p;const pct=Math.round(Math.abs(curr-p)/Math.max(Math.abs(p),1)*100);return <span style={{color:up?"#10b981":"#ef4444",fontSize:9,marginLeft:3,fontWeight:700}}>{up?"▲":"▼"}{pct}%</span>;};
+                      return <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?"transparent":dm?"#ffffff04":"#00000003"}}>
                         <td style={{color:t.text}} className="px-3 py-2.5 font-bold whitespace-nowrap">{m.monthFull}</td>
                         <td style={{color:t.sub}} className="px-3 py-2.5">{m.deliveriesCount}{prev&&arrow(m.deliveriesCount,prev.deliveriesCount)}</td>
-                        <td className="px-3 py-2.5 text-emerald-500 font-semibold">{inr(m.revenue)}{prev&&arrow(m.revenue,prev.revenue)}</td>
-                        <td className="px-3 py-2.5 text-purple-500">{inr(m.supplyCost)}</td>
-                        <td className="px-3 py-2.5 text-red-400">{inr(m.expenses)}</td>
-                        <td className="px-3 py-2.5 text-orange-500">{inr(m.wasteCost)}</td>
-                        <td className="px-3 py-2.5 text-red-500 font-semibold">{inr(m.totalCost)}{prev&&arrow(m.totalCost,prev.totalCost)}</td>
-                        <td className={`px-3 py-2.5 font-bold ${m.profit>=0?"text-emerald-500":"text-red-500"}`}>{inr(m.profit)}{prev&&arrow(m.profit,prev.profit)}</td>
-                        <td className="px-3 py-2.5">
-                          <span style={{background:m.margin>=30?"#10b98120":m.margin>=10?"#f59e0b20":"#ef444420",color:m.margin>=30?"#10b981":m.margin>=10?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 6px",fontWeight:700,fontSize:10}}>{m.margin}%</span>
+                        <td className="px-3 py-2.5 text-emerald-500 font-semibold whitespace-nowrap">{inr(m.revenue)}{prev&&arrow(m.revenue,prev.revenue)}</td>
+                        <td className="px-3 py-2.5 text-purple-400 whitespace-nowrap">{inr(m.supplyCost)}</td>
+                        <td className="px-3 py-2.5 text-red-400 whitespace-nowrap">{inr(m.expenses)}</td>
+                        <td className="px-3 py-2.5 text-orange-400 whitespace-nowrap">{inr(m.wasteCost)}</td>
+                        <td className="px-3 py-2.5 text-red-500 font-semibold whitespace-nowrap">{inr(m.totalCost)}{prev&&arrow(m.totalCost,prev.totalCost)}</td>
+                        <td className={`px-3 py-2.5 font-bold whitespace-nowrap ${m.profit>=0?"text-emerald-500":"text-red-500"}`}>{inr(m.profit)}{prev&&arrow(m.profit,prev.profit)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span style={{background:m.margin>=30?"#10b98122":m.margin>=15?"#f59e0b22":"#ef444422",color:m.margin>=30?"#10b981":m.margin>=15?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 8px",fontWeight:800,fontSize:10}}>{m.margin}%</span>
                         </td>
                       </tr>;
                     })}
                     <tr style={{borderTop:`2px solid ${t.border}`,background:dm?"#1a1a1a":"#fafaf8"}}>
-                      <td style={{color:t.text}} className="px-3 py-3 font-black text-[11px]">TOTAL</td>
+                      <td style={{color:t.text}} className="px-3 py-3 font-black text-[11px] uppercase tracking-wide">Total</td>
                       <td style={{color:t.sub}} className="px-3 py-3 font-bold">{deliveries.filter(d=>d.status==="Delivered").length}</td>
                       <td className="px-3 py-3 text-emerald-500 font-black">{inr(totRev)}</td>
-                      <td className="px-3 py-3 text-purple-500 font-bold">{inr(totSupC)}</td>
+                      <td className="px-3 py-3 text-purple-400 font-bold">{inr(totSupC)}</td>
                       <td className="px-3 py-3 text-red-400 font-bold">{inr(totExpC)}</td>
-                      <td className="px-3 py-3 text-orange-500 font-bold">{inr(totWasteC)}</td>
+                      <td className="px-3 py-3 text-orange-400 font-bold">{inr(totWasteC)}</td>
                       <td className="px-3 py-3 text-red-500 font-black">{inr(totCost)}</td>
                       <td className={`px-3 py-3 font-black ${totProfit>=0?"text-emerald-500":"text-red-500"}`}>{inr(totProfit)}</td>
-                      <td className="px-3 py-3"><span style={{background:totMargin>=30?"#10b98120":totMargin>=10?"#f59e0b20":"#ef444420",color:totMargin>=30?"#10b981":totMargin>=10?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 6px",fontWeight:800,fontSize:10}}>{totMargin}%</span></td>
+                      <td className="px-3 py-3"><span style={{background:totMargin>=30?"#10b98122":totMargin>=15?"#f59e0b22":"#ef444422",color:totMargin>=30?"#10b981":totMargin>=15?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 8px",fontWeight:900,fontSize:10}}>{totMargin}%</span></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </Card>
 
-            {/* CUSTOMER-WISE P&L */}
+            {/* ── CUSTOMER-WISE P&L ── */}
             <Card dm={dm} className="overflow-hidden">
-              <div className="px-4 pt-4 pb-3 flex items-center justify-between">
+              <div className="px-4 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p style={{color:t.text}} className="text-sm font-bold">Customer-wise Revenue Breakdown</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Sorted by total revenue generated</p>
+                  <p style={{color:t.text}} className="text-sm font-bold">Customer Revenue Breakdown</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Ranked by revenue · collection health shown</p>
                 </div>
                 <Btn dm={dm} v="outline" size="sm" onClick={()=>{
                   const custPL=customers.map(c=>{
@@ -3422,88 +4071,95 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               </div>
               <Hr dm={dm}/>
               {customers.length===0?<p style={{color:t.sub}} className="text-sm text-center py-5">No customers yet.</p>
-              :[...customers].sort((a,b)=>{
-                const ra=deliveries.filter(d=>d.customerId===a.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                const rb=deliveries.filter(d=>d.customerId===b.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                return rb-ra;
-              }).map((c,ci)=>{
-                const cDelivs=deliveries.filter(d=>d.customerId===c.id);
-                const cDelivered=cDelivs.filter(d=>d.status==="Delivered");
-                const cRev=cDelivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                const cPending=c.pending||0;
-                const cPaid=c.paid||0;
-                const avgOrder=cDelivered.length>0?Math.round(cRev/cDelivered.length):0;
-                const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-                const maxCustRev=deliveries.filter(d=>d.status==="Delivered").length>0?
-                  Math.max(...customers.map(cx=>deliveries.filter(d=>d.customerId===cx.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0))):1;
-                const collPct=cPaid+cPending>0?Math.round(cPaid/(cPaid+cPending)*100):100;
-                const pendPct=100-collPct;
-                return <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-4 last:border-0">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div style={{background:`${ci===0?"#f59e0b":ci===1?"#9ca3af":ci===2?"#cd7c3f":"#6b7280"}22`,color:ci===0?"#f59e0b":ci===1?"#9ca3af":ci===2?"#cd7c3f":"#6b7280",width:30,height:30,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,flexShrink:0}}>{ci+1}</div>
-                      <div>
-                        <p style={{color:t.text}} className="text-sm font-bold">{c.name}</p>
-                        <p style={{color:t.sub}} className="text-[11px]">{cDelivs.length} orders · {cDelivered.length} delivered{lastDeliv?` · Last: ${lastDeliv.date}`:""}</p>
+              :(()=>{
+                const sorted=[...customers].sort((a,b)=>{
+                  const ra=deliveries.filter(d=>d.customerId===a.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const rb=deliveries.filter(d=>d.customerId===b.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  return rb-ra;
+                });
+                const maxCustRev=Math.max(...sorted.map(cx=>deliveries.filter(d=>d.customerId===cx.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)),1);
+                const totalPortfolioRev=sorted.reduce((s,cx)=>s+deliveries.filter(d=>d.customerId===cx.id&&d.status==="Delivered").reduce((ss,d)=>ss+lineTotal(d.orderLines),0),0);
+                return sorted.map((c,ci)=>{
+                  const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                  const cDelivered=cDelivs.filter(d=>d.status==="Delivered");
+                  const cRev=cDelivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const cPending=c.pending||0;
+                  const cPaid=c.paid||0;
+                  const avgOrder=cDelivered.length>0?Math.round(cRev/cDelivered.length):0;
+                  const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+                  const collPct=cPaid+cPending>0?Math.round(cPaid/(cPaid+cPending)*100):100;
+                  const revenueSharePct=totalPortfolioRev>0?Math.round(cRev/totalPortfolioRev*100):0;
+                  const medalColor=ci===0?"#f59e0b":ci===1?"#9ca3af":ci===2?"#cd7c3f":"#6b7280";
+                  return <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-4 last:border-0">
+                    <div className="flex items-start justify-between mb-2 gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div style={{background:`${medalColor}22`,color:medalColor,width:30,height:30,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,flexShrink:0}}>{ci+1}</div>
+                        <div className="min-w-0">
+                          <p style={{color:t.text}} className="text-sm font-bold truncate">{c.name}</p>
+                          <p style={{color:t.sub}} className="text-[11px]">{cDelivs.length} orders · {cDelivered.length} delivered{lastDeliv?` · Last ${lastDeliv.date}`:""}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-amber-500 text-base leading-none">{inr(cRev)}</p>
+                        <p style={{color:t.sub}} className="text-[10px] mt-0.5">{revenueSharePct}% of portfolio</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-black text-amber-500 text-base leading-none">{inr(cRev)}</p>
-                      <p style={{color:t.sub}} className="text-[10px] mt-0.5">total revenue</p>
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      {[
+                        {label:"Collected",val:inr(cPaid),color:"#10b981",bg:"#10b98112"},
+                        {label:"Pending",val:inr(cPending),color:cPending>0?"#ef4444":"#10b981",bg:cPending>0?"#ef444412":"#10b98112"},
+                        {label:"Avg Order",val:inr(avgOrder),color:"#f59e0b",bg:"#f59e0b12"},
+                        {label:"Coll. Rate",val:`${collPct}%`,color:collPct>=90?"#10b981":collPct>=60?"#f59e0b":"#ef4444",bg:collPct>=90?"#10b98112":collPct>=60?"#f59e0b12":"#ef444412"},
+                      ].map(x=><div key={x.label} style={{background:x.bg,borderRadius:10,padding:"7px 8px",textAlign:"center"}}>
+                        <p style={{color:x.color}} className="font-bold text-xs leading-none">{x.val}</p>
+                        <p style={{color:t.sub}} className="text-[9px] mt-1">{x.label}</p>
+                      </div>)}
                     </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 mb-3">
-                    <div style={{background:"#10b98115",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                      <p className="font-bold text-emerald-500 text-xs leading-none">{inr(cPaid)}</p><p style={{color:t.sub}} className="text-[10px] mt-1">Collected</p>
+                    {/* Revenue bar */}
+                    <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden",marginBottom:3}}>
+                      <div style={{width:`${Math.round(cRev/maxCustRev*100)}%`,background:`linear-gradient(90deg,${medalColor},${medalColor}99)`,height:"100%",borderRadius:4,transition:"width 0.6s ease"}}/>
                     </div>
-                    <div style={{background:cPending>0?"#ef444415":"#10b98115",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                      <p className={`font-bold text-xs leading-none ${cPending>0?"text-red-500":"text-emerald-500"}`}>{inr(cPending)}</p><p style={{color:t.sub}} className="text-[10px] mt-1">Pending</p>
-                    </div>
-                    <div style={{background:"#f59e0b15",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                      <p className="font-bold text-amber-500 text-xs leading-none">{inr(avgOrder)}</p><p style={{color:t.sub}} className="text-[10px] mt-1">Avg Order</p>
-                    </div>
-                    <div style={{background:"#8b5cf615",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                      <p className="font-bold text-purple-500 text-xs leading-none">{collPct}%</p><p style={{color:t.sub}} className="text-[10px] mt-1">Collected</p>
-                    </div>
-                  </div>
-                  {/* Revenue bar vs all customers */}
-                  <div className="mb-1">
-                    <div className="flex justify-between mb-1"><span style={{color:t.sub}} className="text-[10px]">Revenue share vs top customer</span><span style={{color:t.sub}} className="text-[10px] font-semibold">{maxCustRev>0?Math.round(cRev/maxCustRev*100):0}%</span></div>
-                    <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${maxCustRev>0?Math.round(cRev/maxCustRev*100):0}%`,background:"linear-gradient(90deg,#f59e0b,#10b981)",height:"100%",borderRadius:5,transition:"width 0.6s ease"}}/></div>
-                  </div>
-                  {/* Collection bar */}
-                  {(cPaid+cPending)>0&&<div>
-                    <div style={{height:5,borderRadius:5,overflow:"hidden",display:"flex",gap:1,marginTop:4}}>
-                      <div style={{width:`${collPct}%`,background:"#10b981",borderRadius:"5px 0 0 5px"}}/>
-                      {pendPct>0&&<div style={{width:`${pendPct}%`,background:"#ef4444",borderRadius:"0 5px 5px 0"}}/>}
-                    </div>
-                    <div className="flex gap-3 mt-1">
-                      <div className="flex items-center gap-1"><div style={{width:6,height:6,borderRadius:2,background:"#10b981"}}/><span style={{color:t.sub}} className="text-[9px]">Collected {collPct}%</span></div>
-                      {pendPct>0&&<div className="flex items-center gap-1"><div style={{width:6,height:6,borderRadius:2,background:"#ef4444"}}/><span style={{color:t.sub}} className="text-[9px]">Pending {pendPct}%</span></div>}
-                    </div>
-                  </div>}
-                </div>;
-              })}
+                    {/* Collection bar */}
+                    {(cPaid+cPending)>0&&<div style={{height:3,borderRadius:3,overflow:"hidden",display:"flex"}}>
+                      <div style={{width:`${collPct}%`,background:"#10b981"}}/>
+                      <div style={{width:`${100-collPct}%`,background:"#ef4444"}}/>
+                    </div>}
+                  </div>;
+                });
+              })()}
             </Card>
-            {/* INVOICE AGING REPORT */}
+
+            {/* ── INVOICE AGING REPORT ── */}
             {(()=>{
               const now=new Date();
               const aged=customers.filter(c=>c.pending>0).map(c=>{
-                const daysDue=Math.floor((now-new Date(c.joinDate||"2026-01-01"))/86400000);
-                const bucket=daysDue<=30?"0-30 days":daysDue<=60?"31-60 days":daysDue<=90?"61-90 days":"90+ days";
-                const color=daysDue<=30?"#f59e0b":daysDue<=60?"#f97316":daysDue<=90?"#ef4444":"#7f1d1d";
+                const lastD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const refDate=lastD?.date||c.joinDate||"2026-01-01";
+                const daysDue=Math.floor((now-new Date(refDate))/86400000);
+                const bucket=daysDue<=30?"0–30 days":daysDue<=60?"31–60 days":daysDue<=90?"61–90 days":"90+ days";
+                const color=daysDue<=30?"#f59e0b":daysDue<=60?"#f97316":daysDue<=90?"#ef4444":"#991b1b";
                 return {...c,daysDue,bucket,color};
               }).sort((a,b)=>b.daysDue-a.daysDue);
               if(aged.length===0)return null;
+              const agingTotal=aged.reduce((s,c)=>s+c.pending,0);
               return <Card dm={dm} className="overflow-hidden">
-                <div className="px-4 pt-4 pb-3"><p style={{color:t.text}} className="font-bold text-sm">📋 Invoice Aging Report</p><p style={{color:t.sub}} className="text-[11px]">Customers with outstanding balances by age</p></div>
+                <div className="px-4 pt-4 pb-3 flex items-center justify-between">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">📋 Invoice Aging Report</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{aged.length} customers · {inr(agingTotal)} total outstanding</p>
+                  </div>
+                  <span style={{background:"#ef444420",color:"#ef4444",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:800}}>{inr(agingTotal)}</span>
+                </div>
                 <Hr dm={dm}/>
                 {aged.map((c)=>(
                   <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0">
-                    <div className="flex items-center justify-between">
-                      <div><p style={{color:t.text}} className="text-sm font-semibold">{c.name}</p><p style={{color:t.sub}} className="text-xs">{c.daysDue} days since joining</p></div>
-                      <div className="flex items-center gap-3">
-                        <span style={{background:c.color+"15",color:c.color,borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:700}}>{c.bucket}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p style={{color:t.text}} className="text-sm font-semibold truncate">{c.name}</p>
+                        <p style={{color:t.sub}} className="text-xs">{c.daysDue} days since last activity</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span style={{background:c.color+"18",color:c.color,borderRadius:8,padding:"2px 9px",fontSize:10,fontWeight:700}}>{c.bucket}</span>
                         <span style={{color:"#ef4444"}} className="font-black text-sm">{inr(c.pending)}</span>
                       </div>
                     </div>
@@ -3516,16 +4172,34 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
         {/* ANALYTICS TAB */}
         {tab==="Analytics"&&isAdmin&&(()=>{
-          // Best selling products
+          // ── Core computations ──
+          const delivered=deliveries.filter(d=>d.status==="Delivered");
+          const totalDelivered=delivered.length;
+          const totalScheduled=deliveries.length;
+          const fulfillmentRate=totalScheduled>0?Math.round(totalDelivered/totalScheduled*100):0;
+          const replCount=deliveries.filter(d=>d.replacement?.done).length;
+          const replRate=totalDelivered>0?Math.round(replCount/totalDelivered*100):0;
+          const avgRevPerDeliv=totalDelivered>0?Math.round(delivered.reduce((s,d)=>s+lineTotal(d.orderLines),0)/totalDelivered):0;
+          const cancelCount=deliveries.filter(d=>d.status==="Cancelled").length;
+          const cancelRate=totalScheduled>0?Math.round(cancelCount/totalScheduled*100):0;
+
+          // ── Product sales ──
           const prodSales=products.map(p=>{
-            const delivered=deliveries.filter(d=>d.status==="Delivered");
             const qty=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0),0);
             const rev=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
             return {...p,totalQty:qty,totalRev:rev,deliveryCount:delivered.filter(d=>(safeO(d.orderLines)[p.id]?.qty||0)>0).length};
-          }).sort((a,b)=>b.totalQty-a.totalQty);
-          // Top customers by revenue
+          }).sort((a,b)=>b.totalRev-a.totalRev);
+          const totalProductRev=prodSales.reduce((s,p)=>s+p.totalRev,0);
+
+          // ── Customer revenue ──
           const custRev=customers.map(c=>({...c,totalOrders:deliveries.filter(d=>d.customerId===c.id).length,totalRev:deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)})).sort((a,b)=>b.totalRev-a.totalRev);
-          // Daily delivery trend last 14 days
+          const totalPortfolioRev=custRev.reduce((s,c)=>s+c.totalRev,0);
+          // Revenue concentration: top 20% of customers
+          const top20pct=Math.max(1,Math.ceil(custRev.length*0.2));
+          const top20rev=custRev.slice(0,top20pct).reduce((s,c)=>s+c.totalRev,0);
+          const top20share=totalPortfolioRev>0?Math.round(top20rev/totalPortfolioRev*100):0;
+
+          // ── 14-day daily trend ──
           const days14=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}).reverse();
           const dailyData=days14.map(date=>({
             date:date.slice(5),
@@ -3534,86 +4208,171 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             revenue:deliveries.filter(d=>d.date===date&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
             expenses:expenses.filter(e=>e.date===date).reduce((s,e)=>s+(e.amount||0),0),
           }));
-          // Revenue by day of week
+          const recentRevTotal=dailyData.reduce((s,d)=>s+d.revenue,0);
+          const recentAvgDaily=Math.round(recentRevTotal/14);
+
+          // ── 30-day vs prior 30-day comparison ──
+          const last30days=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+          const prior30days=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-30-i);return d.toISOString().slice(0,10);});
+          const last30rev=deliveries.filter(d=>last30days.includes(d.date)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const prior30rev=deliveries.filter(d=>prior30days.includes(d.date)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const revGrowth=prior30rev>0?Math.round((last30rev-prior30rev)/prior30rev*100):null;
+          const last30delivCount=deliveries.filter(d=>last30days.includes(d.date)&&d.status==="Delivered").length;
+          const prior30delivCount=deliveries.filter(d=>prior30days.includes(d.date)&&d.status==="Delivered").length;
+          const delivGrowth=prior30delivCount>0?Math.round((last30delivCount-prior30delivCount)/prior30delivCount*100):null;
+
+          // ── Day of week ──
           const dowData=[0,1,2,3,4,5,6].map(dow=>{
             const label=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dow];
-            const filtered=deliveries.filter(d=>d.status==="Delivered"&&new Date(d.date).getDay()===dow);
+            const filtered=delivered.filter(d=>new Date(d.date).getDay()===dow);
             return {day:label,deliveries:filtered.length,revenue:filtered.reduce((s,d)=>s+lineTotal(d.orderLines),0)};
           });
-          // Expense category breakdown
+          const bestDow=dowData.reduce((b,d)=>d.revenue>b.revenue?d:b,dowData[0]);
+
+          // ── Expense categories ──
           const expCatData=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).map(cat=>({
             category:cat,
             amount:expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),
             count:expenses.filter(e=>e.category===cat).length,
           })).filter(x=>x.amount>0).sort((a,b)=>b.amount-a.amount);
-          // Wastage analytics
+          const totalExpenses=expCatData.reduce((s,e)=>s+e.amount,0);
+
+          // ── Wastage ──
           const wastageByType=(settings?.wastageTypes||["Other"]).map(type=>({
             type,qty:wastage.filter(w=>w.type===type).reduce((s,w)=>s+(w.qty||0),0),
             cost:wastage.filter(w=>w.type===type).reduce((s,w)=>s+(w.cost||0),0),
           })).filter(x=>x.qty>0);
-          // Delivery fulfillment rate
-          const totalScheduled=deliveries.length;
-          const totalDelivered=deliveries.filter(d=>d.status==="Delivered").length;
-          const fulfillmentRate=totalScheduled>0?Math.round(totalDelivered/totalScheduled*100):0;
-          // Replacement rate
-          const replCount=deliveries.filter(d=>d.replacement?.done).length;
-          const replRate=totalDelivered>0?Math.round(replCount/totalDelivered*100):0;
-          // Avg revenue per delivery
-          const avgRevPerDeliv=totalDelivered>0?Math.round(deliveries.filter(d=>d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)/totalDelivered):0;
-          // Inactive customers %
-          const inactivePct=customers.length>0?Math.round(customers.filter(c=>!c.active).length/customers.length*100):0;
+          const totalWasteCost=wastageByType.reduce((s,w)=>s+w.cost,0);
+
+          // ── Customer retention / activity ──
+          const now=new Date();
+          const activeRecently=customers.filter(c=>{
+            const last=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").sort((a,b)=>b.date.localeCompare(a.date))[0];
+            if(!last)return false;
+            return Math.floor((now-new Date(last.date))/86400000)<=30;
+          }).length;
+          const retentionRate=customers.filter(c=>c.active).length>0?Math.round(activeRecently/customers.filter(c=>c.active).length*100):0;
 
           const PIE_COLORS=["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"];
 
+          // ── Smart Analytics Insights ──
+          const analyticsInsights=[];
+          if(fulfillmentRate<80) analyticsInsights.push({icon:"⚠️",color:"#f59e0b",text:`Fulfillment rate is only ${fulfillmentRate}% — ${totalScheduled-totalDelivered} orders undelivered. Review capacity.`});
+          if(cancelRate>10) analyticsInsights.push({icon:"🚫",color:"#ef4444",text:`Cancellation rate of ${cancelRate}% is high (${cancelCount} orders). Investigate root causes.`});
+          if(retentionRate<60) analyticsInsights.push({icon:"👤",color:"#ef4444",text:`Only ${retentionRate}% of active customers ordered in the last 30 days. Churn risk is elevated.`});
+          if(revGrowth!==null&&revGrowth>=15) analyticsInsights.push({icon:"🚀",color:"#10b981",text:`Revenue grew ${revGrowth}% vs prior 30 days — strong momentum. Keep it up!`});
+          if(revGrowth!==null&&revGrowth<=-10) analyticsInsights.push({icon:"📉",color:"#ef4444",text:`Revenue dropped ${Math.abs(revGrowth)}% vs prior 30 days. Investigate customer activity.`});
+          if(top20share>=80) analyticsInsights.push({icon:"🎯",color:"#f59e0b",text:`Top ${top20pct} customers drive ${top20share}% of revenue — high concentration risk. Diversify.`});
+          if(prodSales.filter(p=>p.totalQty>0).length<products.length*0.5&&products.length>2) analyticsInsights.push({icon:"📦",color:"#8b5cf6",text:`${products.length-prodSales.filter(p=>p.totalQty>0).length} products have zero sales. Consider rationalising catalogue.`});
+
           return <>
-            {/* KPI Header row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Fulfillment Rate" value={`${fulfillmentRate}%`} sub={`${totalDelivered}/${totalScheduled} orders`} accent={fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444"}/>
-              <StatCard dm={dm} label="Avg Revenue/Delivery" value={inr(avgRevPerDeliv)} sub="Per completed delivery" accent="#f59e0b"/>
-              <StatCard dm={dm} label="Best Seller" value={prodSales[0]?.name||"—"} sub={prodSales[0]?`${prodSales[0].totalQty} units sold`:"No data"} accent="#8b5cf6"/>
-              <StatCard dm={dm} label="Top Customer" value={custRev[0]?.name||"—"} sub={custRev[0]?inr(custRev[0].totalRev)+" revenue":"No data"} accent="#0ea5e9"/>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Total Deliveries" value={deliveries.length} sub={`${totalDelivered} delivered`} accent="#10b981"/>
-              <StatCard dm={dm} label="Replacement Rate" value={`${replRate}%`} sub={`${replCount} replacements made`} accent={replRate>10?"#ef4444":replRate>5?"#f59e0b":"#10b981"}/>
-              <StatCard dm={dm} label="Active Customers" value={customers.filter(c=>c.active).length} sub={`${inactivePct}% inactive`} accent="#d97706"/>
-              <StatCard dm={dm} label="Products in Catalogue" value={products.length} sub={`${prodSales.filter(p=>p.totalQty>0).length} selling`} accent="#6366f1"/>
-            </div>
-            {/* Best & Worst customer */}
-            {custRev.length>0&&<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Card dm={dm} className="p-4 flex items-center gap-4">
-                <div style={{background:"#10b98120",color:"#10b981",borderRadius:14,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏆</div>
-                <div className="min-w-0">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-0.5">Best Customer</p>
-                  <p style={{color:t.text}} className="font-black text-base truncate">{custRev[0]?.name||"—"}</p>
-                  <p style={{color:"#10b981"}} className="text-xs font-bold">{inr(custRev[0]?.totalRev||0)} revenue · {custRev[0]?.totalOrders||0} orders</p>
-                </div>
-              </Card>
-              <Card dm={dm} className="p-4 flex items-center gap-4">
-                <div style={{background:"#ef444420",color:"#ef4444",borderRadius:14,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>📉</div>
-                <div className="min-w-0">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-0.5">Lowest Revenue</p>
-                  <p style={{color:t.text}} className="font-black text-base truncate">{custRev[custRev.length-1]?.name||"—"}</p>
-                  <p style={{color:"#ef4444"}} className="text-xs font-bold">{inr(custRev[custRev.length-1]?.totalRev||0)} revenue · {custRev[custRev.length-1]?.totalOrders||0} orders</p>
-                </div>
-              </Card>
+
+            {/* ── SMART ANALYTICS INSIGHTS ── */}
+            {analyticsInsights.length>0&&<div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:16,padding:"14px 18px"}}>
+              <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>🔍 Analytics Insights</p>
+              <div className="flex flex-col gap-2">
+                {analyticsInsights.map((ins,i)=>(
+                  <div key={i} className="flex items-start gap-2">
+                    <span style={{fontSize:14,lineHeight:1.5}}>{ins.icon}</span>
+                    <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
+                  </div>
+                ))}
+              </div>
             </div>}
 
-            {/* 14-day revenue + delivery trend */}
-            <Card dm={dm} className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Daily Trend — Last 14 Days</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Revenue (bars) and delivery volume</p>
+            <div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:20,padding:"18px 20px"}}>
+              <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>📊 30-Day Performance vs Prior Period</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  {label:"Revenue (30d)",val:inr(last30rev),growth:revGrowth,color:"#10b981"},
+                  {label:"Deliveries (30d)",val:last30delivCount,growth:delivGrowth,color:"#f59e0b"},
+                  {label:"Daily Avg Rev",val:inr(recentAvgDaily),growth:null,color:"#8b5cf6",sub:"last 14 days"},
+                  {label:"Avg Order Value",val:inr(avgRevPerDeliv),growth:null,color:"#0ea5e9",sub:"all time"},
+                ].map(x=><div key={x.label} style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.8)",borderRadius:12,padding:"12px 14px"}}>
+                  <p style={{color:x.color}} className="font-black text-lg leading-none">{x.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>{x.label}</p>
+                  {x.growth!==null&&x.growth!==undefined?<p style={{color:x.growth>=0?"#10b981":"#ef4444",fontSize:11,fontWeight:700,marginTop:3}}>{x.growth>=0?"▲":"▼"} {Math.abs(x.growth)}% vs prior 30d</p>
+                  :x.sub?<p style={{color:t.sub,fontSize:10,marginTop:3}}>{x.sub}</p>:null}
+                </div>)}
+              </div>
+            </div>
+
+            {/* ── CORE KPI GRID ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard dm={dm} label="Fulfillment Rate" value={`${fulfillmentRate}%`} sub={`${totalDelivered}/${totalScheduled} orders`} accent={fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444"}/>
+              <StatCard dm={dm} label="Cancellation Rate" value={`${cancelRate}%`} sub={`${cancelCount} cancelled`} accent={cancelRate<=5?"#10b981":cancelRate<=15?"#f59e0b":"#ef4444"}/>
+              <StatCard dm={dm} label="Replacement Rate" value={`${replRate}%`} sub={`${replCount} replacements`} accent={replRate>10?"#ef4444":replRate>5?"#f59e0b":"#10b981"}/>
+              <StatCard dm={dm} label="30d Retention" value={`${retentionRate}%`} sub={`${activeRecently} of ${customers.filter(c=>c.active).length} active`} accent={retentionRate>=80?"#10b981":retentionRate>=50?"#f59e0b":"#ef4444"}/>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard dm={dm} label="Best Seller" value={prodSales[0]?.name||"—"} sub={prodSales[0]?`${inr(prodSales[0].totalRev)} revenue`:"No data"} accent="#f59e0b"/>
+              <StatCard dm={dm} label="Top Customer" value={custRev[0]?.name||"—"} sub={custRev[0]?inr(custRev[0].totalRev)+" revenue":"No data"} accent="#10b981"/>
+              <StatCard dm={dm} label="Revenue Concentration" value={`${top20share}%`} sub={`Top ${top20pct} customers`} accent={top20share>=80?"#ef4444":top20share>=60?"#f59e0b":"#10b981"}/>
+              <StatCard dm={dm} label="Active Products" value={prodSales.filter(p=>p.totalQty>0).length} sub={`of ${products.length} in catalogue`} accent="#8b5cf6"/>
+            </div>
+
+            {/* ── DELIVERY PERFORMANCE ── */}
+            {totalScheduled>0&&<Card dm={dm} className="p-4">
+              <p style={{color:t.text}} className="font-bold text-sm mb-1">🚚 Delivery Performance</p>
+              <p style={{color:t.sub}} className="text-[11px] mb-4">All-time delivery health metrics</p>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {[
+                  {label:"On-Time Delivery",val:`${fulfillmentRate}%`,color:fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444",sub:`${totalDelivered} of ${totalScheduled}`,bar:fulfillmentRate},
+                  {label:"Cancellation Rate",val:`${cancelRate}%`,color:cancelRate<=5?"#10b981":cancelRate<=15?"#f59e0b":"#ef4444",sub:`${cancelCount} cancelled`,bar:cancelRate},
+                  {label:"Replacement Rate",val:`${replRate}%`,color:replRate<=5?"#10b981":replRate<=10?"#f59e0b":"#ef4444",sub:`${replCount} replacements`,bar:replRate},
+                ].map(x=><div key={x.label} style={{background:t.inp,borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                  <p style={{color:x.color,fontWeight:900,fontSize:22,lineHeight:1}}>{x.val}</p>
+                  <p style={{color:t.text,fontSize:11,fontWeight:600,marginTop:4}}>{x.label}</p>
+                  <p style={{color:t.sub,fontSize:9,marginTop:2}}>{x.sub}</p>
+                  <div style={{height:4,borderRadius:4,background:t.border,overflow:"hidden",marginTop:8}}>
+                    <div style={{height:"100%",width:`${Math.min(100,x.bar)}%`,background:x.color,borderRadius:4,transition:"width 0.5s"}}/>
+                  </div>
+                </div>)}
+              </div>
+              <div style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)",borderRadius:10,padding:"10px 14px",border:`1px solid ${t.border}`}}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div style={{width:10,height:10,borderRadius:2,background:"#10b981"}}/>
+                    <span style={{color:t.sub,fontSize:10}}>Delivered: {totalDelivered}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div style={{width:10,height:10,borderRadius:2,background:"#ef4444"}}/>
+                    <span style={{color:t.sub,fontSize:10}}>Cancelled: {cancelCount}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div style={{width:10,height:10,borderRadius:2,background:"#f59e0b"}}/>
+                    <span style={{color:t.sub,fontSize:10}}>Pending: {deliveries.filter(d=>d.status==="Pending").length}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div style={{width:10,height:10,borderRadius:2,background:"#8b5cf6"}}/>
+                    <span style={{color:t.sub,fontSize:10}}>Replacements: {replCount}</span>
+                  </div>
+                </div>
+                <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",gap:1,marginTop:10}}>
+                  <div style={{flex:totalDelivered,background:"#10b981"}}/>
+                  <div style={{flex:cancelCount,background:"#ef4444"}}/>
+                  <div style={{flex:deliveries.filter(d=>d.status==="Pending").length,background:"#f59e0b"}}/>
+                  <div style={{flex:replCount,background:"#8b5cf6"}}/>
                 </div>
               </div>
+            </Card>}
+
+            {/* ── 14-DAY TREND CHART ── */}
+            <Card dm={dm} className="p-4">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div>
+                  <p style={{color:t.text}} className="font-bold text-sm">Daily Revenue & Delivery Trend — 14 Days</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Revenue bars (left axis) · deliveries line (right axis)</p>
+                </div>
+                <span style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>{inr(recentRevTotal)} total</span>
+              </div>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={dailyData} margin={{top:4,right:0,left:-10,bottom:0}}>
+                <BarChart data={dailyData} margin={{top:4,right:4,left:-10,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
                   <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
                   <YAxis yAxisId="left" tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
                   <YAxis yAxisId="right" orientation="right" tick={{fontSize:9,fill:t.sub}}/>
-                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?inr(v):v}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
                   <Legend wrapperStyle={{fontSize:10,paddingTop:6}}/>
                   <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="#10b981" radius={[3,3,0,0]}/>
                   <Bar yAxisId="right" dataKey="delivered" name="Deliveries" fill="#f59e0b" radius={[3,3,0,0]}/>
@@ -3621,89 +4380,101 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               </ResponsiveContainer>
             </Card>
 
-            {/* Day of week heatmap */}
+            {/* ── DAY OF WEEK PERFORMANCE ── */}
             <Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-1">Revenue by Day of Week</p>
-              <p style={{color:t.sub}} className="text-[11px] mb-3">Which days generate the most revenue</p>
-              <ResponsiveContainer width="100%" height={140}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text}} className="font-bold text-sm">Revenue by Day of Week</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Best day: <strong style={{color:"#f59e0b"}}>{bestDow.day}</strong> · {inr(bestDow.revenue)}</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={130}>
                 <BarChart data={dowData} margin={{top:4,right:0,left:-20,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
                   <XAxis dataKey="day" tick={{fontSize:11,fill:t.sub}}/>
                   <YAxis tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
-                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?inr(v):v}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
                   <Bar dataKey="revenue" name="Revenue" radius={[4,4,0,0]}>
-                    {dowData.map((entry,index)=><Cell key={index} fill={entry.revenue===Math.max(...dowData.map(d=>d.revenue))?"#f59e0b":dm?"#3a3a44":"#d1d5db"}/>)}
+                    {dowData.map((entry,index)=><Cell key={index} fill={entry.revenue===Math.max(...dowData.map(d=>d.revenue))?"#f59e0b":dm?"#3a3a44":"#e2e4e8"}/>)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </Card>
 
-            {/* Product Sales + Expense breakdown side by side */}
+            {/* ── PRODUCT PERFORMANCE + EXPENSE BREAKDOWN ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Product sales */}
+              {/* Product performance */}
               <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-2 flex items-center justify-between">
                   <div>
                     <p style={{color:t.text}} className="font-bold text-sm">Product Performance</p>
-                    <p style={{color:t.sub}} className="text-[11px]">By units sold & revenue</p>
+                    <p style={{color:t.sub}} className="text-[11px]">By revenue · share of total</p>
                   </div>
-                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(prodSales,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty Sold",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Delivery Count",key:"deliveryCount"}])}>CSV</Btn>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(prodSales,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])}>CSV</Btn>
                 </div>
-                {prodSales.map((p,i)=>(
-                  <div key={p.id} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span style={{color:t.sub,width:22,textAlign:"center"}} className="text-lg font-black">{i+1}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <p style={{color:t.text}} className="text-sm font-semibold truncate">{p.name}</p>
-                          <p className="text-sm font-black text-amber-500 shrink-0 ml-2">{inr(p.totalRev)}</p>
+                {prodSales.map((p,i)=>{
+                  const revShare=totalProductRev>0?Math.round(p.totalRev/totalProductRev*100):0;
+                  return <div key={p.id} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
+                    <div className="flex items-start justify-between mb-1.5 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span style={{color:t.sub,width:18,textAlign:"center",fontWeight:800,fontSize:11,flexShrink:0}}>{i+1}</span>
+                        <div className="min-w-0">
+                          <p style={{color:t.text,fontSize:12,fontWeight:600}} className="truncate">{p.name}</p>
+                          <p style={{color:t.sub,fontSize:10}}>{p.totalQty} {p.unit} · {p.deliveryCount} deliveries</p>
                         </div>
-                        <p style={{color:t.sub}} className="text-[11px]">{p.deliveryCount} deliveries · {p.totalQty} {p.unit} sold</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-amber-500 text-sm leading-none">{inr(p.totalRev)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{revShare}% of sales</p>
                       </div>
                     </div>
                     <div className="flex gap-2 items-center">
                       <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
-                        <div className="h-full rounded-full" style={{width:`${prodSales[0]?.totalQty>0?Math.round(p.totalQty/prodSales[0].totalQty*100):0}%`,background:PIE_COLORS[i%PIE_COLORS.length]}}/>
+                        <div className="h-full rounded-full" style={{width:`${revShare}%`,background:PIE_COLORS[i%PIE_COLORS.length],transition:"width 0.5s ease"}}/>
                       </div>
-                      <span style={{color:t.sub}} className="text-[10px] font-semibold w-8 text-right">{prodSales[0]?.totalQty>0?Math.round(p.totalQty/prodSales[0].totalQty*100):0}%</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,minWidth:28,textAlign:"right"}}>{revShare}%</span>
                     </div>
-                  </div>
-                ))}
+                  </div>;
+                })}
               </Card>
 
-              {/* Expense category breakdown */}
-              {expCatData.length>0&&<Card dm={dm} className="overflow-hidden">
-                <div className="p-4 pb-2">
-                  <p style={{color:t.text}} className="font-bold text-sm">Expense Breakdown by Category</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Where money is going</p>
+              {/* Expense breakdown */}
+              {expCatData.length>0?<Card dm={dm} className="overflow-hidden">
+                <div className="p-4 pb-2 flex items-center justify-between">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">Expense Breakdown</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{inr(totalExpenses)} total · {expCatData.length} categories</p>
+                  </div>
                 </div>
                 {expCatData.map((e,i)=>{
-                  const maxAmt=expCatData[0]?.amount||1;
+                  const pct=totalExpenses>0?Math.round(e.amount/totalExpenses*100):0;
                   return <div key={e.category} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
                         <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i%PIE_COLORS.length],flexShrink:0}}/>
-                        <p style={{color:t.text}} className="text-sm font-semibold">{e.category}</p>
+                        <p style={{color:t.text,fontSize:12,fontWeight:600}}>{e.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-red-500">{inr(e.amount)}</p>
-                        <p style={{color:t.sub}} className="text-[10px]">{e.count} entries</p>
+                        <p className="text-sm font-bold text-red-400">{inr(e.amount)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{pct}% · {e.count} entries</p>
                       </div>
                     </div>
                     <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
-                      <div className="h-full rounded-full" style={{width:`${Math.round(e.amount/maxAmt*100)}%`,background:PIE_COLORS[i%PIE_COLORS.length]}}/>
+                      <div className="h-full rounded-full" style={{width:`${pct}%`,background:PIE_COLORS[i%PIE_COLORS.length]}}/>
                     </div>
                   </div>;
                 })}
+              </Card>:<Card dm={dm} className="p-4 flex items-center justify-center" style={{minHeight:200}}>
+                <p style={{color:t.sub,fontSize:13}}>No expense data recorded yet.</p>
               </Card>}
             </div>
 
-            {/* Top customers table */}
+            {/* ── TOP CUSTOMERS TABLE ── */}
             <Card dm={dm} className="overflow-hidden">
-              <div className="p-4 pb-2 flex items-center justify-between">
+              <div className="p-4 pb-2 flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <p style={{color:t.text}} className="font-bold text-sm">Top Customers by Revenue</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Including collection status</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Top {top20pct} customers hold {top20share}% of revenue{top20share>=80?" — high concentration risk":""}</p>
                 </div>
                 <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(custRev,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Pending",key:"pending"}])}>CSV</Btn>
               </div>
@@ -3714,13 +4485,15 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Customer</th>
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Orders</th>
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Revenue</th>
+                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Share</th>
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Collected</th>
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Pending</th>
                     <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Status</th>
                   </tr></thead>
                   <tbody>
-                    {custRev.map((c,i)=>(
-                      <tr key={c.id} style={{borderBottom:`1px solid ${t.border}`}}>
+                    {custRev.map((c,i)=>{
+                      const share=totalPortfolioRev>0?Math.round(c.totalRev/totalPortfolioRev*100):0;
+                      return <tr key={c.id} style={{borderBottom:`1px solid ${t.border}`}}>
                         <td style={{color:t.sub}} className="px-4 py-2.5 font-black">{i+1}</td>
                         <td className="px-4 py-2.5">
                           <p style={{color:t.text}} className="font-semibold">{c.name}</p>
@@ -3728,47 +4501,66 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                         </td>
                         <td style={{color:t.sub}} className="px-4 py-2.5">{c.totalOrders}</td>
                         <td className="px-4 py-2.5 font-bold text-amber-500">{inr(c.totalRev)}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div style={{width:32,height:4,background:t.border,borderRadius:4,overflow:"hidden"}}>
+                              <div style={{width:`${share}%`,height:"100%",background:"#f59e0b",borderRadius:4}}/>
+                            </div>
+                            <span style={{color:t.sub,fontSize:10}}>{share}%</span>
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5 font-semibold text-emerald-500">{inr(c.paid||0)}</td>
                         <td className={`px-4 py-2.5 font-semibold ${(c.pending||0)>0?"text-red-500":"text-emerald-500"}`}>{inr(c.pending||0)}</td>
                         <td className="px-4 py-2.5">
                           <span style={{background:(c.pending||0)>0?"#ef444420":"#10b98120",color:(c.pending||0)>0?"#ef4444":"#10b981",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:10}}>{(c.pending||0)>0?"OWING":"CLEAR"}</span>
                         </td>
-                      </tr>
-                    ))}
+                      </tr>;
+                    })}
                   </tbody>
                 </table>
               </div>
             </Card>
 
-            {/* Wastage analytics */}
+            {/* ── WASTAGE ANALYTICS ── */}
             {wastageByType.length>0&&<Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-1">Wastage by Type</p>
-              <p style={{color:t.sub}} className="text-[11px] mb-3">Total losses by wastage category</p>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text}} className="font-bold text-sm">Wastage Analysis</p>
+                  <p style={{color:t.sub}} className="text-[11px]">{inr(totalWasteCost)} in losses · {wastageByType.reduce((s,w)=>s+w.qty,0)} units wasted</p>
+                </div>
+              </div>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                {wastageByType.map((w,i)=>(
-                  <div key={w.type} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderLeft:`3px solid ${PIE_COLORS[i%PIE_COLORS.length]}`}}>
-                    <p style={{color:t.text}} className="text-sm font-bold">{w.type}</p>
-                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{w.qty} units wasted</p>
-                    {w.cost>0&&<p className="text-red-500 font-semibold text-xs mt-1">{inr(w.cost)} loss</p>}
-                  </div>
-                ))}
+                {wastageByType.map((w,i)=>{
+                  const pct=totalWasteCost>0?Math.round(w.cost/totalWasteCost*100):0;
+                  return <div key={w.type} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderLeft:`3px solid ${PIE_COLORS[i%PIE_COLORS.length]}`}}>
+                    <p style={{color:t.text,fontWeight:700,fontSize:13}}>{w.type}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>{w.qty} units</p>
+                    {w.cost>0&&<>
+                      <p className="text-red-400 font-bold text-xs mt-1">{inr(w.cost)}</p>
+                      <p style={{color:t.sub,fontSize:9}}>{pct}% of waste losses</p>
+                    </>}
+                  </div>;
+                })}
               </div>
             </Card>}
 
-            {/* Activity log summary */}
+            {/* ── ACTIVITY LOG ── */}
             <Card dm={dm} className="overflow-hidden">
-              <div className="px-4 pt-4 pb-2"><p style={{color:t.text}} className="font-bold text-sm">Recent Activity Log</p></div>
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <p style={{color:t.text}} className="font-bold text-sm">Recent Activity Log</p>
+                <span style={{color:t.sub,fontSize:11}}>{actLog.length} entries</span>
+              </div>
               <Hr dm={dm}/>
               {actLog.length===0?<p style={{color:t.sub}} className="text-sm text-center py-5">No activity recorded yet.</p>
               :actLog.slice(0,20).map(a=>(
                 <div key={a.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-2.5 flex items-start justify-between gap-3 last:border-0">
                   <div className="flex-1 min-w-0">
-                    <p style={{color:t.text}} className="text-xs font-semibold">{a.action}</p>
-                    <p style={{color:t.sub}} className="text-[11px] truncate">{a.detail}</p>
+                    <p style={{color:t.text,fontSize:12,fontWeight:600}}>{a.action}</p>
+                    <p style={{color:t.sub,fontSize:11}} className="truncate">{a.detail}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p style={{color:t.sub}} className="text-[10px]">{a.user}</p>
-                    <p style={{color:t.sub}} className="text-[10px]">{a.ts}</p>
+                    <p style={{color:t.sub,fontSize:10}}>{a.user}</p>
+                    <p style={{color:t.sub,fontSize:10}}>{a.ts}</p>
                   </div>
                 </div>
               ))}
@@ -3785,8 +4577,9 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           const last30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
 
           // Filter records based on active date filter
-          const filterDates = ptDateFilter==="today"?[todayStr]:ptDateFilter==="yesterday"?[yesterdayStr]:ptDateFilter==="week"?last7:ptDateFilter==="month"?last30:null;
-          const filteredPT = filterDates ? prodTargets.filter(x=>filterDates.includes(x.date)) : prodTargets;
+          const filterDates = ptDateFilter==="today"?[todayStr]:ptDateFilter==="yesterday"?[yesterdayStr]:ptDateFilter==="week"?last7:ptDateFilter==="month"?last30:ptDateFilter==="custom"&&ptCustomFrom?Array.from({length:Math.min(365,Math.ceil((new Date(ptCustomTo||todayStr)-new Date(ptCustomFrom))/86400000)+1)},(_,i)=>{const d=new Date(ptCustomFrom);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);}):null;
+          const filteredPT = (filterDates ? prodTargets.filter(x=>filterDates.includes(x.date)) : prodTargets)
+            .filter(x=>!ptSearch||x.product?.toLowerCase().includes(ptSearch.toLowerCase())||x.shift?.toLowerCase().includes(ptSearch.toLowerCase())||x.notes?.toLowerCase().includes(ptSearch.toLowerCase()));
 
           // Get unique dates in filtered set, sorted newest first
           const uniqueDates=[...new Set(filteredPT.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
@@ -3821,24 +4614,70 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               </>;
             })()}
             {/* Header row */}
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2 flex-wrap">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-2 flex-wrap items-center">
                 <Pill dm={dm} c="amber">{todayPT.length} today</Pill>
                 <Pill dm={dm} c={todayPT.length>0&&todayPT.every(x=>x.actual>=x.target)?"green":"red"}>
                   {todayPT.reduce((s,x)=>s+x.actual,0)} / {todayPT.reduce((s,x)=>s+x.target,0)} units
                 </Pill>
+                <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>∞ {prodTargets.length} records stored</span>
               </div>
-              <Btn dm={dm} size="sm" onClick={()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");}}>+ Log Production</Btn>
+              <div className="flex gap-2 flex-wrap">
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Efficiency",val:r=>r.target>0?Math.round((r.actual/r.target)*100)+"%":"—"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>
+                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Notes",key:"notes"},{label:"Created At",key:"createdAt"}],settings)}>📊 XLS</Btn>
+                <Btn dm={dm} size="sm" onClick={()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");}}>+ Log Production</Btn>
+              </div>
             </div>
+
+            {/* Search + Auto-Deduct toggle */}
+            <div className="flex gap-2 flex-wrap items-center">
+              <div style={{flex:1,minWidth:180,background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px"}}>
+                <span style={{color:t.sub,fontSize:14}}>🔍</span>
+                <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search product, shift, notes…"
+                  style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:13,padding:"10px 0"}}/>
+                {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,lineHeight:1,background:"none",border:"none",cursor:"pointer"}}>×</button>}
+              </div>
+              {/* Auto-Deduct toggle */}
+              <div style={{background:ptAutoDeduct?(dm?"#10b98120":"#ecfdf5"):(dm?"rgba(255,255,255,0.04)":"#f9f9f8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":t.border}`,borderRadius:12,padding:"8px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",transition:"all 0.2s"}}
+                onClick={()=>setPtAutoDeduct(v=>!v)}>
+                <div style={{width:36,height:20,borderRadius:99,background:ptAutoDeduct?"#10b981":t.border,padding:2,display:"flex",alignItems:"center",justifyContent:ptAutoDeduct?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0}}>
+                  <div style={{width:16,height:16,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                </div>
+                <div>
+                  <p style={{color:ptAutoDeduct?"#10b981":t.text,fontSize:12,fontWeight:700,lineHeight:1}}>Smart Auto-Deduct</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:2}}>{ptAutoDeduct?"ON — deducts supply on save":"OFF — no supply changes"}</p>
+                </div>
+              </div>
+            </div>
+            {ptAutoDeduct&&<div style={{background:"#10b98112",border:"1px solid #10b98130",borderRadius:12,padding:"10px 14px"}}>
+              <p style={{color:"#10b981",fontSize:12,fontWeight:600}}>🤖 Smart Auto-Deduct is ON</p>
+              <p style={{color:t.sub,fontSize:11,marginTop:3}}>When you log actual units produced, the matching supply item's quantity is automatically reduced by that amount. You'll see exactly what changed in the notification.</p>
+            </div>}
 
             {/* Date filter pills */}
             <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-              {[["today","Today"],["yesterday","Yesterday"],["week","Last 7 Days"],["month","Last 30 Days"],["all","All Time"]].map(([val,label])=>(
+              {[["today","Today"],["yesterday","Yesterday"],["week","Last 7 Days"],["month","Last 30 Days"],["all","All Time"],["custom","📅 Custom"]].map(([val,label])=>(
                 <button key={val} onClick={()=>setPtDateFilter(val)}
                   style={ptDateFilter===val?{background:dm?"#f59e0b":"#1c1917",color:dm?"#000":"#fff"}:{background:t.inp,color:t.sub}}
                   className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0">{label}</button>
               ))}
             </div>
+            {ptDateFilter==="custom"&&<div className="flex gap-2 items-center flex-wrap">
+              <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:t.sub,fontSize:11,fontWeight:600}}>From</span>
+                <input type="date" value={ptCustomFrom} onChange={e=>setPtCustomFrom(e.target.value)}
+                  style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+              </div>
+              <span style={{color:t.sub,fontSize:12}}>→</span>
+              <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:t.sub,fontSize:11,fontWeight:600}}>To</span>
+                <input type="date" value={ptCustomTo} onChange={e=>setPtCustomTo(e.target.value)}
+                  style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+              </div>
+              {ptCustomFrom&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>
+                {filteredPT.length} records · {Array.from(new Set(filteredPT.map(x=>x.date))).length} days
+              </span>}
+            </div>}
 
             {/* Summary bar for filtered period */}
             {filteredPT.length>0&&(()=>{
@@ -3849,11 +4688,21 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">
                   {ptDateFilter==="today"?"Today":ptDateFilter==="yesterday"?"Yesterday":ptDateFilter==="week"?"Last 7 Days":ptDateFilter==="month"?"Last 30 Days":"All Time"} — Summary
                 </p>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="text-center"><p style={{color:t.text}} className="font-black text-lg">{fTarget}</p><p style={{color:t.sub}} className="text-[10px]">Target</p></div>
-                  <div className="text-center"><p className={`font-black text-lg ${fActual>=fTarget?"text-emerald-500":"text-amber-500"}`}>{fActual}</p><p style={{color:t.sub}} className="text-[10px]">Actual</p></div>
-                  <div className="text-center"><p className={`font-black text-lg ${fPct>=100?"text-emerald-500":fPct>=75?"text-amber-500":"text-red-500"}`}>{fPct}%</p><p style={{color:t.sub}} className="text-[10px]">Efficiency</p></div>
-                </div>
+                {(()=>{
+                  const totalDeducted=filteredPT.filter(x=>x.deduction).reduce((s,x)=>s+(x.deduction.deducted||0),0);
+                  const deductedItems=[...new Set(filteredPT.filter(x=>x.deduction).map(x=>x.deduction.supplyItem))];
+                  return <>
+                    <div className={`grid gap-3 mb-3 ${totalDeducted>0?"grid-cols-4":"grid-cols-3"}`}>
+                      <div className="text-center"><p style={{color:t.text}} className="font-black text-lg">{fTarget}</p><p style={{color:t.sub}} className="text-[10px]">Target</p></div>
+                      <div className="text-center"><p className={`font-black text-lg ${fActual>=fTarget?"text-emerald-500":"text-amber-500"}`}>{fActual}</p><p style={{color:t.sub}} className="text-[10px]">Actual</p></div>
+                      <div className="text-center"><p className={`font-black text-lg ${fPct>=100?"text-emerald-500":fPct>=75?"text-amber-500":"text-red-500"}`}>{fPct}%</p><p style={{color:t.sub}} className="text-[10px]">Efficiency</p></div>
+                      {totalDeducted>0&&<div className="text-center"><p className="font-black text-lg text-emerald-500">{totalDeducted}</p><p style={{color:t.sub}} className="text-[10px]">Supply Deducted</p></div>}
+                    </div>
+                    {deductedItems.length>0&&<div style={{background:"#10b98110",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
+                      <p style={{color:"#10b981",fontSize:10,fontWeight:700}}>📦 Deducted from: {deductedItems.join(", ")}</p>
+                    </div>}
+                  </>;
+                })()}
                 <div style={{background:t.border,height:6,borderRadius:6,overflow:"hidden"}}>
                   <div style={{width:`${Math.min(fPct,100)}%`,background:fPct>=100?"#10b981":fPct>=75?"#f59e0b":"#ef4444",height:"100%",borderRadius:6,transition:"width 0.6s"}}/>
                 </div>
@@ -3910,6 +4759,10 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                           <Pill dm={dm} c="sky">{r.shift}</Pill>
                         </div>
                         {r.notes&&<p style={{color:t.sub}} className="text-[11px] italic mt-0.5">"{r.notes}"</p>}
+                        {r.deduction&&<div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:8,padding:"4px 8px",marginTop:4,display:"inline-flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:10}}>📦</span>
+                          <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>Deducted {r.deduction.deducted} from "{r.deduction.supplyItem}" ({r.deduction.qtyBefore}→{r.deduction.qtyAfter})</span>
+                        </div>}
                       </div>
                       <div className="flex items-center gap-2">
                         <p className={`text-sm font-black ${r.actual>=r.target?"text-emerald-500":r.actual>=r.target*0.75?"text-amber-500":"text-red-500"}`}>
@@ -3925,7 +4778,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 ))}
               </div></Card>;
             })}
-            {filteredPT.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No production records yet. Tap + Log Production to start tracking.":"No records for this period."}</p>}
+            {filteredPT.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No production records yet. Tap + Log Production to start tracking. All records are stored forever — daily, weekly, monthly.":ptSearch?"No records match your search.":"No records for this period."}</p>}
 
             {/* ── SHIFT HANDOVER NOTES ── */}
             {(isAdmin||isFactory)&&(()=>{
@@ -4028,6 +4881,8 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             <div className="flex items-center justify-between">
               <Pill dm={dm} c="sky">{fQC.length} records</Pill>
               <div className="flex gap-2">
+                {can("qc_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("QC Logs",qcLogs,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Grade",key:"grade"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>}
+                {can("qc_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("QC Logs",qcLogs,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Grade",key:"grade"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"},{label:"Logged By",key:"loggedBy"}],settings)}>📊 XLS</Btn>}
                 {can("qc_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(qcLogs,"qc_logs",[{label:"Product",key:"product"},{label:"Grade",key:"grade"},{label:"Shift",key:"shift"},{label:"Date",key:"date"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
                 <Btn dm={dm} size="sm" onClick={()=>{setQcF({product:"",shift:(settings?.shifts||["Morning"])[0],date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");}}>+ QC Check</Btn>
               </div>
@@ -5382,8 +6237,58 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           <Inp dm={dm} label="Target (units) *" type="number" value={ptF.target} onChange={e=>setPtF({...ptF,target:e.target.value})} placeholder="e.g. 200"/>
           <Inp dm={dm} label="Actual (units)" type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="Fill after shift"/>
         </div>
+        {/* Efficiency preview */}
+        {(+ptF.target>0&&+ptF.actual>0)&&(()=>{
+          const eff=Math.round(+ptF.actual/+ptF.target*100);
+          const col=eff>=100?"#10b981":eff>=75?"#f59e0b":"#ef4444";
+          return <div style={{background:col+"15",border:`1px solid ${col}30`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <p style={{color:col,fontWeight:800,fontSize:18,lineHeight:1}}>{eff}% efficiency</p>
+              <p style={{color:T(dm).sub,fontSize:11,marginTop:2}}>{+ptF.actual} produced of {+ptF.target} target · {+ptF.actual>=+ptF.target?`+${+ptF.actual-+ptF.target} over`:`${+ptF.target-+ptF.actual} short`}</p>
+            </div>
+            <span style={{fontSize:28}}>{eff>=100?"🎯":eff>=75?"⚡":"⚠️"}</span>
+          </div>;
+        })()}
         <Inp dm={dm} label="Date" type="date" value={ptF.date} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
         <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff..."/>
+        {/* Auto-deduct toggle in sheet */}
+        {ptSh==="add"&&<div style={{background:ptAutoDeduct?(dm?"#10b98115":"#f0fdf4"):(dm?"rgba(255,255,255,0.03)":"#fafaf8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":T(dm).border}`,borderRadius:14,padding:"12px 14px"}}>
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <p style={{color:ptAutoDeduct?"#10b981":T(dm).text,fontWeight:700,fontSize:13}}>🤖 Smart Auto-Deduct</p>
+              <p style={{color:T(dm).sub,fontSize:11,marginTop:1}}>Reduces matching supply qty by actual units produced</p>
+            </div>
+            <button onClick={()=>setPtAutoDeduct(v=>!v)}
+              style={{width:40,height:22,borderRadius:99,background:ptAutoDeduct?"#10b981":T(dm).border,padding:2,display:"flex",alignItems:"center",justifyContent:ptAutoDeduct?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0,border:"none",cursor:"pointer"}}>
+              <div style={{width:18,height:18,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </button>
+          </div>
+          {ptAutoDeduct&&+ptF.actual>0&&(()=>{
+            const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
+            const pn=pname.toLowerCase();
+            const scored=supplies.map(s=>{
+              const sn=(s.item||"").toLowerCase();
+              let score=0;
+              if(sn===pn) score=100;
+              else if(sn.includes(pn)||pn.includes(sn)) score=60;
+              else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}
+              return{...s,_score:score};
+            }).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
+            const match=scored[0];
+            const afterQty=match?Math.max(0,(match.qty||0)-+ptF.actual):0;
+            const willGoLow=match&&match.minStock>0&&afterQty<=match.minStock;
+            return match
+              ?<div style={{background:"#10b98110",borderRadius:8,padding:"8px 10px",marginTop:8}}>
+                  <p style={{color:"#10b981",fontSize:11,fontWeight:600}}>✓ Will deduct {+ptF.actual} from "{match.item}" <span style={{opacity:0.6,fontSize:10}}>({match._score}% match)</span></p>
+                  <p style={{color:T(dm).sub,fontSize:10,marginTop:2}}>Stock: {match.qty} {match.unit} → <strong style={{color:willGoLow?"#f59e0b":"#10b981"}}>{afterQty} {match.unit}</strong>{willGoLow?" ⚠️ Low stock!":""}</p>
+                  {scored.length>1&&<p style={{color:T(dm).sub,fontSize:10,marginTop:1}}>Also found: {scored.slice(1,3).map(s=>s.item).join(", ")}</p>}
+                </div>
+              :<div style={{background:"#f59e0b10",borderRadius:8,padding:"8px 10px",marginTop:8}}>
+                  <p style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⚠️ No matching supply found for "{pname}"</p>
+                  <p style={{color:T(dm).sub,fontSize:10,marginTop:2}}>Make sure a supply item name matches this product</p>
+                </div>;
+          })()}
+        </div>}
         <Btn dm={dm} onClick={savePT} className="w-full">Save Production Record</Btn>
       </Sheet>
 
@@ -5421,6 +6326,73 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
       <Confirm dm={dm} msg={conf?.msg} onYes={()=>{conf?.yes();setConf(null);}} onNo={()=>setConf(null)}/>
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          BULK ORDER ENTRY SHEET
+      ═══════════════════════════════════════════════════════════════ */}
+      <Sheet dm={dm} open={bulkOrderSh} onClose={()=>setBulkOrderSh(false)} title="📋 Bulk Order Entry">
+        <p style={{color:t.sub}} className="text-xs">Create delivery orders for multiple customers at once. Toggle on the customers you want, optionally adjust quantities, then save all at once.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Inp dm={dm} label="Order Date *" type="date" value={bulkOrderDate} onChange={e=>setBulkOrderDate(e.target.value)}/>
+          <Sel dm={dm} label="Status" value={bulkOrderStatus} onChange={e=>setBulkOrderStatus(e.target.value)}>
+            {(settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"]).map(s=><option key={s}>{s}</option>)}
+          </Sel>
+        </div>
+        <div className="flex items-center justify-between">
+          <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">{bulkOrderRows.filter(r=>r.include).length} of {bulkOrderRows.length} selected</p>
+          <div className="flex gap-2">
+            <button onClick={()=>setBulkOrderRows(r=>r.map(x=>({...x,include:true})))} style={{color:"#f59e0b"}} className="text-xs font-semibold">All</button>
+            <button onClick={()=>setBulkOrderRows(r=>r.map(x=>({...x,include:false})))} style={{color:t.sub}} className="text-xs font-semibold">None</button>
+          </div>
+        </div>
+        <Hr dm={dm}/>
+        <div className="flex flex-col gap-2" style={{maxHeight:360,overflowY:"auto"}}>
+          {bulkOrderRows.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No active customers found.</p>}
+          {bulkOrderRows.map((row,ri)=>{
+            const tot=lineTotal(row.orderLines);
+            return <div key={row.customerId} style={{background:row.include?(dm?"rgba(245,158,11,0.08)":"rgba(245,158,11,0.04)"):t.inp,border:`1.5px solid ${row.include?"#f59e0b40":t.border}`,borderRadius:14,padding:"10px 12px",transition:"all 0.15s"}}>
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* Toggle checkbox */}
+                  <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,include:!x.include}:x))}
+                    style={{width:20,height:20,borderRadius:6,border:`2px solid ${row.include?"#f59e0b":t.inpB}`,background:row.include?"#f59e0b":t.card,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",transition:"all 0.15s"}}>
+                    {row.include&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                  <div className="min-w-0">
+                    <p style={{color:t.text,fontWeight:700,fontSize:13}} className="truncate">{row.customer}</p>
+                    {row.address&&<p style={{color:t.sub,fontSize:10}} className="truncate">📍 {row.address}</p>}
+                  </div>
+                </div>
+                {canSeePrices&&tot>0&&<span style={{color:"#f59e0b",fontWeight:800,fontSize:12}} className="shrink-0">{inr(tot)}</span>}
+              </div>
+              {/* Item qty inline editing */}
+              {row.include&&<div className="flex flex-col gap-1 mt-2 pt-2" style={{borderTop:`1px solid ${t.border}`}}>
+                {products.map(p=>{
+                  const ol=safeO(row.orderLines);
+                  const qty=(ol[p.id]?.qty)||0;
+                  return <div key={p.id} className="flex items-center justify-between gap-2">
+                    <span style={{color:t.sub,fontSize:12,flex:1}} className="truncate">{p.name}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:Math.max(0,(safeO(x.orderLines)[p.id]?.qty||0)-1),priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices[0]||0)}}}:x))}
+                        style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                      <span style={{color:t.text,fontWeight:700,fontSize:13,minWidth:20,textAlign:"center"}}>{qty}</span>
+                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:(safeO(x.orderLines)[p.id]?.qty||0)+1,priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices[0]||0)}}}:x))}
+                        style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                    </div>
+                  </div>;
+                })}
+              </div>}
+            </div>;
+          })}
+        </div>
+        <Hr dm={dm}/>
+        <div className="flex gap-2">
+          <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setBulkOrderSh(false)}>Cancel</Btn>
+          <Btn dm={dm} v="success" className="flex-1" onClick={saveBulkOrders}>
+            ✓ Create {bulkOrderRows.filter(r=>r.include).length} Orders
+          </Btn>
+        </div>
+      </Sheet>
     </>
   );
 }
