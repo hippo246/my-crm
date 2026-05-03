@@ -959,7 +959,9 @@ function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
       markersRef.current.push(marker);
     });
     const coords=logs.map(l=>[l.lat,l.lng]);
-    try{map.fitBounds(L.latLngBounds(coords),{padding:[40,40],maxZoom:18});}catch{}
+    // Cap single-pin zoom at 15 — zoom 18 is individual-building level which is too close for one ping.
+    const zoomCap=coords.length===1?15:18;
+    try{map.fitBounds(L.latLngBounds(coords),{padding:[40,40],maxZoom:zoomCap});}catch{}
   },[logs,actionMeta]);// eslint-disable-line
 
   return <div ref={mapRef} style={{width:"100%",height:420,borderRadius:12,overflow:"hidden",background:dm?"#1a1a2e":"#e8f4f8"}}>
@@ -1097,10 +1099,12 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     if(!navigator.geolocation) return;
     if(sess.role!=="agent") return; // delivery agents only — admins/factory never tracked
     if(!can("gps_track")) return;
-    let bestPos=null; let attempts=0;
+    let bestPos=null; let attempts=0; let committed=false;
     function commit(pos){
+      if(committed) return;
+      committed=true;
       const log={
-        id:uid(), agentId:sess.id, agentName:sess.name, action, customer,
+        id:uid(), agentId:sess.id, agentName:sess.name, agentRole:sess.role, action, customer,
         lat:pos.coords.latitude, lng:pos.coords.longitude,
         acc:Math.round(pos.coords.accuracy),
         speed:pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):null,
@@ -1113,6 +1117,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     function tryFix(){
       navigator.geolocation.getCurrentPosition(
         pos=>{
+          if(committed) return;
           attempts++;
           if(!bestPos||pos.coords.accuracy<bestPos.coords.accuracy) bestPos=pos;
           if(attempts<3&&pos.coords.accuracy>20) setTimeout(tryFix,2000);
@@ -1128,9 +1133,15 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Capture session-start location once when agent logs in
   const sessionGpsCaptured = useRef(false);
   useEffect(()=>{
-    if(!sessionGpsCaptured.current && sess?.id){
-      sessionGpsCaptured.current=true;
-      captureGPS("session_start","");
+    if(!sessionGpsCaptured.current && sess?.id && navigator.geolocation){
+      const doCapture=()=>{ sessionGpsCaptured.current=true; captureGPS("session_start",""); };
+      if(navigator.permissions){
+        navigator.permissions.query({name:"geolocation"}).then(result=>{
+          if(result.state!=="denied") doCapture();
+        }).catch(doCapture);
+      } else {
+        doCapture();
+      }
     }
   },[sess?.id]);// eslint-disable-line
 
@@ -3306,13 +3317,14 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             const aLogs=allLogs.filter(l=>l.agentId===a.id&&l.lat&&l.lng);
             const todayLogs=aLogs.filter(l=>l.ts>=startOfToday.getTime());
             const lastLog=aLogs[0];
+            const lastTodayLog=todayLogs[0];
             const firstToday=todayLogs[todayLogs.length-1];
             const delivCount=aLogs.filter(l=>l.action==="marked_delivered").length;
             const transitCount=aLogs.filter(l=>l.action==="marked_transit").length;
             const sessionCount=aLogs.filter(l=>l.action==="session_start").length;
             const delivToday=todayLogs.filter(l=>l.action==="marked_delivered").length;
-            // rough active duration today: last ping - first ping (minutes)
-            const activeMins=firstToday&&lastLog&&todayLogs.length>1?Math.round((lastLog.ts-firstToday.ts)/60000):null;
+            // rough active duration today: last today ping - first today ping (minutes)
+            const activeMins=firstToday&&lastTodayLog&&todayLogs.length>1?Math.round((lastTodayLog.ts-firstToday.ts)/60000):null;
             return {a,lastLog,firstToday,delivCount,transitCount,sessionCount,delivToday,activeMins,total:aLogs.length,todayTotal:todayLogs.length};
           });
 
@@ -3320,26 +3332,29 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           function getDailyBreakdown(){
             const map={};
             logsWithGps.forEach(l=>{
-              const d=new Date(l.ts).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
-              if(!map[d]) map[d]={date:d,ts:l.ts,entries:[],agents:new Set(),delivered:0,transit:0,sessions:0};
-              map[d].entries.push(l);
-              map[d].agents.add(l.agentName);
-              if(l.action==="marked_delivered") map[d].delivered++;
-              if(l.action==="marked_transit") map[d].transit++;
-              if(l.action==="session_start") map[d].sessions++;
+              // Use ISO date string (YYYY-MM-DD) as key to avoid toLocaleDateString
+              // locale inconsistencies across devices splitting same day into multiple groups.
+              const isoKey=new Date(l.ts).toISOString().slice(0,10);
+              const displayDate=new Date(l.ts).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric",timeZone:"Asia/Kolkata"});
+              if(!map[isoKey]) map[isoKey]={date:displayDate,isoKey,ts:l.ts,entries:[],agents:new Set(),delivered:0,transit:0,sessions:0};
+              map[isoKey].entries.push(l);
+              map[isoKey].agents.add(l.agentName);
+              if(l.action==="marked_delivered") map[isoKey].delivered++;
+              if(l.action==="marked_transit") map[isoKey].transit++;
+              if(l.action==="session_start") map[isoKey].sessions++;
             });
-            return Object.values(map).sort((a,b)=>b.ts-a.ts);
+            return Object.values(map).sort((a,b)=>b.isoKey.localeCompare(a.isoKey));
           }
 
           // exports
           function exportGpsCSV(){
-            const rows=[["#","Agent","Role","Action","Detail / Customer","Date","Time","Latitude","Longitude","Accuracy (m)","Google Maps"]];
+            const rows=[["#","Agent","Role","Action","Detail / Customer","Date","Time","Latitude","Longitude","Accuracy (m)","Speed (km/h)","Heading (°)","Google Maps"]];
             logsWithGps.forEach((l,i)=>{
               const m=ACTION_META[l.action]||{label:l.action};
               const d=new Date(l.ts);
               rows.push([i+1,l.agentName,l.agentRole||"agent",m.label,l.customer||"—",
                 d.toLocaleDateString("en-IN"),d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
-                l.lat,l.lng,l.acc,`https://maps.google.com/?q=${l.lat},${l.lng}`]);
+                l.lat,l.lng,l.acc,l.speed!=null?l.speed:"",l.heading!=null?l.heading:"",`https://maps.google.com/?q=${l.lat},${l.lng}`]);
             });
             const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
             const blob=new Blob([csv],{type:"text/csv"});
@@ -3364,6 +3379,8 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 <td style="padding:6px 10px;font-size:12px">${d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</td>
                 <td style="padding:6px 10px;font-size:12px;color:#6b7280">${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}</td>
                 <td style="padding:6px 10px;font-size:12px;color:#6b7280">±${l.acc}m</td>
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280">${l.speed!=null?l.speed+" km/h":"—"}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280">${l.heading!=null?l.heading+"°":"—"}</td>
                 <td style="padding:6px 10px;font-size:12px"><a href="https://maps.google.com/?q=${l.lat},${l.lng}" style="color:#0ea5e9;font-weight:600">View ↗</a></td>
               </tr>`;
             }).join("");
@@ -3382,7 +3399,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 {l:"Sessions",v:logsWithGps.filter(x=>x.action==="session_start").length,c:"#f59e0b"},
               ].map(s=>`<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px"><p style="color:${s.c};font-size:22px;font-weight:800;margin:0">${s.v}</p><p style="color:#6b7280;font-size:11px;margin:2px 0 0;font-weight:600">${s.l}</p></div>`).join("")}
             </div>
-            <table><thead><tr><th>#</th><th>Agent</th><th>Action</th><th>Detail</th><th>Date</th><th>Time</th><th>Coordinates</th><th>Accuracy</th><th>Map</th></tr></thead>
+            <table><thead><tr><th>#</th><th>Agent</th><th>Action</th><th>Detail</th><th>Date</th><th>Time</th><th>Coordinates</th><th>Accuracy</th><th>Speed</th><th>Heading</th><th>Map</th></tr></thead>
             <tbody>${rows}</tbody></table>
             <p style="margin-top:24px;font-size:11px;color:#9ca3af">Confidential · ${settings?.companyName||"TAS Healthy World"} · This report was auto-generated from the Operations CRM</p>
             </body></html>`;
