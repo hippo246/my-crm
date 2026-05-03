@@ -661,45 +661,46 @@ function Hr({dm}){const t=T(dm);return <div style={{height:1,background:t.border
 function Inp({label,dm,className="",...p}){
   const t=T(dm);
   return <div className={className}>
-    {label&&<label style={{color:t.sub,letterSpacing:"0.06em"}} className="block text-[10px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
-    <input style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:15,WebkitAppearance:"none",borderRadius:6,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full px-3 py-2.5 outline-none placeholder:text-slate-400/50" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}/>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
+    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",borderRadius:12,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:48,width:"100%",padding:"12px 14px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}/>
   </div>;
 }
 function Sel({label,dm,children,className="",...p}){
   const t=T(dm);
-  return <div className={className}>
-    {label&&<label style={{color:t.sub,letterSpacing:"0.06em"}} className="block text-[10px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
-    <select style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:15,WebkitAppearance:"none",appearance:"none",borderRadius:6,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full px-3 py-2.5 outline-none" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
+  return <div className={className} style={{position:"relative"}}>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
+    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",appearance:"none",borderRadius:12,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:48,width:"100%",padding:"12px 38px 12px 14px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
+    <span style={{position:"absolute",right:14,top:"50%",transform:`translateY(${label?"-2px":"50%"})`,pointerEvents:"none",color:t.sub,fontSize:11}}>▾</span>
   </div>;
 }
 function Btn({children,onClick,v="primary",size="md",className="",disabled=false,dm}){
   const t=T(dm);
   const V={
-    primary:`background:${t.accent};color:${t.accentFg};border:1px solid ${t.accent};`,
-    ghost:dm?"background:#1c2128;color:#e6edf3;border:1px solid #30363d;":"background:#ffffff;color:#1e3a5f;border:1px solid #dde1e8;",
-    danger:"background:#dc2626;color:#fff;border:1px solid #dc2626;",
-    success:"background:#059669;color:#fff;border:1px solid #059669;",
-    amber:"background:#d97706;color:#fff;border:1px solid #d97706;",
-    outline:dm?"background:transparent;color:#60a5fa;border:1px solid #60a5fa;":"background:transparent;color:#1e3a5f;border:1px solid #1e3a5f;",
-    sky:"background:#0ea5e9;color:#fff;border:1px solid #0ea5e9;",
-    purple:"background:#7c3aed;color:#fff;border:1px solid #7c3aed;",
+    primary:`background:${t.accent};color:${t.accentFg};border:1.5px solid ${t.accent};`,
+    ghost:dm?"background:#1c2128;color:#e6edf3;border:1.5px solid #30363d;":"background:#ffffff;color:#1e3a5f;border:1.5px solid #dde1e8;",
+    danger:"background:#dc2626;color:#fff;border:1.5px solid #dc2626;",
+    success:"background:#059669;color:#fff;border:1.5px solid #059669;",
+    amber:"background:#d97706;color:#fff;border:1.5px solid #d97706;",
+    outline:dm?"background:transparent;color:#60a5fa;border:1.5px solid #60a5fa;":"background:transparent;color:#1e3a5f;border:1.5px solid #1e3a5f;",
+    sky:"background:#0ea5e9;color:#fff;border:1.5px solid #0ea5e9;",
+    purple:"background:#7c3aed;color:#fff;border:1.5px solid #7c3aed;",
   };
-  const S={sm:"padding:6px 12px;font-size:12px;min-height:32px;",md:"padding:9px 16px;font-size:13px;min-height:40px;",lg:"padding:11px 24px;font-size:14px;min-height:46px;"};
-  const base={fontWeight:600,borderRadius:6,letterSpacing:"0.01em",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.45:1,transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6};
+  const S={sm:"padding:8px 14px;font-size:13px;min-height:40px;border-radius:10px;",md:"padding:12px 18px;font-size:15px;min-height:50px;border-radius:14px;",lg:"padding:14px 28px;font-size:16px;min-height:54px;border-radius:16px;"};
+  const base={fontWeight:600,letterSpacing:"0.01em",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.45:1,transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6};
   const styleStr=(V[v]||V.primary)+(S[size]||S.md);
   const styleObj={...base,...Object.fromEntries(styleStr.split(";").filter(Boolean).map(s=>{const[k,...vs]=s.split(":");const key=k.trim().replace(/-([a-z])/g,(_,c)=>c.toUpperCase());return[key,vs.join(":").trim()];}))};
   return <button onClick={onClick} disabled={disabled} style={styleObj} className={cx("select-none active:scale-[0.96] crm-btn-press",className)}>{children}</button>;
 }
 function Card({children,className="",dm}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)",borderRadius:8}} className={className}>{children}</div>;
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)",borderRadius:16}} className={className}>{children}</div>;
 }
 function StatCard({label,value,sub,accent,dm,animDelay="0.05s"}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:8,borderLeft:`3px solid ${accent}`,"--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="p-4 relative crm-stat-card crm-list-item">
-    <p style={{color:t.sub,letterSpacing:"0.07em"}} className="text-[10px] font-semibold uppercase mb-2">{label}</p>
-    <p style={{color:t.text}} className="text-2xl font-bold leading-none tracking-tight">{value}</p>
-    {sub&&<p style={{color:t.sub}} className="text-[11px] mt-1.5 font-medium">{sub}</p>}
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:16,borderLeft:`3px solid ${accent}`,"--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="p-4 relative crm-stat-card crm-list-item">
+    <p style={{color:t.sub,letterSpacing:"0.06em",fontSize:10}} className="font-semibold uppercase mb-2">{label}</p>
+    <p style={{color:t.text,fontSize:22}} className="font-bold leading-none tracking-tight">{value}</p>
+    {sub&&<p style={{color:t.sub,fontSize:12}} className="mt-1.5 font-medium">{sub}</p>}
   </div>;
 }
 function Sheet({open,title,onClose,children,dm}){
@@ -722,39 +723,45 @@ function Sheet({open,title,onClose,children,dm}){
     };
   },[open]);
   if(!open)return null;
-  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:t.card,maxHeight:"92svh",border:`1px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.35)",borderRadius:"8px 8px 0 0"}} className="w-full max-w-lg sm:rounded-lg flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
-      <div style={{borderBottom:`1px solid ${t.border}`,background:dm?"#1c2128":"#f8fafc"}} className="flex items-center justify-between px-5 py-4 shrink-0 rounded-t-lg">
-        <span style={{color:t.text,letterSpacing:"-0.01em"}} className="font-semibold text-sm">{title}</span>
-        <button onClick={onClose} style={{background:"transparent",color:t.sub,border:`1px solid ${t.inpB}`,width:28,height:28,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s"}} className="hover:opacity-70">✕</button>
+  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:t.card,maxHeight:"94svh",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
+      {/* Drag handle — mobile only */}
+      <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
+        <div style={{width:40,height:4,borderRadius:99,background:t.border}}/>
       </div>
-      <div className="px-5 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"calc(1.25rem + env(safe-area-inset-bottom))"}}>{children}</div>
+      {/* Header */}
+      <div style={{borderBottom:`1px solid ${t.border}`,background:dm?"rgba(28,33,40,0.8)":"rgba(248,250,252,0.9)"}} className="flex items-center justify-between px-5 py-4 shrink-0 sm:rounded-t-2xl">
+        <span style={{color:t.text,letterSpacing:"-0.01em",fontSize:16}} className="font-bold">{title}</span>
+        <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.inpB}`,width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>✕</button>
+      </div>
+      {/* Content */}
+      <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
     </div>
   </div>;
 }
 function Toast({msg,onDone}){
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);});
-  return <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] text-sm px-4 py-3 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:6}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
+  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(72px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center px-6 crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
-    <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:"0 20px 50px rgba(0,0,0,0.4)",borderRadius:8}} className="w-full max-w-sm p-6 flex flex-col gap-5 crm-confirm-modal">
-      <div style={{width:36,height:36,borderRadius:6,background:"rgba(220,38,38,0.1)",border:"1px solid rgba(220,38,38,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⚠️</div>
+  return <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}}>
+    <div style={{background:t.card,border:`1.5px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.4)",borderRadius:24,paddingBottom:"env(safe-area-inset-bottom,0px)",width:"100%",maxWidth:380}} className="p-6 flex flex-col gap-5 crm-confirm-modal">
+      <div style={{width:44,height:44,borderRadius:12,background:"rgba(220,38,38,0.1)",border:"1.5px solid rgba(220,38,38,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>⚠️</div>
       <div>
-        <p style={{color:t.text,fontWeight:600,fontSize:14,marginBottom:4}}>Confirm Action</p>
-        <p style={{color:t.sub,fontSize:13,lineHeight:1.6}}>{msg}</p>
+        <p style={{color:t.text,fontWeight:700,fontSize:16,marginBottom:6}}>Confirm Action</p>
+        <p style={{color:t.sub,fontSize:14,lineHeight:1.6}}>{msg}</p>
       </div>
-      <div className="flex gap-3 justify-end"><Btn dm={dm} v="ghost" size="sm" onClick={onNo}>Cancel</Btn><Btn v="danger" size="sm" onClick={onYes}>Delete</Btn></div>
+      <div className="flex gap-3"><Btn dm={dm} v="ghost" size="md" className="flex-1" onClick={onNo}>Cancel</Btn><Btn v="danger" size="md" className="flex-1" onClick={onYes}>Delete</Btn></div>
     </div>
   </div>;
 }
 function Search({value,onChange,placeholder,dm}){
   const t=T(dm);
   return <div className="relative">
-    <svg className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:14,WebkitAppearance:"none",touchAction:"manipulation",borderRadius:6,transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full pl-9 pr-8 py-2 outline-none placeholder:text-slate-400/50" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.12)":"0 0 0 3px rgba(30,58,95,0.08)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}/>
-    {value&&<button onClick={()=>onChange("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:16,height:16,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>✕</button>}
+    <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",touchAction:"manipulation",borderRadius:14,transition:"border-color 0.15s,box-shadow 0.15s",width:"100%",padding:"12px 40px 12px 42px",outline:"none",minHeight:48,display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.12)":"0 0 0 3px rgba(30,58,95,0.08)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}/>
+    {value&&<button onClick={()=>onChange("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:22,height:22,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>✕</button>}
   </div>;
 }
 
@@ -1112,15 +1119,133 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
   const _ms=document.createElement("style");
   _ms.id="mobileOptStyle";
   _ms.textContent=`
-    *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;}
-    button,a,[role=button]{touch-action:manipulation;}
-    input,select,textarea{touch-action:manipulation;}
-    html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
-    body{overscroll-behavior-y:none;}
-    ::-webkit-scrollbar{width:0;height:0;}
+    /* ── Reset & Base ── */
+    *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;box-sizing:border-box;}
+    button,a,[role=button]{touch-action:manipulation;cursor:pointer;}
+    input,select,textarea{touch-action:manipulation;font-size:16px!important;} /* 16px prevents iOS zoom */
+    html{-webkit-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
+    body{overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;}
+    ::-webkit-scrollbar{width:0;height:0;background:transparent;}
+    scrollbar-width:none;
+
+    /* ── Safe area utilities ── */
+    .pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}
+    .pt-safe{padding-top:env(safe-area-inset-top,0px);}
+    .pl-safe{padding-left:env(safe-area-inset-left,0px);}
+    .pr-safe{padding-right:env(safe-area-inset-right,0px);}
+
+    /* ── Touch target minimum (Apple HIG: 44pt, Android: 48dp) ── */
+    .touch-target{min-height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;}
+
+    /* ── Mobile bottom nav safe padding ── */
+    .mobile-content-pad{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px));}
+
+    /* ── Inputs: larger, no zoom, clear focus ring ── */
     @media(max-width:1023px){
-      .scrollbar-none::-webkit-scrollbar{display:none;}
+      input,select,textarea{
+        min-height:48px!important;
+        padding:12px 14px!important;
+        border-radius:12px!important;
+        font-size:16px!important;
+      }
+      input[type="date"],input[type="time"]{min-height:48px!important;}
+      select{padding-right:36px!important;}
+
+      /* ── Cards: more breathing room ── */
+      .crm-card-mobile{border-radius:16px!important;padding:16px!important;}
+
+      /* ── Bottom nav: full width, safe area ── */
+      .crm-bottom-nav{
+        height:calc(58px + env(safe-area-inset-bottom,0px));
+        padding-bottom:env(safe-area-inset-bottom,0px);
+      }
+
+      /* ── Sheets: full width on mobile ── */
+      .crm-sheet-mobile{
+        border-radius:24px 24px 0 0!important;
+        max-height:94svh!important;
+        width:100%!important;
+        padding-left:env(safe-area-inset-left,0px);
+        padding-right:env(safe-area-inset-right,0px);
+      }
+
+      /* ── Content area: respect bottom nav ── */
+      .crm-tab-content{
+        padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
+      }
+
+      /* ── Stat cards: 2-col on small screens ── */
+      .crm-stats-grid{
+        grid-template-columns:repeat(2,1fr)!important;
+        gap:10px!important;
+      }
+
+      /* ── Tables: scroll horizontally instead of overflowing ── */
+      .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
+      .crm-table-wrap table{min-width:500px;}
+
+      /* ── Hide desktop-only elements ── */
+      .desktop-only{display:none!important;}
+
+      /* ── Increase base font sizes ── */
+      .crm-row-text{font-size:14px!important;}
+      .crm-row-sub{font-size:12px!important;}
+
+      /* ── Pill / badge: bigger on mobile ── */
+      .crm-pill-mobile{padding:3px 8px!important;font-size:11px!important;}
+
+      /* ── Buttons: full-width on mobile sheets ── */
+      .crm-sheet-btn{width:100%!important;min-height:52px!important;font-size:15px!important;border-radius:14px!important;}
+
+      /* ── Smoother scrolling in sheets ── */
+      .crm-sheet-scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+
+      /* ── Quick action grid ── */
+      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
+      @media(max-width:380px){.crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}}
+
+      /* ── Header height ── */
+      .crm-header{min-height:54px;}
+
+      /* ── Nav item active indicator ── */
+      .crm-nav-active-dot{
+        position:absolute;
+        top:0;left:50%;
+        transform:translateX(-50%);
+        width:32px;height:3px;
+        border-radius:0 0 6px 6px;
+      }
+
+      /* ── Form labels ── */
+      .crm-form-label{font-size:12px!important;letter-spacing:0.04em!important;margin-bottom:6px!important;}
+
+      /* ── Row card layout on mobile ── */
+      .crm-row-card{
+        border-radius:16px!important;
+        padding:14px 16px!important;
+        margin-bottom:8px!important;
+      }
     }
+
+    /* ── Tablet (sm-lg) tweaks ── */
+    @media(min-width:640px) and (max-width:1023px){
+      input,select,textarea{font-size:15px!important;}
+      .crm-stats-grid{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
+    }
+
+    /* ── Desktop: restore normal styles ── */
+    @media(min-width:1024px){
+      input,select,textarea{font-size:14px!important;min-height:40px!important;}
+    }
+
+    /* ── Focus: accessible, not ugly ── */
+    :focus-visible{outline:2px solid #3b82f6;outline-offset:2px;border-radius:6px;}
+    :focus:not(:focus-visible){outline:none;}
+
+    /* ── Momentum scroll for all scroll areas ── */
+    [style*="overflow-y"]{-webkit-overflow-scrolling:touch;}
+    [style*="overflowY"]{-webkit-overflow-scrolling:touch;}
   `;
   document.head.appendChild(_ms);
 }
@@ -1959,31 +2084,23 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(4rem + env(safe-area-inset-bottom))"}}>
+      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(64px + env(safe-area-inset-bottom,0px))"}}>
 
       {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
-      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30 crm-header-enter">
-        <div className="px-3 py-2.5 flex items-center justify-between gap-2 lg:px-6">
-          {/* Left: brand + user info (mobile only) */}
-          <div className="flex items-center gap-2 lg:hidden min-w-0">
-            <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-sm select-none shrink-0">{settings?.appEmoji||"🫓"}</div>
+      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30 crm-header-enter crm-header">
+        <div style={{paddingTop:"env(safe-area-inset-top,0px)"}} className="px-4 py-3 flex items-center justify-between gap-2 lg:px-6">
+          {/* Left: brand logo (mobile only) */}
+          <div className="flex items-center gap-2.5 lg:hidden min-w-0">
+            <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)",width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
             <div className="min-w-0">
-              <p style={{color:t.text}} className="font-bold text-sm leading-tight truncate max-w-[140px]">{settings?.appName||"TAS Healthy World"}</p>
-              {subStaff.length>0
-                ?<div className="flex items-center gap-1 mt-0.5">
-                  <select value={activeStaff} onChange={e=>setActiveStaff(e.target.value)}
-                    style={{background:"transparent",color:t.sub,border:"none",outline:"none",fontSize:10,fontWeight:600,padding:0,cursor:"pointer",maxWidth:100}}>
-                    {subStaff.map(n=><option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-                :<p style={{color:t.sub}} className="text-[10px] font-medium capitalize">{sess.role}</p>
-              }
+              <p style={{color:t.text,fontSize:15}} className="font-bold leading-tight truncate max-w-[120px] sm:max-w-[160px]">{settings?.appName||"TAS Healthy World"}</p>
+              <p style={{color:t.sub,fontSize:11}} className="font-medium capitalize">{sess.role}{subStaff.length>0?` · ${activeStaff}`:""}</p>
             </div>
           </div>
-          {/* Center: tab title on tablet */}
-          <div className="hidden sm:flex lg:hidden items-center gap-2">
-            <span className="text-xl">{TAB_ICONS[tab]||"•"}</span>
-            <h1 style={{color:t.text}} className="font-black text-lg tracking-tight">{tab}</h1>
+          {/* Center: current tab (shown on all mobile/tablet) */}
+          <div className="flex lg:hidden items-center gap-2 ml-auto mr-auto" style={{position:"absolute",left:"50%",transform:"translateX(-50%)"}}>
+            <span style={{fontSize:18}}>{TAB_ICONS[tab]||"•"}</span>
+            <h1 style={{color:t.text,fontSize:16}} className="font-black tracking-tight hidden sm:block">{tab}</h1>
           </div>
           {/* Desktop: page title */}
           <div className="hidden lg:flex items-center gap-2.5">
@@ -1991,42 +2108,40 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <h1 style={{color:t.text}} className="font-black text-xl tracking-tight">{tab}</h1>
           </div>
           {/* Right: actions */}
-          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             {/* Bell */}
             <div className="relative">
-              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-sm sm:text-[15px] select-none relative transition-colors">
+              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="relative">
                 🔔
-                {unreadNotifs>0&&<span key={unreadNotifs} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 crm-notif-badge" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
+                {unreadNotifs>0&&<span key={unreadNotifs} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 crm-notif-badge" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
-              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-[calc(100vw-2rem)] max-w-xs sm:w-80 rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{color:t.text}} className="text-sm font-bold tracking-tight">Notifications</span>
+              {notifOpen&&<div style={{background:t.card,border:`1.5px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)",borderRadius:20,overflow:"hidden"}} className="absolute right-0 top-12 w-[calc(100vw-2rem)] max-w-xs sm:w-80">
+                <div className="flex items-center justify-between px-4 py-3.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.text,fontSize:14}} className="font-bold tracking-tight">Notifications</span>
                   <div className="flex gap-3">
-                    {notifs.length>0&&<button onClick={()=>setNotifs([])} style={{color:t.sub}} className="text-[11px] font-semibold">Clear all</button>}
-                    <button onClick={()=>setNotifOpen(false)} style={{color:t.sub}} className="text-[11px] font-bold">✕</button>
+                    {notifs.length>0&&<button onClick={()=>setNotifs([])} style={{color:t.sub,fontSize:12,minHeight:32,padding:"0 8px",background:"transparent",border:"none",cursor:"pointer"}} className="font-semibold">Clear all</button>}
+                    <button onClick={()=>setNotifOpen(false)} style={{color:t.sub,fontSize:13,minHeight:32,width:32,background:"transparent",border:"none",cursor:"pointer"}} className="font-bold">✕</button>
                   </div>
                 </div>
-                <div style={{maxHeight:320,overflowY:"auto"}}>
+                <div style={{maxHeight:360,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
                   {notifs.length===0
-                    ?<div className="py-8 flex flex-col items-center gap-2"><span className="text-2xl">🔔</span><p style={{color:t.sub}} className="text-xs font-medium">All caught up!</p></div>
+                    ?<div className="py-8 flex flex-col items-center gap-2"><span className="text-2xl">🔔</span><p style={{color:t.sub,fontSize:13}} className="font-medium">All caught up!</p></div>
                     :notifs.map(n=>(
-                    <div key={n.id} style={{background:n.read?t.card:dm?"#1e1a0e":"#fffbeb",borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 flex gap-3">
-                      <span className="text-base mt-0.5 shrink-0">{n.type==="success"?"✅":n.type==="warning"?"⚠️":n.type==="error"?"❌":"ℹ️"}</span>
+                    <div key={n.id} style={{background:n.read?t.card:dm?"#1e1a0e":"#fffbeb",borderBottom:`1px solid ${t.border}`}} className="px-4 py-3.5 flex gap-3">
+                      <span style={{fontSize:16}} className="mt-0.5 shrink-0">{n.type==="success"?"✅":n.type==="warning"?"⚠️":n.type==="error"?"❌":"ℹ️"}</span>
                       <div className="flex-1 min-w-0">
-                        <p style={{color:t.text}} className="text-xs font-semibold">{n.title}</p>
-                        <p style={{color:t.sub}} className="text-[11px] mt-0.5 leading-relaxed">{n.body}</p>
-                        <p style={{color:t.sub}} className="text-[10px] mt-1 font-medium">{n.ts}</p>
+                        <p style={{color:t.text,fontSize:13}} className="font-semibold">{n.title}</p>
+                        <p style={{color:t.sub,fontSize:12}} className="mt-0.5 leading-relaxed">{n.body}</p>
+                        <p style={{color:t.sub,fontSize:11}} className="mt-1 font-medium">{n.ts}</p>
                       </div>
-                      <button onClick={()=>delNotif(n.id)} style={{color:t.sub}} className="text-xs shrink-0">✕</button>
+                      <button onClick={()=>delNotif(n.id)} style={{color:t.sub,fontSize:14,minHeight:32,width:24,background:"transparent",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}} className="shrink-0">✕</button>
                     </div>
                   ))}
                 </div>
               </div>}
             </div>
-            {/* Dark mode toggle */}
-            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-sm sm:text-[15px] select-none lg:hidden">{dm?"☀️":"🌙"}</button>
-            {/* Sign out — VISIBLE ON ALL SIZES on mobile/tablet; hidden on desktop (sidebar handles it) */}
-            <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,fontSize:11,fontWeight:700,borderRadius:10,padding:"0 10px",height:32,display:"flex",alignItems:"center",gap:4,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minWidth:0,whiteSpace:"nowrap"}} className="lg:hidden">↩ Out</button>
+            {/* Dark mode toggle - mobile */}
+            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",flexShrink:0}} className="lg:hidden">{dm?"☀️":"🌙"}</button>
             {/* Desktop sign out + dark mode */}
             <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold hidden lg:inline-flex hover:opacity-80">↩ Sign out</button>
             <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl items-center justify-center text-[15px] select-none hidden lg:flex hover:opacity-80">{dm?"☀️":"🌙"}</button>
@@ -5920,46 +6035,47 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
       {/* More menu overlay */}
       {showMoreNav&&<div className="fixed inset-0 z-40 lg:hidden" onClick={()=>setShowMoreNav(false)}/>}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -2px 16px rgba(0,0,0,0.1)"}} className="fixed bottom-0 left-0 right-0 z-50 flex lg:hidden">
+      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 20px rgba(0,0,0,0.12)",zIndex:50}} className="fixed bottom-0 left-0 right-0 flex lg:hidden crm-bottom-nav">
         {/* Show first 4 tabs + a "More" button always */}
         {TABS.slice(0,4).map(tb=>(
           <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}}
-            className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 relative"
-            style={{color:tab===tb?t.accent:t.sub,minHeight:52,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s"}}>
-            {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
-            <span style={{fontSize:19,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-            <span style={{fontSize:9,fontWeight:tab===tb?700:500,lineHeight:1,marginTop:2,maxWidth:52,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.length>7?tb.slice(0,6)+"…":tb}</span>
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 relative"
+            style={{color:tab===tb?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s",padding:"6px 2px"}}>
+            {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:36,height:3,background:t.accent,borderRadius:"0 0 6px 6px"}}/>}
+            <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+            <span style={{fontSize:10,fontWeight:tab===tb?700:500,lineHeight:1,marginTop:3,maxWidth:56,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.length>7?tb.slice(0,6)+"…":tb}</span>
+            {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{position:"absolute",top:6,right:"calc(50% - 18px)",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{pendingD.length>9?"9+":pendingD.length}</span>}
           </button>
         ))}
         {/* More button — always shown, opens a popup with remaining tabs + sign out */}
         <div className="flex-1 relative">
           <button onClick={()=>setShowMoreNav(v=>!v)}
-            style={{color:TABS.slice(4).includes(tab)||showMoreNav?t.accent:t.sub,minHeight:52,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s"}}
-            className="w-full flex flex-col items-center justify-center py-2.5 gap-0.5 relative">
-            {(TABS.slice(4).includes(tab)||showMoreNav)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
-            <span style={{fontSize:19,lineHeight:1}}>{showMoreNav?"✕":"⋯"}</span>
-            <span style={{fontSize:9,fontWeight:600,lineHeight:1,marginTop:2}}>{TABS.slice(4).includes(tab)?tab.slice(0,6):"More"}</span>
+            style={{color:TABS.slice(4).includes(tab)||showMoreNav?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s",width:"100%",padding:"6px 2px"}}
+            className="flex flex-col items-center justify-center gap-0.5 relative">
+            {(TABS.slice(4).includes(tab)||showMoreNav)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:36,height:3,background:t.accent,borderRadius:"0 0 6px 6px"}}/>}
+            <span style={{fontSize:22,lineHeight:1}}>{showMoreNav?"✕":"⋯"}</span>
+            <span style={{fontSize:10,fontWeight:600,lineHeight:1,marginTop:3}}>{TABS.slice(4).includes(tab)?tab.slice(0,6):"More"}</span>
           </button>
 
           {/* More popup — tabs + dark mode + sign out */}
           {showMoreNav&&(
-            <div style={{background:t.card,border:`1px solid ${t.border}`,bottom:"calc(100% + 8px)",right:0,minWidth:200,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:16,overflow:"hidden",animation:"scaleIn 0.15s cubic-bezier(.32,1,.6,1) both",transformOrigin:"bottom right"}} className="absolute z-50">
+            <div style={{background:t.card,border:`1.5px solid ${t.border}`,bottom:"calc(100% + 10px)",right:4,minWidth:220,boxShadow:"0 -8px 40px rgba(0,0,0,0.25)",borderRadius:20,overflow:"hidden",animation:"scaleIn 0.15s cubic-bezier(.32,1,.6,1) both",transformOrigin:"bottom right"}} className="absolute z-50">
               {/* Remaining tabs */}
               {TABS.slice(4).map(tb=>(
                 <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}}
-                  style={{color:tab===tb?t.accent:t.text,background:tab===tb?(dm?"rgba(59,130,246,0.1)":"rgba(30,58,95,0.06)"):"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:tab===tb?700:500,borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{TAB_ICONS[tb]||"•"}</span>{tb}
+                  style={{color:tab===tb?t.accent:t.text,background:tab===tb?(dm?"rgba(59,130,246,0.1)":"rgba(30,58,95,0.06)"):"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:52,display:"flex",alignItems:"center",gap:12,padding:"12px 18px",fontSize:14,fontWeight:tab===tb?700:500,borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center"}}>{TAB_ICONS[tb]||"•"}</span>{tb}
                 </button>
               ))}
               {/* Divider + utility actions */}
               <div style={{borderTop:`1px solid ${t.border}`}}>
                 <button onClick={()=>{setDm(d=>!d);setShowMoreNav(false);}}
-                  style={{color:t.text,background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:500,borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{dm?"☀️":"🌙"}</span>{dm?"Light mode":"Dark mode"}
+                  style={{color:t.text,background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:52,display:"flex",alignItems:"center",gap:12,padding:"12px 18px",fontSize:14,fontWeight:500,borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center"}}>{dm?"☀️":"🌙"}</span>{dm?"Light mode":"Dark mode"}
                 </button>
                 <button onClick={()=>{onLogout();setShowMoreNav(false);}}
-                  style={{color:"#ef4444",background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:700}}>
-                  <span style={{fontSize:16,width:20,textAlign:"center"}}>↩</span>Sign Out
+                  style={{color:"#ef4444",background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:52,display:"flex",alignItems:"center",gap:12,padding:"12px 18px",fontSize:14,fontWeight:700}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center"}}>↩</span>Sign Out
                 </button>
               </div>
             </div>
