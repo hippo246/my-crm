@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
-import { ref, onValue, set as fbSet } from "firebase/database";
+import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  App.js  —  TAS Healthy World · Operations CRM
@@ -374,7 +374,13 @@ function shareWhatsApp(record, products, type, settings) {
   if(type==="customer"&&record.pending>0) msg+=`\n⚠️ Pending: ₹${(record.pending||0).toLocaleString("en-IN")}`;
   msg += `\n\n_${co}_`;
   const encoded = encodeURIComponent(msg);
-  const url = phone ? `https://wa.me/91${phone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+  // Use phone as-is; strip non-digits and let WhatsApp handle routing.
+  // If number starts with 0, drop the leading 0 (local format) and prepend nothing —
+  // WhatsApp resolves it from the user's own country. For fully international numbers
+  // stored with +, pass them directly.
+  let waPhone = phone.replace(/\D/g,"");
+  if(waPhone.startsWith("0")) waPhone=waPhone.slice(1);
+  const url = waPhone ? `https://wa.me/${waPhone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
   window.open(url,"_blank","noopener");
 }
 
@@ -536,10 +542,13 @@ tbody tr:nth-child(even) td{background:#f8fafc}
   <span>${tabName} Export &nbsp;·&nbsp; ${today()}</span>
 </div>
 </body></html>`;
-  const w=window.open("","_blank");
-  if(!w){alert("Allow popups to view PDF");return;}
-  w.document.write(html);w.document.close();
-  setTimeout(()=>w.print(),600);
+  // Use blob URL — avoids popup-blocker, works reliably across browsers
+  const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+  const burl=URL.createObjectURL(blob);
+  const a2=document.createElement("a");
+  a2.href=burl;a2.target="_blank";a2.rel="noopener";
+  document.body.appendChild(a2);a2.click();
+  setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(burl);},1000);
 }
 
 // ─── HIGH-QUALITY TAB EXPORT — EXCEL (XLSX-compatible) ──────────────────────
@@ -679,15 +688,15 @@ function Btn({children,onClick,v="primary",size="md",className="",disabled=false
   const base={fontWeight:600,borderRadius:6,letterSpacing:"0.01em",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.45:1,transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6};
   const styleStr=(V[v]||V.primary)+(S[size]||S.md);
   const styleObj={...base,...Object.fromEntries(styleStr.split(";").filter(Boolean).map(s=>{const[k,...vs]=s.split(":");const key=k.trim().replace(/-([a-z])/g,(_,c)=>c.toUpperCase());return[key,vs.join(":").trim()];}))};
-  return <button onClick={onClick} disabled={disabled} style={styleObj} className={cx("select-none active:scale-[0.97]",className)}>{children}</button>;
+  return <button onClick={onClick} disabled={disabled} style={styleObj} className={cx("select-none active:scale-[0.96] crm-btn-press",className)}>{children}</button>;
 }
 function Card({children,className="",dm}){
   const t=T(dm);
   return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)",borderRadius:8}} className={className}>{children}</div>;
 }
-function StatCard({label,value,sub,accent,dm}){
+function StatCard({label,value,sub,accent,dm,animDelay="0.05s"}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:8,borderLeft:`3px solid ${accent}`}} className="p-4 relative">
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:8,borderLeft:`3px solid ${accent}`,"--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="p-4 relative crm-stat-card crm-list-item">
     <p style={{color:t.sub,letterSpacing:"0.07em"}} className="text-[10px] font-semibold uppercase mb-2">{label}</p>
     <p style={{color:t.text}} className="text-2xl font-bold leading-none tracking-tight">{value}</p>
     {sub&&<p style={{color:t.sub}} className="text-[11px] mt-1.5 font-medium">{sub}</p>}
@@ -713,11 +722,11 @@ function Sheet({open,title,onClose,children,dm}){
     };
   },[open]);
   if(!open)return null;
-  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:t.card,maxHeight:"92svh",border:`1px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.35)",borderRadius:"8px 8px 0 0"}} className="w-full max-w-lg sm:rounded-lg flex flex-col" onClick={e=>e.stopPropagation()}>
+  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:t.card,maxHeight:"92svh",border:`1px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.35)",borderRadius:"8px 8px 0 0"}} className="w-full max-w-lg sm:rounded-lg flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
       <div style={{borderBottom:`1px solid ${t.border}`,background:dm?"#1c2128":"#f8fafc"}} className="flex items-center justify-between px-5 py-4 shrink-0 rounded-t-lg">
         <span style={{color:t.text,letterSpacing:"-0.01em"}} className="font-semibold text-sm">{title}</span>
-        <button onClick={onClose} style={{background:"transparent",color:t.sub,border:`1px solid ${t.inpB}`,width:28,height:28,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer"}}>✕</button>
+        <button onClick={onClose} style={{background:"transparent",color:t.sub,border:`1px solid ${t.inpB}`,width:28,height:28,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s"}} className="hover:opacity-70">✕</button>
       </div>
       <div className="px-5 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"calc(1.25rem + env(safe-area-inset-bottom))"}}>{children}</div>
     </div>
@@ -725,12 +734,12 @@ function Sheet({open,title,onClose,children,dm}){
 }
 function Toast({msg,onDone}){
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);});
-  return <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] text-sm px-4 py-3 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5" style={{background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:6}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block"}}/>{msg}</div>;
+  return <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] text-sm px-4 py-3 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:6}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center px-6" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
-    <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:"0 20px 50px rgba(0,0,0,0.4)",borderRadius:8}} className="w-full max-w-sm p-6 flex flex-col gap-5">
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center px-6 crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
+    <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:"0 20px 50px rgba(0,0,0,0.4)",borderRadius:8}} className="w-full max-w-sm p-6 flex flex-col gap-5 crm-confirm-modal">
       <div style={{width:36,height:36,borderRadius:6,background:"rgba(220,38,38,0.1)",border:"1px solid rgba(220,38,38,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⚠️</div>
       <div>
         <p style={{color:t.text,fontWeight:600,fontSize:14,marginBottom:4}}>Confirm Action</p>
@@ -974,8 +983,6 @@ function Login({users,onLogin,dm,settings}){
   }
   // ── STAFF PICKER MODE ──────────────────────────────────────────
   if(mode==="picker"&&!showAdminForm){
-    // eslint-disable-next-line no-unused-vars
-    const ac=dm?"#3b82f6":"#1e3a5f";
     return(
       <div style={{background:dm?"#0d1117":"#f0f2f5",minHeight:"100svh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-4 py-10">
         {/* Brand */}
@@ -1117,7 +1124,68 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
   `;
   document.head.appendChild(_ms);
 }
-// Generate a stable device ID for this browser tab (sessionStorage only — not localStorage)
+if(typeof document!=="undefined"&&!document.getElementById("crmAnimStyle")){
+  const _as=document.createElement("style");
+  _as.id="crmAnimStyle";
+  _as.textContent=`
+    /* ── Entrance animations ── */
+    @keyframes fadeSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fadeSlideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    @keyframes scaleIn{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}
+    @keyframes slideInRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes slideInLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes sheetUp{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
+    @keyframes sheetCenter{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    @keyframes popIn{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
+    @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+    @keyframes toastOut{from{opacity:1;transform:translateX(-50%) translateY(0)}to{opacity:0;transform:translateX(-50%) translateY(8px)}}
+    @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+    @keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:0.7}}
+    @keyframes badge-bounce{0%,100%{transform:scale(1)}30%{transform:scale(1.25)}60%{transform:scale(0.9)}}
+    @keyframes number-pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+    @keyframes sidebar-item-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes progress-grow{from{width:0}to{width:var(--target-width)}}
+    @keyframes spin-slow{to{transform:rotate(360deg)}}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+    @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.3)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}
+
+    /* ── Animated components ── */
+    .crm-tab-content{animation:fadeSlideUp 0.22s cubic-bezier(.25,.46,.45,.94) both}
+    .crm-card-enter{animation:scaleIn 0.18s cubic-bezier(.25,.46,.45,.94) both}
+    .crm-sheet-backdrop{animation:fadeIn 0.18s ease both}
+    .crm-sheet-panel-mobile{animation:sheetUp 0.28s cubic-bezier(.32,1,.6,1) both}
+    .crm-sheet-panel-desktop{animation:sheetCenter 0.22s cubic-bezier(.32,1,.6,1) both}
+    .crm-toast{animation:toastIn 0.22s cubic-bezier(.32,1,.6,1) both}
+    .crm-toast-exit{animation:toastOut 0.18s ease both}
+    .crm-stat-card{animation:fadeSlideUp var(--delay,0.1s) cubic-bezier(.25,.46,.45,.94) both}
+    .crm-notif-badge{animation:badge-bounce 0.35s cubic-bezier(.32,1,.6,1) both}
+    .crm-sidebar-item{animation:sidebar-item-in var(--si-delay,0.05s) cubic-bezier(.25,.46,.45,.94) both}
+    .crm-row-enter{animation:fadeSlideUp var(--row-delay,0.05s) cubic-bezier(.25,.46,.45,.94) both}
+    .crm-fab{animation:scaleIn 0.2s cubic-bezier(.32,1,.6,1) both;transition:transform 0.15s,box-shadow 0.15s,opacity 0.15s}
+    .crm-fab:hover{transform:scale(1.06) translateY(-1px)!important;box-shadow:0 8px 24px rgba(0,0,0,0.25)!important}
+    .crm-fab:active{transform:scale(0.95)!important}
+    .crm-btn-press{transition:transform 0.1s,box-shadow 0.1s}
+    .crm-btn-press:active{transform:scale(0.96)!important}
+    .crm-sync-dot{animation:pulse-dot 1.8s ease infinite}
+    .crm-quick-action{transition:transform 0.15s cubic-bezier(.32,1,.6,1),background 0.15s,box-shadow 0.15s}
+    .crm-quick-action:hover{transform:translateY(-3px) scale(1.04)}
+    .crm-quick-action:active{transform:scale(0.95)}
+    .crm-confirm-modal{animation:popIn 0.2s cubic-bezier(.32,1,.6,1) both}
+    .crm-header-enter{animation:fadeSlideDown 0.2s ease both}
+    .crm-list-item{transition:background 0.12s,transform 0.12s,box-shadow 0.12s}
+    .crm-list-item:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.08)}
+    .crm-list-item:active{transform:scale(0.99)}
+    .crm-progress-bar{transition:width 0.9s cubic-bezier(.25,.46,.45,.94)}
+    .crm-number-update{animation:number-pop 0.3s cubic-bezier(.32,1,.6,1)}
+    .crm-pill-enter{animation:popIn 0.18s cubic-bezier(.32,1,.6,1) both}
+    .crm-glow{animation:glow-pulse 2.5s ease infinite}
+    @media(prefers-reduced-motion:reduce){
+      *{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
+    }
+  `;
+  document.head.appendChild(_as);
+}
 // This lets multiple devices have independent sessions in Firebase
 function getDeviceId(){
   let id=sessionStorage.getItem("tas_device_id");
@@ -1125,6 +1193,29 @@ function getDeviceId(){
   return id;
 }
 const DEVICE_ID=getDeviceId();
+
+// Clean up stale session nodes — runs once on app load.
+// Firebase accumulates a tas9_sess_* node per device tab indefinitely.
+// This scans all sess nodes and deletes those older than 2× SESSION_TTL (16 hours).
+async function cleanStaleSessions(){
+  try{
+    const r=ref(db,"");
+    const snap=await fbGet(r);
+    if(!snap.exists())return;
+    const allKeys=Object.keys(snap.val()||{});
+    const sessKeys=allKeys.filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
+    const cutoff=Date.now()-(SESSION_TTL*2);
+    for(const k of sessKeys){
+      const s=snap.val()[k];
+      const loginAt=s?.v?.loginAt||s?.loginAt||0;
+      if(!loginAt||loginAt<cutoff){
+        await fbRemove(ref(db,k)).catch(()=>{});
+      }
+    }
+  }catch(e){/* non-critical — ignore */}
+}
+// Run cleanup after a short delay so it doesn't race with initial data load
+setTimeout(cleanStaleSessions, 8000);
 
 export default function Root(){
   const [dm,setDm]=useStore("tas_pref_dm",false);
@@ -1174,9 +1265,11 @@ function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
     document.head.appendChild(js);
   },[]);
 
-  // Init map once Leaflet ready
+  // Init map once Leaflet ready — rebuild when dark mode changes so tile layer updates
   useEffect(()=>{
-    if(!leafReady||!mapRef.current||leafRef.current) return;
+    if(!leafReady||!mapRef.current) return;
+    // Destroy existing map instance before recreating
+    if(leafRef.current){leafRef.current.remove();leafRef.current=null;}
     const L=window.L; if(!L) return;
     const map=L.map(mapRef.current,{zoomControl:true,attributionControl:false})
       .setView([fallbackLat||15.4909,fallbackLng||73.8278],12);
@@ -1187,7 +1280,7 @@ function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
     ).addTo(map);
     leafRef.current=map;
     return()=>{if(leafRef.current){leafRef.current.remove();leafRef.current=null;}}
-  },[leafReady]);// eslint-disable-line
+  },[leafReady,dm,fallbackLat,fallbackLng]);// eslint-disable-line
 
   // Re-render pins whenever logs change
   useEffect(()=>{
@@ -1826,15 +1919,15 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
         {/* Nav items */}
         <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5">
-          {TABS.map(tb=>(
+          {TABS.map((tb,idx)=>(
             <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
               style={tab===tb
-                ?{background:t.sidebarActiveBg,color:t.sidebarActive,borderLeft:`2px solid ${t.sidebarActive}`,paddingLeft:14,borderRadius:"0 4px 4px 0"}
-                :{color:"rgba(232,237,245,0.65)",borderLeft:"2px solid transparent",paddingLeft:14,borderRadius:"0 4px 4px 0"}}
-              className="flex items-center gap-2.5 py-2 text-left w-full transition-all rounded-r text-sm">
+                ?{background:t.sidebarActiveBg,color:t.sidebarActive,borderLeft:`2px solid ${t.sidebarActive}`,paddingLeft:14,borderRadius:"0 4px 4px 0","--si-delay":`${0.04+idx*0.03}s`}
+                :{color:"rgba(232,237,245,0.65)",borderLeft:"2px solid transparent",paddingLeft:14,borderRadius:"0 4px 4px 0","--si-delay":`${0.04+idx*0.03}s`}}
+              className="flex items-center gap-2.5 py-2 text-left w-full transition-all rounded-r text-sm crm-sidebar-item crm-list-item">
               <span style={{fontSize:13,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
               <span style={{fontSize:12,fontWeight:tab===tb?600:500,letterSpacing:"0.005em"}} className="truncate">{tb}</span>
-              {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:700,background:"#3b82f6",color:"#fff",borderRadius:99,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{pendingD.length}</span>}
+              {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:700,background:"#3b82f6",color:"#fff",borderRadius:99,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} className="crm-notif-badge">{pendingD.length}</span>}
             </button>
           ))}
         </nav>
@@ -1859,7 +1952,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <button onClick={onLogout} style={{background:"rgba(255,255,255,0.06)",color:"rgba(232,237,245,0.7)",border:`1px solid ${t.sidebarBorder}`,flex:1,borderRadius:4,padding:"5px 8px",fontSize:10,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>Sign Out</button>
           </div>
           <div className="flex items-center gap-1.5 px-0.5">
-            <div style={{width:5,height:5,borderRadius:"50%",background:lastSync?"#10b981":"#3b82f6",flexShrink:0}}/>
+            <div style={{width:5,height:5,borderRadius:"50%",background:lastSync?"#10b981":"#3b82f6",flexShrink:0}} className={lastSync?"":"crm-sync-dot"}/>
             <p style={{color:"rgba(232,237,245,0.45)",fontSize:9,letterSpacing:"0.02em"}}>{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting…"}</p>
           </div>
         </div>
@@ -1902,7 +1995,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <div className="relative">
               <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl flex items-center justify-center text-[15px] select-none relative transition-colors hover:opacity-80">
                 🔔
-                {unreadNotifs>0&&<span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
+                {unreadNotifs>0&&<span key={unreadNotifs} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 crm-notif-badge" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
               {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-72 sm:w-80 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3" style={{borderBottom:`1px solid ${t.border}`}}>
@@ -1952,7 +2045,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3">
+      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -1979,9 +2072,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <div className="grid grid-cols-4 gap-2">
                 {visibleQA.map(q=>(
                   <button key={q.key} onClick={q.action}
-                    style={{background:q.color+"15",border:`1.5px solid ${q.color}30`,borderRadius:16,padding:"12px 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:6,transition:"all 0.15s",cursor:"pointer"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background=q.color+"25";e.currentTarget.style.transform="translateY(-2px)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background=q.color+"15";e.currentTarget.style.transform="";}}>
+                    style={{background:q.color+"15",border:`1.5px solid ${q.color}30`,borderRadius:16,padding:"12px 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer"}}
+                    className="crm-quick-action">
                     <span style={{fontSize:22,lineHeight:1}}>{q.icon}</span>
                     <p style={{color:q.color,fontSize:10,fontWeight:700,lineHeight:1.2,textAlign:"center"}}>{q.label}</p>
                   </button>
@@ -2732,15 +2824,15 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           {/* STAT CARDS */}
           {widgets.includes("stats")&&<>
             {canSeeFinancials&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981"/>
-              <StatCard dm={dm} label="Amount Due" value={inr(totalDue)} sub={`${customers.filter(c=>c.pending>0).length} customers`} accent="#ef4444"/>
-              <StatCard dm={dm} label="Total Costs" value={inr(totalExpOp+totalSupC)} sub="Ops + supplies" accent="#f59e0b"/>
-              <StatCard dm={dm} label="Net Profit" value={inr(netProfit)} sub={netProfit>=0?"Profitable ✓":"In loss ⚠️"} accent={netProfit>=0?"#10b981":"#ef4444"}/>
+              <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981" animDelay="0.05s"/>
+              <StatCard dm={dm} label="Amount Due" value={inr(totalDue)} sub={`${customers.filter(c=>c.pending>0).length} customers`} accent="#ef4444" animDelay="0.1s"/>
+              <StatCard dm={dm} label="Total Costs" value={inr(totalExpOp+totalSupC)} sub="Ops + supplies" accent="#f59e0b" animDelay="0.15s"/>
+              <StatCard dm={dm} label="Net Profit" value={inr(netProfit)} sub={netProfit>=0?"Profitable ✓":"In loss ⚠️"} accent={netProfit>=0?"#10b981":"#ef4444"} animDelay="0.2s"/>
             </div>}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706"/>
-              <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} completed`} accent="#8b5cf6"/>
-              {(()=>{const r=deliveries.filter(d=>d.replacement?.done);return r.length>0&&<><StatCard dm={dm} label="Replacements" value={r.length} sub={`${Math.round(r.length/Math.max(deliveries.length,1)*100)}% of deliveries`} accent="#f97316"/><StatCard dm={dm} label="Repl. Deductions" value={inr(r.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} sub="Total deducted" accent="#ef4444"/></>;})()}
+              <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706" animDelay="0.08s"/>
+              <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} completed`} accent="#8b5cf6" animDelay="0.13s"/>
+              {(()=>{const r=deliveries.filter(d=>d.replacement?.done);return r.length>0&&<><StatCard dm={dm} label="Replacements" value={r.length} sub={`${Math.round(r.length/Math.max(deliveries.length,1)*100)}% of deliveries`} accent="#f97316" animDelay="0.18s"/><StatCard dm={dm} label="Repl. Deductions" value={inr(r.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} sub="Total deducted" accent="#ef4444" animDelay="0.23s"/></>;})()}
             </div>
           </>}
 
