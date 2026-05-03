@@ -1959,50 +1959,51 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(4.5rem + env(safe-area-inset-bottom))"}}>
+      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(4rem + env(safe-area-inset-bottom))"}}>
 
       {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
-      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30">
-        <div className="px-4 py-3 flex items-center justify-between lg:px-6">
-          <div className="flex items-center gap-2.5 lg:hidden">
-            <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-base select-none shrink-0">{settings?.appEmoji||"🫓"}</div>
-            <div>
-              <p style={{color:t.text}} className="font-bold text-sm leading-tight">{settings?.appName||"TAS Healthy World"}</p>
+      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30 crm-header-enter">
+        <div className="px-3 py-2.5 flex items-center justify-between gap-2 lg:px-6">
+          {/* Left: brand + user info (mobile only) */}
+          <div className="flex items-center gap-2 lg:hidden min-w-0">
+            <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-sm select-none shrink-0">{settings?.appEmoji||"🫓"}</div>
+            <div className="min-w-0">
+              <p style={{color:t.text}} className="font-bold text-sm leading-tight truncate max-w-[140px]">{settings?.appName||"TAS Healthy World"}</p>
               {subStaff.length>0
                 ?<div className="flex items-center gap-1 mt-0.5">
                   <select value={activeStaff} onChange={e=>setActiveStaff(e.target.value)}
-                    style={{background:"transparent",color:t.sub,border:"none",outline:"none",fontSize:11,fontWeight:600,padding:0,cursor:"pointer",maxWidth:120}}>
+                    style={{background:"transparent",color:t.sub,border:"none",outline:"none",fontSize:10,fontWeight:600,padding:0,cursor:"pointer",maxWidth:100}}>
                     {subStaff.map(n=><option key={n} value={n}>{n}</option>)}
                   </select>
-                  <span style={{color:t.sub}} className="text-[10px]">· {sess.role}</span>
                 </div>
-                :<p style={{color:t.sub}} className="text-[11px] font-medium">{sess.name} · <span className="capitalize">{sess.role}</span></p>
+                :<p style={{color:t.sub}} className="text-[10px] font-medium capitalize">{sess.role}</p>
               }
             </div>
           </div>
-          {/* Tablet: show current tab name in header */}
+          {/* Center: tab title on tablet */}
           <div className="hidden sm:flex lg:hidden items-center gap-2">
             <span className="text-xl">{TAB_ICONS[tab]||"•"}</span>
             <h1 style={{color:t.text}} className="font-black text-lg tracking-tight">{tab}</h1>
           </div>
-          {/* Desktop header shows page title */}
+          {/* Desktop: page title */}
           <div className="hidden lg:flex items-center gap-2.5">
             <span className="text-xl">{TAB_ICONS[tab]||"•"}</span>
             <h1 style={{color:t.text}} className="font-black text-xl tracking-tight">{tab}</h1>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
-            {/* BELL */}
+          {/* Right: actions */}
+          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            {/* Bell */}
             <div className="relative">
-              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl flex items-center justify-center text-[15px] select-none relative transition-colors hover:opacity-80">
+              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-sm sm:text-[15px] select-none relative transition-colors">
                 🔔
                 {unreadNotifs>0&&<span key={unreadNotifs} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 crm-notif-badge" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
-              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-72 sm:w-80 rounded-2xl overflow-hidden">
+              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-[calc(100vw-2rem)] max-w-xs sm:w-80 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3" style={{borderBottom:`1px solid ${t.border}`}}>
                   <span style={{color:t.text}} className="text-sm font-bold tracking-tight">Notifications</span>
                   <div className="flex gap-3">
-                    {notifs.length>0&&<button onClick={()=>setNotifs([])} style={{color:t.sub}} className="text-[11px] font-semibold hover:opacity-70">Clear all</button>}
-                    <button onClick={()=>setNotifOpen(false)} style={{color:t.sub}} className="text-[11px] font-bold hover:opacity-70">✕</button>
+                    {notifs.length>0&&<button onClick={()=>setNotifs([])} style={{color:t.sub}} className="text-[11px] font-semibold">Clear all</button>}
+                    <button onClick={()=>setNotifOpen(false)} style={{color:t.sub}} className="text-[11px] font-bold">✕</button>
                   </div>
                 </div>
                 <div style={{maxHeight:320,overflowY:"auto"}}>
@@ -2016,14 +2017,18 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                         <p style={{color:t.sub}} className="text-[11px] mt-0.5 leading-relaxed">{n.body}</p>
                         <p style={{color:t.sub}} className="text-[10px] mt-1 font-medium">{n.ts}</p>
                       </div>
-                      <button onClick={()=>delNotif(n.id)} style={{color:t.sub}} className="text-xs shrink-0 hover:opacity-70">✕</button>
+                      <button onClick={()=>delNotif(n.id)} style={{color:t.sub}} className="text-xs shrink-0">✕</button>
                     </div>
                   ))}
                 </div>
               </div>}
             </div>
-            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl flex items-center justify-center text-[15px] select-none lg:hidden hover:opacity-80">{dm?"☀️":"🌙"}</button>
-            <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold hidden sm:inline-flex hover:opacity-80">↩ Sign out</button>
+            {/* Dark mode toggle */}
+            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-sm sm:text-[15px] select-none lg:hidden">{dm?"☀️":"🌙"}</button>
+            {/* Sign out — VISIBLE ON ALL SIZES on mobile/tablet; hidden on desktop (sidebar handles it) */}
+            <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,fontSize:11,fontWeight:700,borderRadius:10,padding:"0 10px",height:32,display:"flex",alignItems:"center",gap:4,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minWidth:0,whiteSpace:"nowrap"}} className="lg:hidden">↩ Out</button>
+            {/* Desktop sign out + dark mode */}
+            <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold hidden lg:inline-flex hover:opacity-80">↩ Sign out</button>
             <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl items-center justify-center text-[15px] select-none hidden lg:flex hover:opacity-80">{dm?"☀️":"🌙"}</button>
           </div>
         </div>
@@ -2045,7 +2050,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
+      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -5913,36 +5918,53 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </div>
 
       {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
-      {/* More menu overlay — tapping outside closes it */}
+      {/* More menu overlay */}
       {showMoreNav&&<div className="fixed inset-0 z-40 lg:hidden" onClick={()=>setShowMoreNav(false)}/>}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 flex lg:hidden">
-        {TABS.slice(0,5).map(tb=>(
-          <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} className="flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all relative"
-            style={{color:tab===tb?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
-            {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
-            <span className="text-xl leading-none">{TAB_ICONS[tb]||"•"}</span>
-            <span className="text-[10px] font-semibold leading-none mt-0.5">{tb.length>8?tb.slice(0,7)+"…":tb}</span>
+      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -2px 16px rgba(0,0,0,0.1)"}} className="fixed bottom-0 left-0 right-0 z-50 flex lg:hidden">
+        {/* Show first 4 tabs + a "More" button always */}
+        {TABS.slice(0,4).map(tb=>(
+          <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}}
+            className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 relative"
+            style={{color:tab===tb?t.accent:t.sub,minHeight:52,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s"}}>
+            {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
+            <span style={{fontSize:19,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+            <span style={{fontSize:9,fontWeight:tab===tb?700:500,lineHeight:1,marginTop:2,maxWidth:52,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.length>7?tb.slice(0,6)+"…":tb}</span>
           </button>
         ))}
-        {TABS.length>5&&(
-          <div className="flex-1 relative">
-            <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="w-full flex flex-col items-center justify-center py-3 gap-1 transition-all relative">
-              {TABS.slice(5).includes(tab)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
-              <span className="text-lg leading-none">⋯</span>
-              <span className="text-[9px] font-semibold leading-none">{TABS.slice(5).includes(tab)?tab:"More"}</span>
-            </button>
-            {/* More menu popup — only shown when toggled */}
-            {showMoreNav&&(
-              <div style={{background:t.card,border:`1px solid ${t.border}`,bottom:"100%",right:0,minWidth:160,boxShadow:"0 -8px 32px rgba(0,0,0,0.15)"}} className="absolute flex flex-col rounded-2xl overflow-hidden mb-2 z-50">
-                {TABS.slice(5).map(tb=>(
-                  <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} style={{color:tab===tb?t.accent:t.text,background:tab===tb?dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.08)":"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-left active:opacity-70 transition-opacity">
-                    <span className="text-base">{TAB_ICONS[tb]||"•"}</span>{tb}
-                  </button>
-                ))}
+        {/* More button — always shown, opens a popup with remaining tabs + sign out */}
+        <div className="flex-1 relative">
+          <button onClick={()=>setShowMoreNav(v=>!v)}
+            style={{color:TABS.slice(4).includes(tab)||showMoreNav?t.accent:t.sub,minHeight:52,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"color 0.15s"}}
+            className="w-full flex flex-col items-center justify-center py-2.5 gap-0.5 relative">
+            {(TABS.slice(4).includes(tab)||showMoreNav)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
+            <span style={{fontSize:19,lineHeight:1}}>{showMoreNav?"✕":"⋯"}</span>
+            <span style={{fontSize:9,fontWeight:600,lineHeight:1,marginTop:2}}>{TABS.slice(4).includes(tab)?tab.slice(0,6):"More"}</span>
+          </button>
+
+          {/* More popup — tabs + dark mode + sign out */}
+          {showMoreNav&&(
+            <div style={{background:t.card,border:`1px solid ${t.border}`,bottom:"calc(100% + 8px)",right:0,minWidth:200,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:16,overflow:"hidden",animation:"scaleIn 0.15s cubic-bezier(.32,1,.6,1) both",transformOrigin:"bottom right"}} className="absolute z-50">
+              {/* Remaining tabs */}
+              {TABS.slice(4).map(tb=>(
+                <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}}
+                  style={{color:tab===tb?t.accent:t.text,background:tab===tb?(dm?"rgba(59,130,246,0.1)":"rgba(30,58,95,0.06)"):"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:tab===tb?700:500,borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{TAB_ICONS[tb]||"•"}</span>{tb}
+                </button>
+              ))}
+              {/* Divider + utility actions */}
+              <div style={{borderTop:`1px solid ${t.border}`}}>
+                <button onClick={()=>{setDm(d=>!d);setShowMoreNav(false);}}
+                  style={{color:t.text,background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:500,borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{dm?"☀️":"🌙"}</span>{dm?"Light mode":"Dark mode"}
+                </button>
+                <button onClick={()=>{onLogout();setShowMoreNav(false);}}
+                  style={{color:"#ef4444",background:"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",width:"100%",minHeight:44,display:"flex",alignItems:"center",gap:10,padding:"10px 16px",fontSize:13,fontWeight:700}}>
+                  <span style={{fontSize:16,width:20,textAlign:"center"}}>↩</span>Sign Out
+                </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </nav>
 
       </div>{/* end desktop flex child */}
