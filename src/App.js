@@ -4,11 +4,24 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { db } from "./firebase";
 import { ref, onValue, set as fbSet } from "firebase/database";
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  App.js  —  TAS Healthy World · Operations CRM
+//  Single-file bundle: utilities · theme · UI atoms · Login · CRM tabs · Sheets
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ═══════════════════════════════════════════════════════════════
 //  SECURITY
 //  Passwords use a double-multiply hash. For production deploy
 //  use Firebase Auth or a Node/Express backend with bcrypt.
 // ═══════════════════════════════════════════════════════════════
+// Polyfill Math.imul for old Android browsers (Android 4.x)
+if (typeof Math.imul !== "function") {
+  Math.imul = function(a, b) {
+    const ah = (a >>> 16) & 0xffff, al = a & 0xffff;
+    const bh = (b >>> 16) & 0xffff, bl = b & 0xffff;
+    return (al * bl + (((ah * bl + al * bh) << 16) >>> 0)) | 0;
+  };
+}
 function hashPw(pw) {
   if (!pw) return "";
   let a = 0x9e3779b9, b = 0x6c62272e;
@@ -31,7 +44,7 @@ const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 //  All devices subscribe and receive updates in real-time.
 //  localStorage is NOT used as primary storage anymore.
 // ═══════════════════════════════════════════════════════════════
-function ls(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
+function ls(k, d) { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } }
 function lsw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsdel(k) { try { localStorage.removeItem(k); } catch {} }
 
@@ -417,8 +430,31 @@ ${type==="customer"?`<h2>Payment</h2><table><tr><td>Paid</td><td class="paid">${
 // ═══════════════════════════════════════════════════════════════
 //  THEME
 // ═══════════════════════════════════════════════════════════════
-const LT={bg:"#f2f2ed",card:"#ffffff",border:"#e2e1db",text:"#18181b",sub:"#6b7280",inp:"#eeede7",inpB:"#d6d5cf",accent:"#d97706",accentFg:"#fff",sidebar:"#1a1a22",sidebarBorder:"#282832",sidebarText:"#e4e4e7",sidebarSub:"#6b7280",sidebarActive:"#f59e0b",sidebarActiveBg:"rgba(245,158,11,0.14)"};
-const DK={bg:"#0c0c10",card:"#17171b",border:"#26262c",text:"#fafafa",sub:"#9ca3af",inp:"#1e1e24",inpB:"#2e2e36",accent:"#f59e0b",accentFg:"#000",sidebar:"#101014",sidebarBorder:"#1e1e26",sidebarText:"#e4e4e7",sidebarSub:"#6b7280",sidebarActive:"#f59e0b",sidebarActiveBg:"rgba(245,158,11,0.12)"};
+// ── Corporate Design System ──────────────────────────────────────
+// Light: crisp white + cool slate, accent: deep navy blue #1e3a5f
+// Dark:  rich charcoal + steel, accent: electric sapphire #3b82f6
+const LT={
+  bg:"#f0f2f5",card:"#ffffff",border:"#dde1e8",
+  text:"#0f1923",sub:"#5a6478",inp:"#f4f6f9",inpB:"#cdd2dc",
+  accent:"#1e3a5f",accentFg:"#ffffff",accentHover:"#16304f",
+  accentLight:"rgba(30,58,95,0.08)",accentMid:"rgba(30,58,95,0.15)",
+  sidebar:"#0f1923",sidebarBorder:"#1c2638",
+  sidebarText:"#e8edf5",sidebarSub:"#94a3b8",
+  sidebarActive:"#60a5fa",sidebarActiveBg:"rgba(96,165,250,0.12)",
+  success:"#059669",warning:"#d97706",danger:"#dc2626",
+  successBg:"#ecfdf5",warningBg:"#fffbeb",dangerBg:"#fef2f2",
+};
+const DK={
+  bg:"#0d1117",card:"#161b22",border:"#21262d",
+  text:"#e6edf3",sub:"#8b949e",inp:"#1c2128",inpB:"#30363d",
+  accent:"#3b82f6",accentFg:"#ffffff",accentHover:"#2563eb",
+  accentLight:"rgba(59,130,246,0.1)",accentMid:"rgba(59,130,246,0.18)",
+  sidebar:"#0d1117",sidebarBorder:"#21262d",
+  sidebarText:"#e6edf3",sidebarSub:"#8b949e",
+  sidebarActive:"#60a5fa",sidebarActiveBg:"rgba(96,165,250,0.1)",
+  success:"#10b981",warning:"#f59e0b",danger:"#f87171",
+  successBg:"rgba(16,185,129,0.1)",warningBg:"rgba(245,158,11,0.1)",dangerBg:"rgba(248,113,113,0.1)",
+};
 const T=(dm)=>dm?DK:LT;
 
 // ═══════════════════════════════════════════════════════════════
@@ -426,101 +462,123 @@ const T=(dm)=>dm?DK:LT;
 // ═══════════════════════════════════════════════════════════════
 function Pill({c="stone",dm,children}){
   const m={
-    stone:["bg-zinc-100 text-zinc-600 border border-zinc-200","bg-zinc-800 text-zinc-300 border border-zinc-700"],
-    amber:["bg-amber-50 text-amber-700 border border-amber-200","bg-amber-900/30 text-amber-300 border border-amber-700/50"],
-    green:["bg-emerald-50 text-emerald-700 border border-emerald-200","bg-emerald-900/30 text-emerald-300 border border-emerald-700/50"],
-    red:["bg-red-50 text-red-600 border border-red-200","bg-red-900/30 text-red-300 border border-red-700/50"],
-    sky:["bg-sky-50 text-sky-700 border border-sky-200","bg-sky-900/30 text-sky-300 border border-sky-700/50"],
-    blue:["bg-blue-50 text-blue-700 border border-blue-200","bg-blue-900/30 text-blue-300 border border-blue-700/50"],
-    purple:["bg-purple-50 text-purple-700 border border-purple-200","bg-purple-900/30 text-purple-300 border border-purple-700/50"],
+    stone:["bg-slate-100 text-slate-600 border border-slate-200","bg-slate-800 text-slate-300 border border-slate-700"],
+    amber:["bg-amber-50 text-amber-700 border border-amber-200","bg-amber-900/20 text-amber-400 border border-amber-700/40"],
+    green:["bg-emerald-50 text-emerald-700 border border-emerald-200","bg-emerald-900/20 text-emerald-400 border border-emerald-700/40"],
+    red:["bg-red-50 text-red-700 border border-red-200","bg-red-900/20 text-red-400 border border-red-700/40"],
+    sky:["bg-sky-50 text-sky-700 border border-sky-200","bg-sky-900/20 text-sky-400 border border-sky-700/40"],
+    blue:["bg-blue-50 text-blue-700 border border-blue-200","bg-blue-900/20 text-blue-400 border border-blue-700/40"],
+    purple:["bg-violet-50 text-violet-700 border border-violet-200","bg-violet-900/20 text-violet-400 border border-violet-700/40"],
   };
-  return <span className={cx("inline-flex items-center text-[11px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap select-none",(m[c]||m.stone)[dm?1:0])}>{children}</span>;
+  return <span className={cx("inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded tracking-wide uppercase whitespace-nowrap select-none",(m[c]||m.stone)[dm?1:0])}>{children}</span>;
 }
 function Hr({dm}){const t=T(dm);return <div style={{height:1,background:t.border}}/>;}
 function Inp({label,dm,className="",...p}){
   const t=T(dm);
   return <div className={className}>
-    {label&&<label style={{color:t.sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">{label}</label>}
-    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,transition:"border-color 0.15s,box-shadow 0.15s",fontSize:16}} className="w-full rounded-xl px-3.5 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60" {...p}/>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.06em"}} className="block text-[10px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
+    <input style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:15,WebkitAppearance:"none",borderRadius:6,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full px-3 py-2.5 outline-none placeholder:text-slate-400/50" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}/>
   </div>;
 }
 function Sel({label,dm,children,className="",...p}){
   const t=T(dm);
   return <div className={className}>
-    {label&&<label style={{color:t.sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">{label}</label>}
-    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16}} className="w-full rounded-xl px-3.5 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] transition-all" {...p}>{children}</select>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.06em"}} className="block text-[10px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
+    <select style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:15,WebkitAppearance:"none",appearance:"none",borderRadius:6,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full px-3 py-2.5 outline-none" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
   </div>;
 }
 function Btn({children,onClick,v="primary",size="md",className="",disabled=false,dm}){
+  const t=T(dm);
   const V={
-    primary:dm?"bg-amber-500 text-black hover:bg-amber-400 shadow-[0_1px_2px_rgba(0,0,0,0.3)]":"bg-zinc-900 text-white hover:bg-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.15)]",
-    ghost:dm?"bg-zinc-800 text-zinc-200 hover:bg-zinc-700 border border-zinc-700":"bg-white text-zinc-700 hover:bg-zinc-50 border border-zinc-200 shadow-sm",
-    danger:"bg-red-600 text-white hover:bg-red-500 shadow-sm",
-    success:"bg-emerald-500 text-white hover:bg-emerald-400 shadow-sm",
-    amber:"bg-amber-500 text-white hover:bg-amber-400 shadow-sm",
-    outline:dm?"border-2 border-zinc-600 text-zinc-200 hover:bg-zinc-800":"border-2 border-zinc-200 text-zinc-700 hover:bg-zinc-50",
-    sky:"bg-sky-500 text-white hover:bg-sky-400 shadow-sm",
-    purple:"bg-purple-500 text-white hover:bg-purple-400 shadow-sm",
+    primary:`background:${t.accent};color:${t.accentFg};border:1px solid ${t.accent};`,
+    ghost:dm?"background:#1c2128;color:#e6edf3;border:1px solid #30363d;":"background:#ffffff;color:#1e3a5f;border:1px solid #dde1e8;",
+    danger:"background:#dc2626;color:#fff;border:1px solid #dc2626;",
+    success:"background:#059669;color:#fff;border:1px solid #059669;",
+    amber:"background:#d97706;color:#fff;border:1px solid #d97706;",
+    outline:dm?"background:transparent;color:#60a5fa;border:1px solid #60a5fa;":"background:transparent;color:#1e3a5f;border:1px solid #1e3a5f;",
+    sky:"background:#0ea5e9;color:#fff;border:1px solid #0ea5e9;",
+    purple:"background:#7c3aed;color:#fff;border:1px solid #7c3aed;",
   };
-  const S={sm:"px-3 py-1.5 text-xs min-h-[36px]",md:"px-4 py-2.5 text-sm min-h-[44px]",lg:"px-6 py-3 text-base min-h-[52px]"};
-  return <button onClick={onClick} disabled={disabled} className={cx("font-semibold rounded-xl transition-all duration-150 active:scale-[0.96] select-none",V[v]||V.primary,S[size]||S.md,disabled&&"opacity-40 cursor-not-allowed pointer-events-none",className)}>{children}</button>;
+  const S={sm:"padding:6px 12px;font-size:12px;min-height:32px;",md:"padding:9px 16px;font-size:13px;min-height:40px;",lg:"padding:11px 24px;font-size:14px;min-height:46px;"};
+  const base={fontWeight:600,borderRadius:6,letterSpacing:"0.01em",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.45:1,transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6};
+  const styleStr=(V[v]||V.primary)+(S[size]||S.md);
+  const styleObj={...base,...Object.fromEntries(styleStr.split(";").filter(Boolean).map(s=>{const[k,...vs]=s.split(":");const key=k.trim().replace(/-([a-z])/g,(_,c)=>c.toUpperCase());return[key,vs.join(":").trim()];}))};
+  return <button onClick={onClick} disabled={disabled} style={styleObj} className={cx("select-none active:scale-[0.97]",className)}>{children}</button>;
 }
 function Card({children,className="",dm}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 3px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04)"}} className={cx("rounded-2xl",className)}>{children}</div>;
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)",borderRadius:8}} className={className}>{children}</div>;
 }
 function StatCard({label,value,sub,accent,dm}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.06)"}} className="rounded-2xl p-4 relative overflow-hidden">
-    <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:accent,borderRadius:"8px 8px 0 0"}}/>
-    <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mb-2 mt-1">{label}</p>
-    <p style={{color:t.text}} className="text-2xl font-black leading-none tracking-tight">{value}</p>
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:8,borderLeft:`3px solid ${accent}`}} className="p-4 relative">
+    <p style={{color:t.sub,letterSpacing:"0.07em"}} className="text-[10px] font-semibold uppercase mb-2">{label}</p>
+    <p style={{color:t.text}} className="text-2xl font-bold leading-none tracking-tight">{value}</p>
     {sub&&<p style={{color:t.sub}} className="text-[11px] mt-1.5 font-medium">{sub}</p>}
   </div>;
 }
 function Sheet({open,title,onClose,children,dm}){
   const t=T(dm);
-  useEffect(()=>{if(open){document.body.style.overflow="hidden";document.body.style.position="fixed";document.body.style.width="100%";}return()=>{document.body.style.overflow="";document.body.style.position="";document.body.style.width="";};},[open]);
+  const scrollYRef=useRef(0);
+  useEffect(()=>{
+    if(open){
+      scrollYRef.current=window.scrollY;
+      document.body.style.overflow="hidden";
+      document.body.style.position="fixed";
+      document.body.style.top=`-${scrollYRef.current}px`;
+      document.body.style.width="100%";
+    }
+    return()=>{
+      document.body.style.overflow="";
+      document.body.style.position="";
+      document.body.style.top="";
+      document.body.style.width="";
+      if(open) window.scrollTo(0,scrollYRef.current);
+    };
+  },[open]);
   if(!open)return null;
-  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>
-    <div style={{background:t.card,maxHeight:"92dvh",border:`1px solid ${t.border}`,boxShadow:"0 25px 50px rgba(0,0,0,0.4)"}} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl flex flex-col" onTouchMove={e=>e.stopPropagation()}>
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
-        <span style={{color:t.text}} className="font-bold text-[15px] tracking-tight">{title}</span>
-        <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1px solid ${t.inpB}`}} className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold hover:opacity-70 transition-opacity">✕</button>
+  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:t.card,maxHeight:"92svh",border:`1px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.35)",borderRadius:"8px 8px 0 0"}} className="w-full max-w-lg sm:rounded-lg flex flex-col" onClick={e=>e.stopPropagation()}>
+      <div style={{borderBottom:`1px solid ${t.border}`,background:dm?"#1c2128":"#f8fafc"}} className="flex items-center justify-between px-5 py-4 shrink-0 rounded-t-lg">
+        <span style={{color:t.text,letterSpacing:"-0.01em"}} className="font-semibold text-sm">{title}</span>
+        <button onClick={onClose} style={{background:"transparent",color:t.sub,border:`1px solid ${t.inpB}`,width:28,height:28,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer"}}>✕</button>
       </div>
-      <Hr dm={dm}/>
-      <div className="px-6 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"calc(1.25rem + env(safe-area-inset-bottom))"}}>{children}</div>
+      <div className="px-5 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"calc(1.25rem + env(safe-area-inset-bottom))"}}>{children}</div>
     </div>
   </div>;
 }
 function Toast({msg,onDone}){
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);});
-  return <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3 rounded-2xl font-semibold whitespace-nowrap pointer-events-none flex items-center gap-2" style={{background:"rgba(24,24,27,0.95)",color:"#fafafa",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 8px 32px rgba(0,0,0,0.4)",backdropFilter:"blur(8px)"}}><span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"/>{msg}</div>;
+  return <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] text-sm px-4 py-3 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5" style={{background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:6}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center px-6" style={{background:"rgba(0,0,0,0.8)",backdropFilter:"blur(12px)"}}>
-    <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:"0 25px 50px rgba(0,0,0,0.5)"}} className="w-full max-w-sm rounded-3xl p-6 flex flex-col gap-5">
-      <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center text-xl mx-auto">⚠️</div>
-      <p style={{color:t.text}} className="text-sm font-semibold text-center leading-relaxed">{msg}</p>
-      <div className="flex gap-3"><Btn dm={dm} v="ghost" className="flex-1" onClick={onNo}>Cancel</Btn><Btn v="danger" className="flex-1" onClick={onYes}>Confirm Delete</Btn></div>
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center px-6" style={{background:"rgba(0,0,0,0.6)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
+    <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:"0 20px 50px rgba(0,0,0,0.4)",borderRadius:8}} className="w-full max-w-sm p-6 flex flex-col gap-5">
+      <div style={{width:36,height:36,borderRadius:6,background:"rgba(220,38,38,0.1)",border:"1px solid rgba(220,38,38,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⚠️</div>
+      <div>
+        <p style={{color:t.text,fontWeight:600,fontSize:14,marginBottom:4}}>Confirm Action</p>
+        <p style={{color:t.sub,fontSize:13,lineHeight:1.6}}>{msg}</p>
+      </div>
+      <div className="flex gap-3 justify-end"><Btn dm={dm} v="ghost" size="sm" onClick={onNo}>Cancel</Btn><Btn v="danger" size="sm" onClick={onYes}>Delete</Btn></div>
     </div>
   </div>;
 }
 function Search({value,onChange,placeholder,dm}){
   const t=T(dm);
   return <div className="relative">
-    <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16}} className="w-full rounded-xl pl-9 pr-9 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60 transition-all"/>
-    {value&&<button onClick={()=>onChange("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black transition-opacity hover:opacity-70" style={{background:t.inpB,color:t.sub}}>✕</button>}
+    <svg className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:14,WebkitAppearance:"none",touchAction:"manipulation",borderRadius:6,transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full pl-9 pr-8 py-2 outline-none placeholder:text-slate-400/50" onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.12)":"0 0 0 3px rgba(30,58,95,0.08)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}/>
+    {value&&<button onClick={()=>onChange("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:16,height:16,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>✕</button>}
   </div>;
 }
 
 // Toggle switch
 function Tog({on,onChange,dm}){
   const t=T(dm);
-  return <button onClick={onChange} style={{background:on?"#f59e0b":t.inp,border:`1.5px solid ${on?"#f59e0b":t.inpB}`,width:42,height:24,borderRadius:99,padding:2,display:"flex",alignItems:"center",justifyContent:on?"flex-end":"flex-start",flexShrink:0,transition:"all 0.2s",boxShadow:on?"0 0 0 3px rgba(245,158,11,0.2)":"none"}}>
-    <div style={{width:18,height:18,background:"#fff",borderRadius:"50%",boxShadow:"0 1px 3px rgba(0,0,0,0.3)",transition:"all 0.2s"}}/>
+  const ac=dm?"#3b82f6":"#1e3a5f";
+  return <button onClick={onChange} style={{background:on?ac:t.inpB,width:38,height:22,borderRadius:99,padding:2,display:"flex",alignItems:"center",justifyContent:on?"flex-end":"flex-start",flexShrink:0,transition:"all 0.2s",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+    <div style={{width:18,height:18,background:"#fff",borderRadius:"50%",boxShadow:"0 1px 3px rgba(0,0,0,0.25)",transition:"all 0.2s"}}/>
   </button>;
 }
 
@@ -529,44 +587,39 @@ function ProdRow({product,line,onChange,dm,showPrice=true}){
   const t=T(dm);
   const qty=line?.qty||0;
   const price=line?.priceAmount||0;
-  const R=22,C=2*Math.PI*R,pct=Math.min(qty,500)/500;
+  const ac=dm?"#3b82f6":"#1e3a5f";
   return (
-    <div style={{background:t.inp,border:`1px solid ${t.inpB}`}} className="rounded-2xl p-3 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <p style={{color:t.text}} className="text-sm font-bold">{product.name}</p>
-        {showPrice&&qty>0&&price>0&&<p className="text-sm font-black text-amber-500">{inr(qty*price)}</p>}
-        {!showPrice&&qty>0&&<p style={{color:t.sub}} className="text-sm font-semibold">{qty} {product.unit}</p>}
+    <div style={{background:t.card,border:`1px solid ${qty>0?ac:t.border}`,borderRadius:6,transition:"border-color 0.15s",boxShadow:qty>0?(dm?"0 0 0 1px rgba(59,130,246,0.2)":"0 0 0 1px rgba(30,58,95,0.08)"):"none"}} className="p-3">
+      <div className="flex items-center justify-between mb-3">
+        <p style={{color:t.text,fontWeight:600,fontSize:13}}>{product.name}</p>
+        {showPrice&&qty>0&&price>0&&<p style={{color:ac,fontWeight:700,fontSize:13}}>{inr(qty*price)}</p>}
+        {!showPrice&&qty>0&&<p style={{color:t.sub,fontSize:12,fontWeight:500}}>{qty} {product.unit}</p>}
       </div>
-      <div className="flex items-center gap-3">
-        <div className="relative shrink-0" style={{width:50,height:50}}>
-          <svg width="50" height="50" style={{transform:"rotate(-90deg)"}}>
-            <circle cx="25" cy="25" r={R} fill="none" stroke={t.border} strokeWidth="4"/>
-            <circle cx="25" cy="25" r={R} fill="none" stroke="#f59e0b" strokeWidth="4" strokeDasharray={`${pct*C} ${C}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.1s"}}/>
-          </svg>
-          <span style={{color:t.text}} className="absolute inset-0 flex items-center justify-center text-xs font-black">{qty}</span>
+      <div className="flex items-center gap-2">
+        <div style={{background:dm?"#1c2128":"#f0f2f5",borderRadius:4,padding:"2px 8px",minWidth:40,textAlign:"center"}}>
+          <span style={{color:qty>0?ac:t.sub,fontWeight:700,fontSize:15}}>{qty}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-1">
-          <button onClick={()=>onChange({qty:Math.max(0,qty-1),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text}} className="w-11 h-11 rounded-xl font-bold text-lg flex items-center justify-center shrink-0">−</button>
-          <input type="number" value={qty} min={0} max={9999} onChange={e=>onChange({qty:Math.max(0,Math.min(9999,+e.target.value||0)),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:16}} className="flex-1 min-w-0 text-center rounded-xl py-2.5 outline-none focus:ring-2 focus:ring-amber-400"/>
-          <button onClick={()=>onChange({qty:qty+1,priceAmount:price})} className="w-11 h-11 rounded-xl font-bold text-lg flex items-center justify-center shrink-0 bg-amber-500 text-white">+</button>
+          <button onClick={()=>onChange({qty:Math.max(0,qty-1),priceAmount:price})} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,width:36,height:36,borderRadius:4,fontWeight:700,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>−</button>
+          <input type="number" value={qty} min={0} max={9999} onChange={e=>onChange({qty:Math.max(0,Math.min(9999,+e.target.value||0)),priceAmount:price})} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:14,WebkitAppearance:"none",MozAppearance:"textfield",touchAction:"manipulation",borderRadius:4,textAlign:"center",flex:1,minWidth:0,padding:"8px 4px"}} className="outline-none"/>
+          <button onClick={()=>onChange({qty:qty+1,priceAmount:price})} style={{background:ac,color:"#fff",border:"none",width:36,height:36,borderRadius:4,fontWeight:700,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>+</button>
         </div>
       </div>
       {showPrice&&(
-        <div>
-          <p style={{color:t.sub}} className="text-[10px] font-semibold uppercase tracking-wider mb-1.5">Price per {product.unit}</p>
+        <div className="mt-3">
+          <p style={{color:t.sub,fontSize:10,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Unit price</p>
           <div className="flex flex-wrap gap-1.5">
             {(product.prices||[]).map((p,i)=>(
               <button key={i} onClick={()=>onChange({qty,priceAmount:p})}
-                style={price===p?{background:"#f59e0b",color:"#000",border:"2px solid #f59e0b"}:{background:t.card,color:t.sub,border:`1.5px solid ${t.inpB}`}}
-                className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 min-h-[36px]">₹{p}</button>
+                style={{borderRadius:4,...(price===p?{background:ac,color:"#fff",border:`1px solid ${ac}`}:{background:t.inp,color:t.sub,border:`1px solid ${t.inpB}`}),padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>₹{p}</button>
             ))}
             <div className="flex items-center gap-1">
-              <span style={{color:t.sub}} className="text-[10px]">Custom ₹</span>
-              <input type="number" placeholder="0"
+              <span style={{color:t.sub,fontSize:10}}>₹</span>
+              <input type="number" placeholder="Custom"
                 value={price&&!(product.prices||[]).includes(price)?price:""}
                 onChange={e=>{const v=+e.target.value;if(v>0)onChange({qty,priceAmount:v});}}
-                style={{background:t.card,border:`1.5px solid ${price&&!(product.prices||[]).includes(price)?"#f59e0b":t.inpB}`,color:t.text,width:64,fontSize:16}}
-                className="rounded-xl px-2 py-2 text-xs text-center outline-none focus:ring-1 focus:ring-amber-400"/>
+                style={{background:t.inp,border:`1px solid ${price&&!(product.prices||[]).includes(price)?ac:t.inpB}`,color:t.text,width:64,fontSize:13,borderRadius:4,padding:"6px 8px",WebkitAppearance:"none",touchAction:"manipulation"}}
+                className="outline-none text-center"/>
             </div>
           </div>
         </div>
@@ -646,10 +699,10 @@ function MorningBriefing({ dm, onDismiss, onUnpin, pinned, data }) {
   ].filter(Boolean);
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 20, overflow: "hidden", marginBottom: 0 }}>
-      <div style={{ background: dm ? "linear-gradient(135deg,#1c1500,#1a1a22)" : "linear-gradient(135deg,#fffbeb,#fef9ef)", padding: "16px 18px", borderBottom: `1px solid ${t.border}` }}>
+      <div style={{ background: dm ? "linear-gradient(135deg,#0d1421,#111820)" : "linear-gradient(135deg,#f0f4f8,#e8edf5)", padding: "16px 18px", borderBottom: `1px solid ${t.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ color: "#f59e0b", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>📅 Morning Briefing</p>
+            <p style={{ color: "#3b82f6", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>📅 Morning Briefing</p>
             <p style={{ color: t.text, fontWeight: 800, fontSize: 15 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -717,7 +770,7 @@ function Login({users,onLogin,dm,settings}){
   // PIN login screen
   if(pinMode&&pinTarget){
     return(
-      <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-6">
+      <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-6">
         <div style={{width:"100%",maxWidth:320,textAlign:"center"}}>
           <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.3)",width:64,height:64,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
           <p style={{color:dm?"#fafafa":"#18181b",fontWeight:800,fontSize:18,marginBottom:4}}>{pinTarget.name}</p>
@@ -734,94 +787,100 @@ function Login({users,onLogin,dm,settings}){
             {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i)=>(
               <button key={i} onClick={()=>{if(k==="⌫"){setPinVal(v=>v.slice(0,-1));setErr("");}else if(k!=="")enterPin(String(k));}}
                 disabled={k===""}
-                style={{height:64,borderRadius:16,fontSize:k==="⌫"?20:22,fontWeight:700,background:k===""?"transparent":dm?"#1e1e24":"#fff",color:dm?"#fafafa":"#18181b",border:k===""?"none":`1px solid ${dm?"#2e2e36":"#e5e5e0"}`,boxShadow:k===""?"none":dm?"none":"0 1px 4px rgba(0,0,0,0.08)",cursor:k===""?"default":"pointer",transition:"all 0.1s",opacity:k===""?0:1}}
-                onMouseEnter={e=>{if(k!=="")e.currentTarget.style.background=dm?"#28282f":"#f5f5f0";}}
-                onMouseLeave={e=>{if(k!=="")e.currentTarget.style.background=dm?"#1e1e24":"#fff";}}
+                style={{height:64,borderRadius:16,fontSize:k==="⌫"?20:22,fontWeight:700,background:k===""?"transparent":dm?"#1e1e24":"#fff",color:dm?"#fafafa":"#18181b",border:k===""?"none":`1px solid ${dm?"#2e2e36":"#e5e5e0"}`,boxShadow:k===""?"none":dm?"none":"0 1px 4px rgba(0,0,0,0.08)",cursor:k===""?"default":"pointer",transition:"background 0.1s",opacity:k===""?0:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}
               >{k}</button>
             ))}
           </div>
-          <button onClick={()=>{setPinMode(false);setPinTarget(null);setPinVal("");setErr("");}} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>← Use password instead</button>
+          <button onClick={()=>{setPinMode(false);setPinTarget(null);setPinVal("");setErr("");}} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:44,padding:"8px 0"}}>← Use password instead</button>
         </div>
       </div>
     );
   }
   // ── STAFF PICKER MODE ──────────────────────────────────────────
   if(mode==="picker"&&!showAdminForm){
+    // eslint-disable-next-line no-unused-vars
+    const ac=dm?"#3b82f6":"#1e3a5f";
     return(
-      <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-4 py-10">
+      <div style={{background:dm?"#0d1117":"#f0f2f5",minHeight:"100svh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-4 py-10">
         {/* Brand */}
-        <div className="text-center mb-10">
-          <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.3)"}} className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-5 select-none">{settings?.appEmoji||"🫓"}</div>
-          <h1 style={{color:dm?"#fafafa":"#18181b",fontWeight:900,fontSize:28,letterSpacing:-1,marginBottom:4}}>{settings?.appName||"TAS Healthy World"}</h1>
-          <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:13,fontWeight:500}}>{settings?.appSubtitle||"Operations"}</p>
+        <div className="text-center mb-8">
+          <div style={{background:dm?"rgba(59,130,246,0.1)":"rgba(30,58,95,0.08)",border:`1px solid ${dm?"rgba(59,130,246,0.25)":"rgba(30,58,95,0.2)"}`,borderRadius:10,width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 14px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
+          <h1 style={{color:dm?"#e6edf3":"#0f1923",fontWeight:700,fontSize:22,letterSpacing:"-0.02em",marginBottom:3}}>{settings?.appName||"TAS Healthy World"}</h1>
+          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:12,fontWeight:500}}>{settings?.appSubtitle||"Operations"}</p>
         </div>
         {/* Picker */}
-        <div style={{width:"100%",maxWidth:420}}>
-          <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",textAlign:"center",marginBottom:16}}>Who's working today?</p>
+        <div style={{width:"100%",maxWidth:400}}>
+          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",textAlign:"center",marginBottom:12}}>Select your profile</p>
           {staffNames.length===0&&(
-            <div style={{background:dm?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.04)",border:`1px dashed ${dm?"#333":"#ccc"}`,borderRadius:16,padding:"24px 20px",textAlign:"center"}}>
-              <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:13}}>No staff names added yet.</p>
-              <p style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,marginTop:4}}>Admin → Settings → Staff Login Mode</p>
+            <div style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:6,padding:"20px",textAlign:"center"}}>
+              <p style={{color:dm?"#8b949e":"#5a6478",fontSize:13}}>No staff profiles configured.</p>
+              <p style={{color:dm?"#6b7280":"#8b949e",fontSize:11,marginTop:4}}>Admin → Settings → Staff Login Mode</p>
             </div>
           )}
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {staffNames.map((name,i)=>{
               const initials=name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-              const colors=["#d97706","#7c3aed","#0284c7","#059669","#dc2626","#db2777"];
+              const colors=["#1e3a5f","#7c3aed","#0369a1","#059669","#dc2626","#9333ea"];
               const color=colors[i%colors.length];
               return(
                 <button key={name} onClick={()=>pickStaff(name)}
-                  style={{background:dm?"rgba(255,255,255,0.05)":"#fff",border:`1.5px solid ${dm?"rgba(255,255,255,0.08)":"#e5e5e0"}`,borderRadius:16,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,textAlign:"left",width:"100%",cursor:"pointer",transition:"all 0.15s",boxShadow:dm?"none":"0 1px 3px rgba(0,0,0,0.06)"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.boxShadow=`0 4px 16px ${color}22`;}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=dm?"rgba(255,255,255,0.08)":"#e5e5e0";e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=dm?"none":"0 1px 3px rgba(0,0,0,0.06)";}}>
-                  <div style={{width:44,height:44,background:`${color}20`,border:`2px solid ${color}40`,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color,fontWeight:900,fontSize:16,flexShrink:0}}>{initials}</div>
+                  style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:6,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,textAlign:"left",width:"100%",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                  <div style={{width:36,height:36,background:`${color}18`,border:`1px solid ${color}35`,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",color,fontWeight:700,fontSize:13,flexShrink:0}}>{initials}</div>
                   <div style={{flex:1}}>
-                    <p style={{color:dm?"#fafafa":"#18181b",fontWeight:700,fontSize:15,lineHeight:1.2}}>{name}</p>
-                    <p style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,marginTop:2,fontWeight:500}}>Tap to start session</p>
+                    <p style={{color:dm?"#e6edf3":"#0f1923",fontWeight:600,fontSize:14,lineHeight:1.2}}>{name}</p>
+                    <p style={{color:dm?"#8b949e":"#5a6478",fontSize:11,marginTop:1}}>Tap to continue</p>
                   </div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={dm?"#444":"#ccc"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={dm?"#8b949e":"#94a3b8"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               );
             })}
           </div>
-          {err&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:"10px 14px",marginTop:16,textAlign:"center"}}>
-            <p style={{color:"#ef4444",fontSize:12,fontWeight:600}}>{err}</p>
+          {err&&<div style={{background:"rgba(220,38,38,0.08)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:6,padding:"10px 12px",marginTop:12,textAlign:"center"}}>
+            <p style={{color:"#dc2626",fontSize:12,fontWeight:600}}>{err}</p>
           </div>}
-          <button onClick={()=>{setErr("");setShowAdminForm(true);}} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,display:"block",width:"100%",textAlign:"center",marginTop:28,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Admin login</button>
+          <button onClick={()=>{setErr("");setShowAdminForm(true);}} style={{color:dm?"#8b949e":"#5a6478",fontSize:11,fontWeight:500,display:"block",width:"100%",textAlign:"center",marginTop:24,background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:40,letterSpacing:"0.02em"}}>Administrator Login →</button>
         </div>
       </div>
     );
   }
   // ── INDIVIDUAL / ADMIN LOGIN FORM ─────────────────────────────
   return (
-    <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh"}} className="flex flex-col lg:flex-row">
-      {/* Left panel on desktop */}
-      <div style={{background:dm?"#111115":"#1a1a22",position:"relative",overflow:"hidden"}} className="hidden lg:flex flex-col justify-center items-center flex-1 p-12">
-        <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 30% 40%, rgba(245,158,11,0.12) 0%, transparent 60%), radial-gradient(circle at 70% 70%, rgba(124,58,237,0.08) 0%, transparent 50%)"}}/>
-        <div className="text-center relative z-10">
-          <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.25)"}} className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl mx-auto mb-6 select-none">{settings?.appEmoji||"🫓"}</div>
-          <h1 style={{color:"#fafafa",fontWeight:900,fontSize:36,letterSpacing:-1.5,lineHeight:1.1}} className="mb-3">{settings?.appName||"TAS Healthy World"}</h1>
-          <p style={{color:"rgba(255,255,255,0.45)",fontSize:15,fontWeight:500}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
-          <div style={{height:1,background:"rgba(255,255,255,0.08)",margin:"32px 0"}}/>
-          <div style={{display:"flex",gap:20,justifyContent:"center"}}>
-            {[{label:"Real-time sync",icon:"⚡"},{label:"Multi-role access",icon:"🔐"},{label:"Firebase powered",icon:"🔥"}].map(f=>(
-              <div key={f.label} style={{textAlign:"center"}}>
-                <div style={{fontSize:20,marginBottom:6}}>{f.icon}</div>
-                <p style={{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{f.label}</p>
+    <div style={{background:dm?"#0d1117":"#f0f2f5",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
+      {/* Left panel on desktop — deep navy corporate brand panel */}
+      <div style={{background:"#0f1923",position:"relative",overflow:"hidden"}} className="hidden lg:flex flex-col justify-center items-center flex-1 p-12">
+        <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 20% 30%, rgba(30,58,95,0.8) 0%, transparent 55%), radial-gradient(circle at 80% 75%, rgba(15,25,35,0.9) 0%, transparent 50%)"}}/>
+        {/* Subtle grid lines */}
+        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)",backgroundSize:"48px 48px"}}/>
+        <div className="text-center relative z-10" style={{maxWidth:340}}>
+          <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,width:52,height:52,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 20px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
+          <h1 style={{color:"#e6edf3",fontWeight:700,fontSize:28,letterSpacing:"-0.02em",lineHeight:1.15,marginBottom:8}}>{settings?.appName||"TAS Healthy World"}</h1>
+          <p style={{color:"rgba(255,255,255,0.35)",fontSize:13,fontWeight:400,lineHeight:1.6}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
+          <div style={{height:1,background:"rgba(255,255,255,0.06)",margin:"28px 0"}}/>
+          <div style={{display:"flex",flexDirection:"column",gap:12,textAlign:"left"}}>
+            {[{label:"Real-time synchronisation",icon:"⚡",sub:"Live updates across all devices"},{label:"Role-based access control",icon:"🔐",sub:"Granular permissions per user"},{label:"Firebase cloud backend",icon:"🔥",sub:"Secure, scalable infrastructure"}].map(f=>(
+              <div key={f.label} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                <span style={{fontSize:15,marginTop:1,opacity:0.7}}>{f.icon}</span>
+                <div>
+                  <p style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:600,marginBottom:1}}>{f.label}</p>
+                  <p style={{color:"rgba(255,255,255,0.25)",fontSize:11}}>{f.sub}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
+        <div style={{position:"absolute",bottom:24,left:0,right:0,textAlign:"center"}}>
+          <p style={{color:"rgba(255,255,255,0.18)",fontSize:10,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase"}}>TAS Healthy World · Confidential</p>
+        </div>
       </div>
       {/* Right panel */}
       <div className="flex flex-col items-center justify-center flex-1 px-6 py-12">
-        {/* Mobile hero banner — hidden on desktop (desktop uses the left panel instead) */}
-        <div className="lg:hidden w-full mb-8" style={{borderRadius:24,overflow:"hidden",position:"relative",background:"#111115"}}>
-          <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 25% 40%, rgba(245,158,11,0.18) 0%, transparent 55%), radial-gradient(circle at 75% 70%, rgba(124,58,237,0.12) 0%, transparent 50%)"}}/>
-          <div style={{position:"relative",zIndex:1,padding:"28px 24px 24px",textAlign:"center"}}>
-            <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.25)",width:72,height:72,borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 14px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
-            <h1 style={{color:"#fafafa",fontWeight:900,fontSize:24,letterSpacing:-0.8,lineHeight:1.1,marginBottom:5}}>{settings?.appName||"TAS Healthy World"}</h1>
-            <p style={{color:"rgba(255,255,255,0.45)",fontSize:12,fontWeight:500,marginBottom:20}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
+        {/* Mobile header banner */}
+        <div className="lg:hidden w-full mb-8" style={{borderRadius:8,overflow:"hidden",position:"relative",background:"#0f1923"}}>
+          <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)",backgroundSize:"32px 32px"}}/>
+          <div style={{position:"relative",zIndex:1,padding:"24px 20px",textAlign:"center"}}>
+            <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",width:48,height:48,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 12px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
+            <h1 style={{color:"#e6edf3",fontWeight:700,fontSize:20,letterSpacing:"-0.015em",lineHeight:1.2,marginBottom:4}}>{settings?.appName||"TAS Healthy World"}</h1>
+            <p style={{color:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:400,marginBottom:16}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
             <div style={{height:1,background:"rgba(255,255,255,0.08)",marginBottom:18}}/>
             <div style={{display:"flex",gap:0,justifyContent:"center"}}>
               {[{label:"Real-time sync",icon:"⚡"},{label:"Multi-role",icon:"🔐"},{label:"Firebase",icon:"🔥"}].map((f,i,a)=>(
@@ -834,22 +893,22 @@ function Login({users,onLogin,dm,settings}){
           </div>
         </div>
         <div style={{width:"100%",maxWidth:360}}>
-          <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:20}}>Sign in to your account</p>
-          <div style={{background:dm?"#17171b":"#fff",border:`1.5px solid ${dm?"#26262c":"#e2e1db"}`,borderRadius:20,padding:24,boxShadow:dm?"0 4px 24px rgba(0,0,0,0.4)":"0 4px 20px rgba(0,0,0,0.08)"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <Inp dm={dm} label="Username" value={u} onChange={e=>setU(e.target.value)} placeholder="e.g. admin" autoComplete="username"/>
+          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:16}}>Sign in to your account</p>
+          <div style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:8,padding:24,boxShadow:dm?"0 4px 24px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.07)"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <Inp dm={dm} label="Username" value={u} onChange={e=>setU(e.target.value)} placeholder="Enter username" autoComplete="username"/>
               <Inp dm={dm} label="Password" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••••" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&go()}/>
-              {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:10,padding:"10px 12px"}}>
-                <p style={{color:"#ef4444",fontSize:12,fontWeight:600}}>{err}</p>
+              {err&&<div style={{background:"rgba(220,38,38,0.08)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:4,padding:"8px 12px"}}>
+                <p style={{color:"#dc2626",fontSize:12,fontWeight:500}}>{err}</p>
               </div>}
-              <button onClick={go} disabled={busy} style={{background:dm?"#f59e0b":"#18181b",color:dm?"#000":"#fff",border:"none",borderRadius:12,padding:"12px 20px",fontSize:14,fontWeight:700,cursor:busy?"not-allowed":"pointer",opacity:busy?0.6:1,transition:"all 0.15s",letterSpacing:0.2}}>
-                {busy?"Signing in…":"Sign In →"}
+              <button onClick={go} disabled={busy} style={{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"10px 20px",fontSize:14,fontWeight:600,cursor:busy?"not-allowed":"pointer",opacity:busy?0.6:1,transition:"background 0.15s",letterSpacing:"0.01em",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:44,width:"100%"}}>
+                {busy?"Authenticating…":"Sign In"}
               </button>
             </div>
           </div>
           {mode==="picker"
-            ?<button onClick={()=>setShowAdminForm(false)} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,display:"block",width:"100%",textAlign:"center",marginTop:20,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>← Back to staff picker</button>
-            :<p style={{color:dm?"#6b7280":"#9ca3af",textAlign:"center",fontSize:11,marginTop:20,fontWeight:500}}>Accounts managed by Admin → Settings</p>}
+            ?<button onClick={()=>setShowAdminForm(false)} style={{color:dm?"#8b949e":"#5a6478",fontSize:11,fontWeight:500,display:"block",width:"100%",textAlign:"center",marginTop:16,background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:36}}>← Return to staff selection</button>
+            :<p style={{color:dm?"#8b949e":"#5a6478",textAlign:"center",fontSize:11,marginTop:16,fontWeight:400}}>User accounts are managed by your administrator.</p>}
         </div>
       </div>
     </div>
@@ -863,7 +922,7 @@ function Login({users,onLogin,dm,settings}){
 if(typeof document!=="undefined"&&!document.getElementById("goldPulseStyle")){
   const _s=document.createElement("style");
   _s.id="goldPulseStyle";
-  _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px #f59e0b30,0 4px 24px #f59e0b20}50%{box-shadow:0 0 0 6px #f59e0b40,0 8px 32px #f59e0b30}}";
+  _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px rgba(59,130,246,0.2),0 4px 24px rgba(30,58,95,0.15)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0.3),0 8px 32px rgba(30,58,95,0.25)}}";
   document.head.appendChild(_s);
 }
 if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
@@ -899,7 +958,7 @@ export default function Root(){
   useEffect(()=>{if(sess)lsw("tas9_sess",sess);else lsdel("tas9_sess");},[sess]);
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
   if(!sess){
-    if(!fbReady) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    if(!fbReady) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>;
@@ -1038,7 +1097,11 @@ function WeatherWidget({dm,settings}){
 
 // ═══════════════════════════════════════════════════════════════
 //  CRM
-// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EXPORTS — consumed by CRM_top.js and CRM_bottom.js
+// ─────────────────────────────────────────────────────────────────────────────
+
 function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
   const isFactory=sess.role==="factory";
@@ -1475,55 +1538,55 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
-    <div style={{background:t.bg,minHeight:"100dvh",fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}} className="flex flex-col lg:flex-row">
+    <div style={{background:t.bg,minHeight:"100svh",fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}} className="flex flex-col lg:flex-row">
 
       {/* ── DESKTOP SIDEBAR (lg+) ─────────────────────────────── */}
-      <aside style={{background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,width:236,minHeight:"100vh"}} className="hidden lg:flex flex-col shrink-0 sticky top-0 h-screen overflow-y-auto">
+      <aside style={{background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,width:224,minHeight:"100vh"}} className="hidden lg:flex flex-col shrink-0 sticky top-0 h-screen overflow-y-auto">
         {/* Logo */}
-        <div style={{borderBottom:`1px solid ${t.sidebarBorder}`}} className="px-5 py-5 flex items-center gap-3">
-          <div style={{background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.25)"}} className="w-9 h-9 rounded-xl flex items-center justify-center text-lg select-none shrink-0">{settings?.appEmoji||"🫓"}</div>
+        <div style={{borderBottom:`1px solid ${t.sidebarBorder}`,padding:"16px 16px"}} className="flex items-center gap-3">
+          <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:6,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
           <div className="min-w-0">
-            <p style={{color:t.sidebarText}} className="font-black text-sm leading-tight truncate">{settings?.appName||"TAS Healthy World"}</p>
-            <p style={{color:t.sidebarSub}} className="text-[10px] truncate mt-0.5">{settings?.appSubtitle||""}</p>
+            <p style={{color:t.sidebarText,fontWeight:700,fontSize:13,letterSpacing:"-0.01em",lineHeight:1.2}} className="truncate">{settings?.appName||"TAS Healthy World"}</p>
+            <p style={{color:t.sidebarSub,fontSize:10,letterSpacing:"0.02em"}} className="truncate mt-0.5">{settings?.appSubtitle||""}</p>
           </div>
         </div>
         {/* Nav items */}
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
+        <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5">
           {TABS.map(tb=>(
             <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
               style={tab===tb
-                ?{background:t.sidebarActiveBg,color:t.sidebarActive,borderLeft:`3px solid ${t.sidebarActive}`}
-                :{color:t.sidebarSub,borderLeft:"3px solid transparent"}}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-r-xl text-sm transition-all hover:bg-white/5 text-left w-full">
-              <span className="text-base w-5 text-center shrink-0 leading-none">{TAB_ICONS[tb]||"•"}</span>
-              <span className="truncate font-medium">{tb}</span>
-              {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span className="ml-auto text-[10px] font-black bg-amber-500 text-black rounded-full w-4 h-4 flex items-center justify-center shrink-0">{pendingD.length}</span>}
+                ?{background:t.sidebarActiveBg,color:t.sidebarActive,borderLeft:`2px solid ${t.sidebarActive}`,paddingLeft:14,borderRadius:"0 4px 4px 0"}
+                :{color:"rgba(232,237,245,0.65)",borderLeft:"2px solid transparent",paddingLeft:14,borderRadius:"0 4px 4px 0"}}
+              className="flex items-center gap-2.5 py-2 text-left w-full transition-all rounded-r text-sm">
+              <span style={{fontSize:13,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+              <span style={{fontSize:12,fontWeight:tab===tb?600:500,letterSpacing:"0.005em"}} className="truncate">{tb}</span>
+              {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:700,background:"#3b82f6",color:"#fff",borderRadius:99,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{pendingD.length}</span>}
             </button>
           ))}
         </nav>
         {/* Sidebar footer */}
-        <div style={{borderTop:`1px solid ${t.sidebarBorder}`}} className="px-3 py-4 flex flex-col gap-3">
+        <div style={{borderTop:`1px solid ${t.sidebarBorder}`,padding:"12px 12px"}} className="flex flex-col gap-2.5">
           {/* Staff picker dropdown in sidebar */}
           {subStaff.length>0&&(
             <select value={activeStaff} onChange={e=>setActiveStaff(e.target.value)}
-              style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${t.sidebarBorder}`,color:t.sidebarText,fontSize:12,width:"100%",borderRadius:10,padding:"7px 10px",outline:"none"}}>
+              style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${t.sidebarBorder}`,color:t.sidebarText,fontSize:11,width:"100%",borderRadius:4,padding:"6px 8px",outline:"none",WebkitAppearance:"none",appearance:"none"}}>
               {subStaff.map(n=><option key={n} value={n}>{n}</option>)}
             </select>
           )}
-          <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"10px 12px"}} className="flex items-center gap-2.5">
-            <div style={{background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.3)",color:"#f59e0b"}} className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm shrink-0">{displayName[0]?.toUpperCase()}</div>
+          <div style={{background:"rgba(255,255,255,0.03)",borderRadius:4,padding:"8px 10px",border:`1px solid ${t.sidebarBorder}`}} className="flex items-center gap-2">
+            <div style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",color:"#60a5fa"}} className="w-7 h-7 rounded flex items-center justify-center font-bold text-xs shrink-0">{displayName[0]?.toUpperCase()}</div>
             <div className="flex-1 min-w-0">
-              <p style={{color:t.sidebarText}} className="text-xs font-bold truncate leading-tight">{displayName}</p>
-              <p style={{color:t.sidebarSub}} className="text-[10px] truncate capitalize mt-0.5">{sess.role}</p>
+              <p style={{color:t.sidebarText,fontSize:11,fontWeight:600,letterSpacing:"0.005em"}} className="truncate">{displayName}</p>
+              <p style={{color:t.sidebarSub,fontSize:10,textTransform:"capitalize"}} className="truncate">{sess.role}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={()=>setDm(d=>!d)} style={{background:"rgba(255,255,255,0.06)",color:t.sidebarSub,border:`1px solid ${t.sidebarBorder}`,flex:1}} className="text-xs py-2 rounded-xl font-semibold hover:bg-white/10 transition-colors">{dm?"☀️ Light":"🌙 Dark"}</button>
-            <button onClick={onLogout} style={{background:"rgba(255,255,255,0.06)",color:t.sidebarSub,border:`1px solid ${t.sidebarBorder}`,flex:1}} className="text-xs py-2 rounded-xl font-semibold hover:bg-white/10 transition-colors">↩ Sign out</button>
+          <div className="flex gap-1.5">
+            <button onClick={()=>setDm(d=>!d)} style={{background:"rgba(255,255,255,0.06)",color:"rgba(232,237,245,0.7)",border:`1px solid ${t.sidebarBorder}`,flex:1,borderRadius:4,padding:"5px 8px",fontSize:10,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>{dm?"☀ Light":"⬡ Dark"}</button>
+            <button onClick={onLogout} style={{background:"rgba(255,255,255,0.06)",color:"rgba(232,237,245,0.7)",border:`1px solid ${t.sidebarBorder}`,flex:1,borderRadius:4,padding:"5px 8px",fontSize:10,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>Sign Out</button>
           </div>
-          <div className="flex items-center gap-1.5 px-1">
-            <div style={{width:6,height:6,borderRadius:"50%",background:lastSync?"#10b981":"#f59e0b",flexShrink:0,boxShadow:lastSync?"0 0 6px #10b98188":"0 0 6px #f59e0b88"}}/>
-            <p style={{color:"rgba(255,255,255,0.3)"}} className="text-[10px]">{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting…"}</p>
+          <div className="flex items-center gap-1.5 px-0.5">
+            <div style={{width:5,height:5,borderRadius:"50%",background:lastSync?"#10b981":"#3b82f6",flexShrink:0}}/>
+            <p style={{color:"rgba(232,237,245,0.45)",fontSize:9,letterSpacing:"0.02em"}}>{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting…"}</p>
           </div>
         </div>
       </aside>
@@ -1770,7 +1833,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             const todayRepl=todayD.filter(d=>d.replacement?.done).length;
             const delivRate=todayD.length>0?Math.round(todayDel.length/todayD.length*100):0;
             const isFullDelivery=todayD.length>0&&delivRate===100;
-            return <div style={{background:isFullDelivery?(dm?"linear-gradient(135deg,#1c1200,#1a1a00)":"linear-gradient(135deg,#fef9c3,#fef3c7)"):dm?"linear-gradient(135deg,#1c1500,#1a1a22)":"linear-gradient(135deg,#fffbeb,#fef9ef)",border:isFullDelivery?"2px solid #f59e0b":dm?"1px solid #3a2e00":"1px solid #fde68a",borderRadius:20,padding:"18px 20px",transition:"all 0.5s ease",boxShadow:isFullDelivery?"0 0 0 3px #f59e0b30, 0 4px 24px #f59e0b20":"none",animation:isFullDelivery?"goldPulse 2s ease-in-out infinite":"none"}}>
+            return <div style={{background:isFullDelivery?(dm?"linear-gradient(135deg,#0d1f35,#0d1a2e)":"linear-gradient(135deg,#eff6ff,#e8f0fb)"):dm?"linear-gradient(135deg,#0f1923,#111820)":"linear-gradient(135deg,#f0f4f8,#eef2f8)",border:isFullDelivery?"2px solid #3b82f6":dm?"1px solid #1e3a5f":"1px solid #c7d7ee",borderRadius:8,padding:"18px 20px",transition:"all 0.5s ease",boxShadow:isFullDelivery?"0 0 0 3px rgba(59,130,246,0.2),0 4px 24px rgba(30,58,95,0.2)":"none",animation:isFullDelivery?"goldPulse 2s ease-in-out infinite":"none"}}>
               {isFullDelivery&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:800,marginBottom:8,letterSpacing:"0.05em"}}>🏆 100% DELIVERED — PERFECT DAY!</p>}
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -4908,7 +4971,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
       <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 flex lg:hidden">
         {TABS.slice(0,5).map(tb=>(
           <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} className="flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all relative"
-            style={{color:tab===tb?t.accent:t.sub,minHeight:56}}>
+            style={{color:tab===tb?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
             {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
             <span className="text-xl leading-none">{TAB_ICONS[tb]||"•"}</span>
             <span className="text-[10px] font-semibold leading-none mt-0.5">{tb.length>8?tb.slice(0,7)+"…":tb}</span>
@@ -4916,7 +4979,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
         ))}
         {TABS.length>5&&(
           <div className="flex-1 relative">
-            <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub,minHeight:56}} className="w-full flex flex-col items-center justify-center py-3 gap-1 transition-all relative">
+            <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub,minHeight:56,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="w-full flex flex-col items-center justify-center py-3 gap-1 transition-all relative">
               {TABS.slice(5).includes(tab)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
               <span className="text-lg leading-none">⋯</span>
               <span className="text-[9px] font-semibold leading-none">{TABS.slice(5).includes(tab)?tab:"More"}</span>
@@ -4925,7 +4988,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             {showMoreNav&&(
               <div style={{background:t.card,border:`1px solid ${t.border}`,bottom:"100%",right:0,minWidth:160,boxShadow:"0 -8px 32px rgba(0,0,0,0.15)"}} className="absolute flex flex-col rounded-2xl overflow-hidden mb-2 z-50">
                 {TABS.slice(5).map(tb=>(
-                  <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} style={{color:tab===tb?t.accent:t.text,background:tab===tb?dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.08)":"transparent"}} className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-left active:opacity-70 transition-opacity">
+                  <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} style={{color:tab===tb?t.accent:t.text,background:tab===tb?dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.08)":"transparent",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-left active:opacity-70 transition-opacity">
                     <span className="text-base">{TAB_ICONS[tb]||"•"}</span>{tb}
                   </button>
                 ))}
