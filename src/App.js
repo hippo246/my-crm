@@ -441,14 +441,14 @@ function Inp({label,dm,className="",...p}){
   const t=T(dm);
   return <div className={className}>
     {label&&<label style={{color:t.sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">{label}</label>}
-    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,transition:"border-color 0.15s,box-shadow 0.15s"}} className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60" {...p}/>
+    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,transition:"border-color 0.15s,box-shadow 0.15s",fontSize:16}} className="w-full rounded-xl px-3.5 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60" {...p}/>
   </div>;
 }
 function Sel({label,dm,children,className="",...p}){
   const t=T(dm);
   return <div className={className}>
     {label&&<label style={{color:t.sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">{label}</label>}
-    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text}} className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] transition-all" {...p}>{children}</select>
+    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16}} className="w-full rounded-xl px-3.5 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] transition-all" {...p}>{children}</select>
   </div>;
 }
 function Btn({children,onClick,v="primary",size="md",className="",disabled=false,dm}){
@@ -462,7 +462,7 @@ function Btn({children,onClick,v="primary",size="md",className="",disabled=false
     sky:"bg-sky-500 text-white hover:bg-sky-400 shadow-sm",
     purple:"bg-purple-500 text-white hover:bg-purple-400 shadow-sm",
   };
-  const S={sm:"px-3 py-1.5 text-xs",md:"px-4 py-2.5 text-sm",lg:"px-6 py-3 text-base"};
+  const S={sm:"px-3 py-1.5 text-xs min-h-[36px]",md:"px-4 py-2.5 text-sm min-h-[44px]",lg:"px-6 py-3 text-base min-h-[52px]"};
   return <button onClick={onClick} disabled={disabled} className={cx("font-semibold rounded-xl transition-all duration-150 active:scale-[0.96] select-none",V[v]||V.primary,S[size]||S.md,disabled&&"opacity-40 cursor-not-allowed pointer-events-none",className)}>{children}</button>;
 }
 function Card({children,className="",dm}){
@@ -483,13 +483,13 @@ function Sheet({open,title,onClose,children,dm}){
   useEffect(()=>{if(open){document.body.style.overflow="hidden";document.body.style.position="fixed";document.body.style.width="100%";}return()=>{document.body.style.overflow="";document.body.style.position="";document.body.style.width="";};},[open]);
   if(!open)return null;
   return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>
-    <div style={{background:t.card,maxHeight:"93dvh",border:`1px solid ${t.border}`,boxShadow:"0 25px 50px rgba(0,0,0,0.4)"}} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl flex flex-col" onTouchMove={e=>e.stopPropagation()}>
+    <div style={{background:t.card,maxHeight:"92dvh",border:`1px solid ${t.border}`,boxShadow:"0 25px 50px rgba(0,0,0,0.4)"}} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl flex flex-col" onTouchMove={e=>e.stopPropagation()}>
       <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
         <span style={{color:t.text}} className="font-bold text-[15px] tracking-tight">{title}</span>
         <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1px solid ${t.inpB}`}} className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold hover:opacity-70 transition-opacity">✕</button>
       </div>
       <Hr dm={dm}/>
-      <div className="px-6 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>{children}</div>
+      <div className="px-6 py-5 flex flex-col gap-4" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"calc(1.25rem + env(safe-area-inset-bottom))"}}>{children}</div>
     </div>
   </div>;
 }
@@ -511,7 +511,7 @@ function Search({value,onChange,placeholder,dm}){
   const t=T(dm);
   return <div className="relative">
     <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text}} className="w-full rounded-xl pl-9 pr-9 py-2.5 text-sm outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60 transition-all"/>
+    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16}} className="w-full rounded-xl pl-9 pr-9 py-2.5 outline-none focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)] placeholder:text-zinc-400/60 transition-all"/>
     {value&&<button onClick={()=>onChange("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black transition-opacity hover:opacity-70" style={{background:t.inpB,color:t.sub}}>✕</button>}
   </div>;
 }
@@ -546,9 +546,9 @@ function ProdRow({product,line,onChange,dm,showPrice=true}){
           <span style={{color:t.text}} className="absolute inset-0 flex items-center justify-center text-xs font-black">{qty}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-1">
-          <button onClick={()=>onChange({qty:Math.max(0,qty-1),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text}} className="w-8 h-8 rounded-xl font-bold text-base flex items-center justify-center shrink-0">−</button>
-          <input type="number" value={qty} min={0} max={9999} onChange={e=>onChange({qty:Math.max(0,Math.min(9999,+e.target.value||0)),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text}} className="flex-1 min-w-0 text-center rounded-xl text-sm py-1.5 outline-none focus:ring-2 focus:ring-amber-400"/>
-          <button onClick={()=>onChange({qty:qty+1,priceAmount:price})} className="w-8 h-8 rounded-xl font-bold text-base flex items-center justify-center shrink-0 bg-amber-500 text-white">+</button>
+          <button onClick={()=>onChange({qty:Math.max(0,qty-1),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text}} className="w-11 h-11 rounded-xl font-bold text-lg flex items-center justify-center shrink-0">−</button>
+          <input type="number" value={qty} min={0} max={9999} onChange={e=>onChange({qty:Math.max(0,Math.min(9999,+e.target.value||0)),priceAmount:price})} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:16}} className="flex-1 min-w-0 text-center rounded-xl py-2.5 outline-none focus:ring-2 focus:ring-amber-400"/>
+          <button onClick={()=>onChange({qty:qty+1,priceAmount:price})} className="w-11 h-11 rounded-xl font-bold text-lg flex items-center justify-center shrink-0 bg-amber-500 text-white">+</button>
         </div>
       </div>
       {showPrice&&(
@@ -558,15 +558,15 @@ function ProdRow({product,line,onChange,dm,showPrice=true}){
             {(product.prices||[]).map((p,i)=>(
               <button key={i} onClick={()=>onChange({qty,priceAmount:p})}
                 style={price===p?{background:"#f59e0b",color:"#000",border:"2px solid #f59e0b"}:{background:t.card,color:t.sub,border:`1.5px solid ${t.inpB}`}}
-                className="px-3 py-1 rounded-xl text-xs font-bold transition-all active:scale-95">₹{p}</button>
+                className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 min-h-[36px]">₹{p}</button>
             ))}
             <div className="flex items-center gap-1">
               <span style={{color:t.sub}} className="text-[10px]">Custom ₹</span>
               <input type="number" placeholder="0"
                 value={price&&!(product.prices||[]).includes(price)?price:""}
                 onChange={e=>{const v=+e.target.value;if(v>0)onChange({qty,priceAmount:v});}}
-                style={{background:t.card,border:`1.5px solid ${price&&!(product.prices||[]).includes(price)?"#f59e0b":t.inpB}`,color:t.text,width:64}}
-                className="rounded-xl px-2 py-1 text-xs text-center outline-none focus:ring-1 focus:ring-amber-400"/>
+                style={{background:t.card,border:`1.5px solid ${price&&!(product.prices||[]).includes(price)?"#f59e0b":t.inpB}`,color:t.text,width:64,fontSize:16}}
+                className="rounded-xl px-2 py-2 text-xs text-center outline-none focus:ring-1 focus:ring-amber-400"/>
             </div>
           </div>
         </div>
@@ -865,6 +865,22 @@ if(typeof document!=="undefined"&&!document.getElementById("goldPulseStyle")){
   _s.id="goldPulseStyle";
   _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px #f59e0b30,0 4px 24px #f59e0b20}50%{box-shadow:0 0 0 6px #f59e0b40,0 8px 32px #f59e0b30}}";
   document.head.appendChild(_s);
+}
+if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
+  const _ms=document.createElement("style");
+  _ms.id="mobileOptStyle";
+  _ms.textContent=`
+    *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;}
+    button,a,[role=button]{touch-action:manipulation;}
+    input,select,textarea{touch-action:manipulation;}
+    html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+    body{overscroll-behavior-y:none;}
+    ::-webkit-scrollbar{width:0;height:0;}
+    @media(max-width:1023px){
+      .scrollbar-none::-webkit-scrollbar{display:none;}
+    }
+  `;
+  document.head.appendChild(_ms);
 }
 export default function Root(){
   const [dm,setDm]=useState(()=>ls("tas_dm",false));
@@ -1513,7 +1529,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pb-0 sm:pb-0" style={{paddingBottom:"calc(4.5rem + env(safe-area-inset-bottom))"}}>
+      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(4.5rem + env(safe-area-inset-bottom))"}}>
 
       {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
       <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30">
@@ -1533,6 +1549,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 :<p style={{color:t.sub}} className="text-[11px] font-medium">{sess.name} · <span className="capitalize">{sess.role}</span></p>
               }
             </div>
+          </div>
+          {/* Tablet: show current tab name in header */}
+          <div className="hidden sm:flex lg:hidden items-center gap-2">
+            <span className="text-xl">{TAB_ICONS[tab]||"•"}</span>
+            <h1 style={{color:t.text}} className="font-black text-lg tracking-tight">{tab}</h1>
           </div>
           {/* Desktop header shows page title */}
           <div className="hidden lg:flex items-center gap-2.5">
@@ -1576,14 +1597,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl items-center justify-center text-[15px] select-none hidden lg:flex hover:opacity-80">{dm?"☀️":"🌙"}</button>
           </div>
         </div>
-        {/* Mobile tab scrollbar */}
-        <div className="px-4 pb-3 flex gap-1.5 overflow-x-auto scrollbar-none hidden sm:flex lg:hidden" style={{scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}}>
-          {TABS.map(tb=>(
-            <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
-              style={tab===tb?{background:t.accent,color:t.accentFg}:{color:t.sub,background:t.inp,border:`1px solid ${t.border}`}}
-              className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex-shrink-0">{TAB_ICONS[tb]} {tb}</button>
-          ))}
-        </div>
       </header>
 
       {/* Offline banner */}
@@ -1602,7 +1615,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3">
+      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3">
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -2001,13 +2014,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               notify("Run sheet opened in new tab ✓");
             }
 
-            const toolBtn=(icon,label,key,color="#6366f1")=>(
-              <button onClick={()=>openTool(key)}
-                style={{background:color+"10",border:`1px solid ${color}40`,color,borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:15}}>{icon}</span>{label}
-              </button>
-            );
-
             const toolGroups=[
               {label:"📦 Deliveries",tools:[
                 {icon:"🔁",label:"Reschedule Pending",key:"reschedule",color:"#f59e0b"},
@@ -2388,13 +2394,13 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
           {/* STAT CARDS */}
           {widgets.includes("stats")&&<>
-            {canSeeFinancials&&<div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {canSeeFinancials&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981"/>
               <StatCard dm={dm} label="Amount Due" value={inr(totalDue)} sub={`${customers.filter(c=>c.pending>0).length} customers`} accent="#ef4444"/>
               <StatCard dm={dm} label="Total Costs" value={inr(totalExpOp+totalSupC)} sub="Ops + supplies" accent="#f59e0b"/>
               <StatCard dm={dm} label="Net Profit" value={inr(netProfit)} sub={netProfit>=0?"Profitable ✓":"In loss ⚠️"} accent={netProfit>=0?"#10b981":"#ef4444"}/>
             </div>}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706"/>
               <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} completed`} accent="#8b5cf6"/>
               {(()=>{const r=deliveries.filter(d=>d.replacement?.done);return r.length>0&&<><StatCard dm={dm} label="Replacements" value={r.length} sub={`${Math.round(r.length/Math.max(deliveries.length,1)*100)}% of deliveries`} accent="#f97316"/><StatCard dm={dm} label="Repl. Deductions" value={inr(r.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} sub="Total deducted" accent="#ef4444"/></>;})()}
@@ -2446,7 +2452,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-500">📍</a>}
-                    <button onClick={()=>tglD(d)} style={{background:"#10b981",color:"#fff"}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Done ✓</button>
+                    <button onClick={()=>tglD(d)} style={{background:"#10b981",color:"#fff"}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Done ✓</button>
                   </div>
                 </div>
               </div>
@@ -2474,7 +2480,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <p className="text-sm font-black text-red-500">{inr(c.pending)}</p>
-                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">+ Pay</button>}
+                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">+ Pay</button>}
                     </div>
                   </div>
                   <div style={{background:t.border,height:3,borderRadius:3,overflow:"hidden"}}><div style={{width:`${collPct}%`,background:"#10b981",height:"100%",borderRadius:3}}/></div>
@@ -2628,7 +2634,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           </div>
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…"/>
           {fCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {fCust.map(c=>{
             const rows=lineRows(c.orderLines,products);
             const tot=lineTotal(c.orderLines);
@@ -2700,13 +2706,13 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
                 {/* Actions */}
                 <div className="flex gap-1.5 flex-wrap">
-                  <button onClick={()=>setCView(c)} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Profile</button>
-                  <button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
-                  <button onClick={()=>exportPDF(c,products,"customer",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
-                  {isAdmin&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">+ Pay</button>}
-                  {can("cust_deactivate")&& <button onClick={()=>togActive(c)} style={{background:t.inp,color:"#38bdf8"}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">{c.active?"Deactivate":"Activate"}</button>}
-                  {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">📍 Map</a>}
-                  {can("cust_delete")&& <button onClick={()=>delC(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                  <button onClick={()=>setCView(c)} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Profile</button>
+                  <button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Edit</button>
+                  <button onClick={()=>exportPDF(c,products,"customer",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-purple-500 text-white">PDF</button>
+                  {isAdmin&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">+ Pay</button>}
+                  {can("cust_deactivate")&& <button onClick={()=>togActive(c)} style={{background:t.inp,color:"#38bdf8"}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">{c.active?"Deactivate":"Activate"}</button>}
+                  {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">📍 Map</a>}
+                  {can("cust_delete")&& <button onClick={()=>delC(c)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-red-600 text-white">Delete</button>}
                 </div>
               </div></Card>
             );
@@ -2723,8 +2729,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <Pill dm={dm} c="green">{deliveries.filter(d=>d.status==="Delivered").length} done</Pill>
             </div>
             <div className="flex gap-2">
-              <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1px solid ${bulkSelect?"#f59e0b":t.border}`}} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">{bulkSelect?"✕ Cancel":"☑ Bulk"}</button>
-              <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub}} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">{delivCalendar?"📋 List":"📅 Calendar"}</button>
+              <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1px solid ${bulkSelect?"#f59e0b":t.border}`}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] transition-all">{bulkSelect?"✕ Cancel":"☑ Bulk"}</button>
+              <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] transition-all">{delivCalendar?"📋 List":"📅 Calendar"}</button>
               {can("deliv_report")&& <Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
               {can("deliv_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
@@ -2739,8 +2745,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <span style={{color:t.text}} className="text-xs font-bold">{bulkSelected.size} selected</span>
             </div>
             <div className="flex gap-2">
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);captureGPS("marked_delivered",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">✓ Mark Delivered</button>
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">🚚 Set In Transit</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);captureGPS("marked_delivered",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">✓ Mark Delivered</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">🚚 Set In Transit</button>
             </div>
           </div>}
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status…"/>
@@ -2819,6 +2825,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           })()}
 
           {fDeliv.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No deliveries found.</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {!delivCalendar&&fDeliv.map(d=>{
             const rows=lineRows(d.orderLines,products);
             const tot=lineTotal(d.orderLines);
@@ -2860,23 +2867,24 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   </div>
                 )}
                 <div className="flex gap-1.5 flex-wrap">
-                  {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">📍 Navigate</a>}
-                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
-                  <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
-                  <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">Word</button>
-                  <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{background:"#25D366"}}>WhatsApp</button>
-                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
-                  {can("deliv_delete")&& <button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                  {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">📍 Navigate</a>}
+                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Edit</button>
+                  <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-purple-500 text-white">PDF</button>
+                  <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">Word</button>
+                  <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] text-white" style={{background:"#25D366"}}>WhatsApp</button>
+                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-amber-500 text-white">Dispatch</button>}
+                  {can("deliv_delete")&& <button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-red-600 text-white">Delete</button>}
                 </div>
               </div></Card>
             );
           })}
+          </div>
         </>)}
 
         {/* SUPPLIES */}
         {tab==="Supplies"&&(<>
           {/* Summary cards */}
-          {canSeeFinancials&&<div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {canSeeFinancials&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard dm={dm} label="Total Supply Cost" value={inr(totalSupC)} sub={`${supplies.length} entries`} accent="#8b5cf6"/>
             <StatCard dm={dm} label="This Month" value={inr(supplies.filter(s=>s.date?.startsWith(new Date().toISOString().slice(0,7))).reduce((a,s)=>a+(s.cost||0),0))} sub="Current month spend" accent="#f59e0b"/>
             <StatCard dm={dm} label="Suppliers" value={[...new Set(supplies.map(s=>s.supplier).filter(Boolean))].length} sub="Unique suppliers" accent="#0ea5e9"/>
@@ -2948,7 +2956,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         {/* EXPENSES */}
         {tab==="Expenses"&&isAdmin&&(<>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard dm={dm} label="Operating Expenses" value={inr(totalExpOp)} sub={`${expenses.length} entries`} accent="#ef4444"/>
             <StatCard dm={dm} label="Supply Costs" value={inr(totalSupC)} sub="Raw materials" accent="#8b5cf6"/>
             <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981"/>
@@ -3043,7 +3051,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             const fWaste = wastage.filter(w=>!srch||(w.product.toLowerCase().includes(srch.toLowerCase())||w.type.toLowerCase().includes(srch.toLowerCase())||w.reason?.toLowerCase().includes(srch.toLowerCase())||w.loggedBy?.toLowerCase().includes(srch.toLowerCase())));
             return (<>
               {/* Summary tiles */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard dm={dm} label="Total Wastage" value={totalWasteQty} sub={`${wastage.length} records`} accent="#f97316"/>
                 <StatCard dm={dm} label="Today's Wastage" value={todayWaste.reduce((s,w)=>s+(w.qty||0),0)} sub={`${todayWaste.length} entries today`} accent="#ef4444"/>
                 {can("waste_seeCost")&& <><StatCard dm={dm} label="Wastage Cost" value={inr(totalWasteCost)} sub="Estimated loss" accent="#8b5cf6"/>
@@ -3138,8 +3146,8 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                   {can("waste_seeCost")&&w.cost>0&&<p className="text-xs font-semibold text-red-400 mb-2">Estimated cost loss: {inr(w.cost)}</p>}
                   {(isAdmin||(sess.id&&w.loggedBy===sess.name))&&(
                     <div className="flex gap-1.5">
-                      <button onClick={()=>{setWF({...w,qty:String(w.qty),cost:String(w.cost||"")});setWSh(w);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
-                      {can("waste_delete")&& <button onClick={()=>delW(w)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                      <button onClick={()=>{setWF({...w,qty:String(w.qty),cost:String(w.cost||"")});setWSh(w);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Edit</button>
+                      {can("waste_delete")&& <button onClick={()=>delW(w)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-red-600 text-white">Delete</button>}
                     </div>
                   )}
                 </div></Card>
@@ -3189,7 +3197,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                   <p style={{color:t.sub}} className="text-[11px] font-semibold mt-0.5">net profit · {totMargin}% margin</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   {label:"Total Revenue",val:inr(totRev),color:"#10b981",icon:"💰"},
                   {label:"Total Costs",val:inr(totCost),color:"#ef4444",icon:"💸"},
@@ -3496,20 +3504,20 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
           return <>
             {/* KPI Header row */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Fulfillment Rate" value={`${fulfillmentRate}%`} sub={`${totalDelivered}/${totalScheduled} orders`} accent={fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444"}/>
               <StatCard dm={dm} label="Avg Revenue/Delivery" value={inr(avgRevPerDeliv)} sub="Per completed delivery" accent="#f59e0b"/>
               <StatCard dm={dm} label="Best Seller" value={prodSales[0]?.name||"—"} sub={prodSales[0]?`${prodSales[0].totalQty} units sold`:"No data"} accent="#8b5cf6"/>
               <StatCard dm={dm} label="Top Customer" value={custRev[0]?.name||"—"} sub={custRev[0]?inr(custRev[0].totalRev)+" revenue":"No data"} accent="#0ea5e9"/>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Total Deliveries" value={deliveries.length} sub={`${totalDelivered} delivered`} accent="#10b981"/>
               <StatCard dm={dm} label="Replacement Rate" value={`${replRate}%`} sub={`${replCount} replacements made`} accent={replRate>10?"#ef4444":replRate>5?"#f59e0b":"#10b981"}/>
               <StatCard dm={dm} label="Active Customers" value={customers.filter(c=>c.active).length} sub={`${inactivePct}% inactive`} accent="#d97706"/>
               <StatCard dm={dm} label="Products in Catalogue" value={products.length} sub={`${prodSales.filter(p=>p.totalQty>0).length} selling`} accent="#6366f1"/>
             </div>
             {/* Best & Worst customer */}
-            {custRev.length>0&&<div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {custRev.length>0&&<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Card dm={dm} className="p-4 flex items-center gap-4">
                 <div style={{background:"#10b98120",color:"#10b981",borderRadius:14,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏆</div>
                 <div className="min-w-0">
@@ -3568,7 +3576,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             </Card>
 
             {/* Product Sales + Expense breakdown side by side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Product sales */}
               <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-2 flex items-center justify-between">
@@ -3733,7 +3741,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               const hitRate=prodTargets.length>0?Math.round(hitTarget/prodTargets.length*100):0;
               const costPerUnit=allActual>0?Math.round(totalSupC/allActual):0;
               return <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <StatCard dm={dm} label="Overall Efficiency" value={`${overallEff}%`} sub={`${allActual}/${allTarget} units`} accent={overallEff>=90?"#10b981":overallEff>=75?"#f59e0b":"#ef4444"}/>
                   <StatCard dm={dm} label="Target Hit Rate" value={`${hitRate}%`} sub={`${hitTarget}/${prodTargets.length} sessions`} accent={hitRate>=80?"#10b981":hitRate>=60?"#f59e0b":"#ef4444"}/>
                   <StatCard dm={dm} label="Total Produced" value={allActual.toLocaleString("en-IN")} sub="All time units" accent="#8b5cf6"/>
@@ -3930,7 +3938,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           const gradeBreakdown=GRADES.map(({g,color,label})=>({g,color,label,count:qcLogs.filter(q=>q.grade===g).length}));
           return <>
             {/* Summary */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Total QC Checks" value={totalChecks} sub={`${todayQC.length} today`} accent="#14b8a6"/>
               <StatCard dm={dm} label="Pass Rate" value={`${passRate}%`} sub="Grade A, B & C" accent={passRate>=90?"#10b981":passRate>=70?"#f59e0b":"#ef4444"}/>
               <StatCard dm={dm} label="Rejections" value={qcLogs.filter(q=>q.grade==="F").length} sub="Grade F failures" accent="#ef4444"/>
@@ -4896,19 +4904,19 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
       {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
       {/* More menu overlay — tapping outside closes it */}
-      {showMoreNav&&<div className="fixed inset-0 z-40 sm:hidden" onClick={()=>setShowMoreNav(false)}/>}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 flex sm:hidden">
+      {showMoreNav&&<div className="fixed inset-0 z-40 lg:hidden" onClick={()=>setShowMoreNav(false)}/>}
+      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 flex lg:hidden">
         {TABS.slice(0,5).map(tb=>(
-          <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative"
-            style={{color:tab===tb?t.accent:t.sub}}>
+          <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} className="flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all relative"
+            style={{color:tab===tb?t.accent:t.sub,minHeight:56}}>
             {tab===tb&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
-            <span className="text-lg leading-none">{TAB_ICONS[tb]||"•"}</span>
-            <span className="text-[9px] font-semibold leading-none mt-0.5">{tb.length>8?tb.slice(0,7)+"…":tb}</span>
+            <span className="text-xl leading-none">{TAB_ICONS[tb]||"•"}</span>
+            <span className="text-[10px] font-semibold leading-none mt-0.5">{tb.length>8?tb.slice(0,7)+"…":tb}</span>
           </button>
         ))}
         {TABS.length>5&&(
-          <div className="flex-1 relative sm:hidden">
-            <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub}} className="w-full flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative">
+          <div className="flex-1 relative">
+            <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub,minHeight:56}} className="w-full flex flex-col items-center justify-center py-3 gap-1 transition-all relative">
               {TABS.slice(5).includes(tab)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
               <span className="text-lg leading-none">⋯</span>
               <span className="text-[9px] font-semibold leading-none">{TABS.slice(5).includes(tab)?tab:"More"}</span>
@@ -5290,7 +5298,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
         {paySh&&<>
           <p style={{color:t.text}} className="text-sm font-semibold">{paySh.name}</p>
           <div className="flex gap-3"><span className="text-sm text-emerald-500 font-bold">Paid: {inr(paySh.paid)}</span><span className="text-sm text-red-500 font-bold">Due: {inr(paySh.pending)}</span></div>
-          <div className="flex gap-2 flex-wrap">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">₹{q.toLocaleString("en-IN")}</button>)}</div>
+          <div className="flex gap-2 flex-wrap">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">₹{q.toLocaleString("en-IN")}</button>)}</div>
           <Inp dm={dm} label="Amount (₹)" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="Enter amount"/>
           <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
         </>}
