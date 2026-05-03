@@ -1243,6 +1243,10 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     :focus-visible{outline:2px solid #3b82f6;outline-offset:2px;border-radius:6px;}
     :focus:not(:focus-visible){outline:none;}
 
+    /* ── Hide scrollbars on horizontally scrollable rows ── */
+    .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none;}
+    .no-scrollbar::-webkit-scrollbar{display:none;}
+
     /* ── Momentum scroll for all scroll areas ── */
     [style*="overflow-y"]{-webkit-overflow-scrolling:touch;}
     [style*="overflowY"]{-webkit-overflow-scrolling:touch;}
@@ -1546,7 +1550,18 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   // Firebase handles all sync via useStore — no extra sync needed
 
-  const [tab,setTab]=useState(()=>userPerms[0]||"Deliveries");
+  const [tab,setTabRaw]=useState(()=>{
+    try{
+      const saved=sessionStorage.getItem("tas_active_tab");
+      const allowed=isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb));
+      if(saved&&allowed.includes(saved)) return saved;
+    }catch{}
+    return (isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb)))[0]||"Dashboard";
+  });
+  const setTab=useCallback((newTab)=>{
+    setTabRaw(newTab);
+    try{sessionStorage.setItem("tas_active_tab",newTab);}catch{}
+  },[]);
   const [srch,setSrch]=useState("");
   const [toast,setToast]=useState(null);
   const [conf,setConf]=useState(null);
@@ -1684,9 +1699,13 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
   const widgets=settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"];
   const q=srch.toLowerCase();
-  const fCust=customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone?.includes(q)||c.address?.toLowerCase().includes(q));
-  const fDeliv=deliveries.filter(d=>!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q));
-  const fSup=supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q));
+  const fCust=useMemo(()=>customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone?.includes(q)||c.address?.toLowerCase().includes(q)),[customers,q]);
+  const fDeliv=useMemo(()=>deliveries.filter(d=>{
+    const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q);
+    const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
+    return matchSearch&&matchStatus;
+  }),[deliveries,q,delivStatusFilter]);
+  const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,notes:"",active:true,joinDate:today()});
@@ -1738,6 +1757,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [clvSort,setClvSort]=useState("clv");
   const [clvFilter,setClvFilter]=useStore("tas_pref_clvFilter_"+sess.id,"og"); // "og"=original cards, "standard"=ranked list, "clv"=CLV detail
   const setClvFilterP = setClvFilter;
+  // Delivery status filter
+  const [delivStatusFilter,setDelivStatusFilter]=useState("all");
   // Overdue Payment Alerts
   const [overdueAlertDays,setOverdueAlertDays]=useState(7);
   // Bulk Order Entry
@@ -2165,7 +2186,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-2xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
+      <div className="w-full max-w-full sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -3448,14 +3469,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 {c.joinDate&&<p style={{color:t.sub}} className="text-[11px] mb-3">📅 Customer since {c.joinDate}</p>}
 
                 {/* Actions */}
-                <div className="flex gap-1.5 flex-wrap">
-                  <button onClick={()=>setCView(c)} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Profile</button>
-                  <button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Edit</button>
-                  <button onClick={()=>exportPDF(c,products,"customer",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-purple-500 text-white">PDF</button>
-                  {isAdmin&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">+ Pay</button>}
-                  {can("cust_deactivate")&& <button onClick={()=>togActive(c)} style={{background:t.inp,color:"#38bdf8"}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">{c.active?"Deactivate":"Activate"}</button>}
-                  {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">📍 Map</a>}
-                  {can("cust_delete")&& <button onClick={()=>delC(c)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-red-600 text-white">Delete</button>}
+                <div className="flex gap-2 mt-1 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
+                  <button onClick={()=>setCView(c)} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Profile</button>
+                  {can("cust_edit")&&<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>}
+                  <button onClick={()=>exportPDF(c,products,"customer",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
+                  {can("cust_markPaid")&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} style={{background:"#059669",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>+ Pay</button>}
+                  {can("cust_deactivate")&&<button onClick={()=>togActive(c)} style={{background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf840",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>{c.active?"Deactivate":"Activate"}</button>}
+                  {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",display:"inline-flex",alignItems:"center",gap:6,textDecoration:"none",flexShrink:0}}>📍 Map</a>}
+                  {can("cust_delete")&&<button onClick={()=>delC(c)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
                 </div>
               </div></Card>
             );
@@ -3466,43 +3487,32 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
         {/* DELIVERIES */}
         {tab==="Deliveries"&&(<>
-          <div className="flex gap-2 items-center justify-between flex-wrap">
-            <div className="flex gap-2 flex-wrap">
-              <Pill dm={dm} c="amber">{deliveries.filter(d=>d.status==="Pending").length} pending</Pill>
-              <Pill dm={dm} c="blue">{deliveries.filter(d=>d.status==="In Transit").length} transit</Pill>
-              <Pill dm={dm} c="green">{deliveries.filter(d=>d.status==="Delivered").length} done</Pill>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1px solid ${bulkSelect?"#f59e0b":t.border}`}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] transition-all">{bulkSelect?"✕ Cancel":"☑ Bulk"}</button>
-              <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] transition-all">{delivCalendar?"📋 List":"📅 Calendar"}</button>
-              {can("deliv_report")&& <Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
-              {can("deliv_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
-              {/* Export buttons */}
-              {can("deliv_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
-                const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];
-                const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px">
-                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
-                    <div style="font-size:22px;font-weight:900;color:#0f172a">${deliveries.length}</div>
-                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div>
-                  </div>
-                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
-                    <div style="font-size:22px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div>
-                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div>
-                  </div>
-                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
-                    <div style="font-size:22px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div>
-                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div>
-                  </div>
-                </div>`;
-                exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);
-              }}>PDF</Btn>}
-              {can("deliv_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
-                const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];
-                exportTabExcel("Deliveries",deliveries,cols,settings);
-              }}>XLS</Btn>}
-              {can("deliv_add")&&<Btn dm={dm} v="amber" size="sm" onClick={initBulkRows}>📋 Bulk</Btn>}
+          {/* Top summary pills — now tappable as filters */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              {key:"all",label:`All (${deliveries.length})`,c:"stone"},
+              {key:"Pending",label:`${deliveries.filter(d=>d.status==="Pending").length} Pending`,c:"amber"},
+              {key:"In Transit",label:`${deliveries.filter(d=>d.status==="In Transit").length} Transit`,c:"blue"},
+              {key:"Delivered",label:`${deliveries.filter(d=>d.status==="Delivered").length} Done`,c:"green"},
+            ].map(({key,label,c})=>(
+              <button key={key} onClick={()=>setDelivStatusFilter(key)}
+                style={{border:`1.5px solid ${delivStatusFilter===key?(c==="amber"?"#f59e0b":c==="blue"?"#3b82f6":c==="green"?"#10b981":"#6b7280"):"transparent"}`,borderRadius:99,padding:"0",background:"transparent",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                <Pill dm={dm} c={delivStatusFilter===key?c:"stone"}>{label}</Pill>
+              </button>
+            ))}
+            <div className="ml-auto flex gap-2">
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
             </div>
+          </div>
+          {/* Secondary actions row — scrollable on mobile */}
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+            <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1.5px solid ${bulkSelect?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{bulkSelect?"✕ Cancel":"☑ Bulk select"}</button>
+            <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
+            {can("deliv_add")&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
+            {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
           </div>
           {/* BULK ACTION BAR */}
           {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
@@ -3592,9 +3602,9 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             </Card>;
           })()}
 
-          {fDeliv.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No deliveries found.</p>}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {!delivCalendar&&fDeliv.map(d=>{
+          {fDeliv.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No deliveries found.{delivStatusFilter!=="all"?` (filter: ${delivStatusFilter})`:""}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" style={{contain:"layout"}}>
+          {!delivCalendar&&[...fDeliv].sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
             const rows=lineRows(d.orderLines,products);
             const tot=lineTotal(d.orderLines);
             const isBulkChecked=bulkSelected.has(d.id);
@@ -3634,14 +3644,13 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     {d.replacement.reason&&<p style={{color:t.sub}} className="text-xs">Reason: {d.replacement.reason}</p>}
                   </div>
                 )}
-                <div className="flex gap-1.5 flex-wrap">
-                  {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">📍 Navigate</a>}
-                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Edit</button>
-                  <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-purple-500 text-white">PDF</button>
-                  <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">Word</button>
-                  <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] text-white" style={{background:"#25D366"}}>WhatsApp</button>
-                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-amber-500 text-white">Dispatch</button>}
-                  {can("deliv_delete")&& <button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-red-600 text-white">Delete</button>}
+                <div className="flex gap-2 mt-1 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
+                  {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,display:"inline-flex",alignItems:"center",gap:6,WebkitTapHighlightColor:"transparent",textDecoration:"none",flexShrink:0}}>📍 Nav</a>}
+                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
+                  <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
+                  <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>WA</button>
+                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
+                  {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
                 </div>
               </div></Card>
             );
@@ -3713,9 +3722,9 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 <div className="text-right shrink-0 ml-3">
                   <p style={{color:t.text}} className="font-bold text-base leading-none">{s.qty}<span style={{color:t.sub}} className="text-xs font-normal ml-1">{s.unit}</span></p>
                   {can("sup_seeCost")&&s.cost>0&&<p className="text-purple-500 font-bold text-sm mt-0.5">{inr(s.cost)}</p>}
-                  <div className="flex gap-1.5 justify-end mt-2">
-                    <button onClick={()=>{setSf({...s});setSsh(s);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                    {can("sup_delete")&& <button onClick={()=>delS(s)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                  <div className="flex gap-2 justify-end mt-2">
+                    <button onClick={()=>{setSf({...s});setSsh(s);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 16px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer"}}>Edit</button>
+                    {can("sup_delete")&&<button onClick={()=>delS(s)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 16px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer"}}>Delete</button>}
                   </div>
                 </div>
               </div>
