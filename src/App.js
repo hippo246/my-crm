@@ -124,12 +124,84 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","QC","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
-  factory: ["Customers","Deliveries","Supplies","Wastage","Production"],
-  agent:   ["Customers","Deliveries"],
+  factory: ["Dashboard","Customers","Deliveries","Supplies","Wastage","Production"],
+  agent:   ["Dashboard","Customers","Deliveries"],
 };
+
+// Fine-grained permission keys — stored as finePerms:{key:bool} on each user
+// admin always gets all; non-admins use their stored finePerms (falling back to role defaults)
+const FINE_PERM_DEFS = [
+  // ── Customers ──────────────────────────────────────────────
+  {key:"cust_add",        section:"Customers",  label:"Add customers",           desc:"Create new customer profiles",                  icon:"➕", agentDef:false, factoryDef:false},
+  {key:"cust_edit",       section:"Customers",  label:"Edit customers",           desc:"Modify customer details & order templates",      icon:"✏️", agentDef:false, factoryDef:false},
+  {key:"cust_delete",     section:"Customers",  label:"Delete customers",         desc:"Permanently remove customer records",            icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"cust_seePrices",  section:"Customers",  label:"See prices",               desc:"View item prices and order totals",              icon:"💰", agentDef:false, factoryDef:true},
+  {key:"cust_seeFinance", section:"Customers",  label:"See paid/pending amounts", desc:"View money owed and payment history",            icon:"💳", agentDef:false, factoryDef:false},
+  {key:"cust_markPaid",   section:"Customers",  label:"Mark payments",            desc:"Record customer payments",                      icon:"✅", agentDef:false, factoryDef:false},
+  {key:"cust_export",     section:"Customers",  label:"Export customer data",     desc:"Download CSV of all customers",                  icon:"📤", agentDef:false, factoryDef:false},
+  {key:"cust_deactivate", section:"Customers",  label:"Activate/deactivate",      desc:"Enable or disable customer accounts",            icon:"🔒", agentDef:false, factoryDef:false},
+  // ── Deliveries ─────────────────────────────────────────────
+  {key:"deliv_add",       section:"Deliveries", label:"Create deliveries",        desc:"Add new delivery orders",                        icon:"➕", agentDef:false, factoryDef:true},
+  {key:"deliv_edit",      section:"Deliveries", label:"Edit deliveries",          desc:"Modify existing delivery orders",                icon:"✏️", agentDef:false, factoryDef:true},
+  {key:"deliv_delete",    section:"Deliveries", label:"Delete deliveries",        desc:"Permanently remove delivery records",            icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"deliv_markDone",  section:"Deliveries", label:"Mark as Delivered",        desc:"Update delivery status to Delivered",            icon:"📦", agentDef:true,  factoryDef:true},
+  {key:"deliv_dispatch",  section:"Deliveries", label:"Dispatch (In Transit)",    desc:"Mark orders as In Transit / dispatched",         icon:"🚚", agentDef:true,  factoryDef:true},
+  {key:"deliv_seePrices", section:"Deliveries", label:"See order prices",         desc:"View item prices on delivery orders",            icon:"💰", agentDef:false, factoryDef:true},
+  {key:"deliv_export",    section:"Deliveries", label:"Export deliveries",        desc:"Download CSV & PDF reports",                    icon:"📤", agentDef:false, factoryDef:false},
+  {key:"deliv_report",    section:"Deliveries", label:"Generate full report",     desc:"Create PDF delivery reports",                   icon:"📊", agentDef:false, factoryDef:false},
+  {key:"deliv_replacement",section:"Deliveries",label:"Log replacements",         desc:"Record replaced/returned items",                icon:"🔄", agentDef:true,  factoryDef:true},
+  // ── Supplies ───────────────────────────────────────────────
+  {key:"sup_add",         section:"Supplies",   label:"Add supply entries",       desc:"Record new incoming stock",                     icon:"➕", agentDef:false, factoryDef:true},
+  {key:"sup_edit",        section:"Supplies",   label:"Edit supplies",            desc:"Modify supply records",                         icon:"✏️", agentDef:false, factoryDef:true},
+  {key:"sup_delete",      section:"Supplies",   label:"Delete supplies",          desc:"Remove supply records",                         icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"sup_seeCost",     section:"Supplies",   label:"See supply costs",         desc:"View cost per supply entry",                    icon:"💰", agentDef:false, factoryDef:true},
+  {key:"sup_export",      section:"Supplies",   label:"Export supplies",          desc:"Download supply CSV",                           icon:"📤", agentDef:false, factoryDef:false},
+  // ── Wastage ────────────────────────────────────────────────
+  {key:"waste_add",       section:"Wastage",    label:"Log wastage",              desc:"Record wasted or damaged products",              icon:"➕", agentDef:true,  factoryDef:true},
+  {key:"waste_edit",      section:"Wastage",    label:"Edit wastage",             desc:"Modify wastage records",                        icon:"✏️", agentDef:false, factoryDef:true},
+  {key:"waste_delete",    section:"Wastage",    label:"Delete wastage",           desc:"Remove wastage records",                        icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"waste_seeCost",   section:"Wastage",    label:"See cost impact",          desc:"View estimated cost loss per entry",             icon:"💰", agentDef:false, factoryDef:false},
+  {key:"waste_logCost",   section:"Wastage",    label:"Enter cost values",        desc:"Fill in the estimated cost loss field",          icon:"✏️", agentDef:false, factoryDef:false},
+  // ── Production ─────────────────────────────────────────────
+  {key:"prod_add",        section:"Production", label:"Log production",           desc:"Record shift targets and actual output",         icon:"➕", agentDef:false, factoryDef:true},
+  {key:"prod_edit",       section:"Production", label:"Edit production",          desc:"Modify production records",                     icon:"✏️", agentDef:false, factoryDef:true},
+  {key:"prod_delete",     section:"Production", label:"Delete production",        desc:"Remove production entries",                     icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"prod_handover",   section:"Production", label:"Log shift handover",       desc:"Record end-of-shift notes and handovers",        icon:"🤝", agentDef:false, factoryDef:true},
+  // ── QC ─────────────────────────────────────────────────────
+  {key:"qc_add",          section:"QC",         label:"Log QC checks",            desc:"Record quality checks for products",             icon:"➕", agentDef:false, factoryDef:true},
+  {key:"qc_edit",         section:"QC",         label:"Edit QC records",          desc:"Modify quality check entries",                  icon:"✏️", agentDef:false, factoryDef:true},
+  {key:"qc_delete",       section:"QC",         label:"Delete QC records",        desc:"Remove QC entries",                             icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"qc_export",       section:"QC",         label:"Export QC data",           desc:"Download QC CSV",                               icon:"📤", agentDef:false, factoryDef:false},
+  // ── Dashboard & Notices ────────────────────────────────────
+  {key:"dash_seeBriefing",section:"Dashboard",  label:"See morning briefing",     desc:"View the daily summary and AI briefing",        icon:"☀️", agentDef:true,  factoryDef:true},
+  {key:"dash_postNotice", section:"Dashboard",  label:"Post notices",             desc:"Create and pin notices on the dashboard",       icon:"📌", agentDef:false, factoryDef:false},
+  {key:"dash_delNotice",  section:"Dashboard",  label:"Delete notices",           desc:"Remove notices from the dashboard",             icon:"🗑️", agentDef:false, factoryDef:false},
+  {key:"dash_seeWastage", section:"Dashboard",  label:"See today's wastage widget",desc:"View wastage summary on dashboard",            icon:"🗑️", agentDef:false, factoryDef:true},
+  // ── GPS & Location ─────────────────────────────────────────
+  {key:"gps_track",       section:"GPS",        label:"Share live location",      desc:"Allow this person to broadcast their GPS",       icon:"📍", agentDef:true,  factoryDef:false},
+  {key:"gps_seeAgents",   section:"GPS",        label:"See agent locations",      desc:"View live map of all active agents",             icon:"🗺", agentDef:false, factoryDef:false},
+  // ── Data & Export ──────────────────────────────────────────
+  {key:"data_exportBackup",section:"Data",      label:"Export full backup",       desc:"Download complete JSON backup of all data",      icon:"📤", agentDef:false, factoryDef:false},
+  {key:"data_importBackup",section:"Data",      label:"Import backup",            desc:"Restore data from a JSON backup file",           icon:"📥", agentDef:false, factoryDef:false},
+];
+
+// Build default finePerms for a role
+function defaultFinePerms(role){
+  if(role==="admin") return Object.fromEntries(FINE_PERM_DEFS.map(d=>[d.key,true]));
+  return Object.fromEntries(FINE_PERM_DEFS.map(d=>[d.key, role==="factory"?d.factoryDef:d.agentDef]));
+}
+
+// Check if a user (sess object) has a fine-grained permission
+// Admin always returns true
+function hasPerm(sess, key){
+  if(!sess) return false;
+  if(sess.role==="admin") return true;
+  const fp = sess.finePerms || defaultFinePerms(sess.role);
+  return fp[key] === true;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  DEFAULT DATA
@@ -185,6 +257,20 @@ const D_SETTINGS = {
   shifts:["Morning","Afternoon","Evening","Night"],
   staffLoginMode:"picker",
   staffNames:["Zeba","Zoya"],
+  lowStockThreshold: 5,
+  churnDays: 14,
+  qcMode: "detailed",
+  notifTargets: {
+    payment:   ["admin"],
+    delivery:  ["admin","agent"],
+    lowstock:  ["admin","factory"],
+    newentry:  ["admin"],
+    noticeboard: ["admin","factory","agent"],
+  },
+  noticeBoard: [],
+  briefingDismissedDate: "",
+  pinMode: false,
+  quickActions: ["newDelivery","markDone","logWastage","addExpense"],
 };
 
 // Default wastage data
@@ -380,7 +466,7 @@ function Sheet({open,title,onClose,children,dm}){
   const t=T(dm);
   useEffect(()=>{if(open){document.body.style.overflow="hidden";document.body.style.position="fixed";document.body.style.width="100%";}return()=>{document.body.style.overflow="";document.body.style.position="";document.body.style.width="";};},[open]);
   if(!open)return null;
-  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)"}}>
+  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>
     <div style={{background:t.card,maxHeight:"93dvh",border:`1px solid ${t.border}`,boxShadow:"0 25px 50px rgba(0,0,0,0.4)"}} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl flex flex-col" onTouchMove={e=>e.stopPropagation()}>
       <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
         <span style={{color:t.text}} className="font-bold text-[15px] tracking-tight">{title}</span>
@@ -509,6 +595,74 @@ function OrderEditor({products,orderLines,onChange,dm,showPrice=true}){
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  BROWSER PUSH NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+async function requestPushPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  const perm = await Notification.requestPermission();
+  return perm === "granted";
+}
+function sendBrowserNotif(title, body, icon = "🫓") {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    new Notification(title, {
+      body,
+      icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>" + icon + "</text></svg>",
+      tag: title,
+    });
+  } catch (e) { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MORNING BRIEFING COMPONENT
+// ═══════════════════════════════════════════════════════════════
+function MorningBriefing({ dm, onDismiss, onUnpin, pinned, data }) {
+  const t = T(dm);
+  const { pendingCount, todayRev, lowStockCount, overdueCount, churnCount, noticeCount } = data;
+  const items = [
+    pendingCount > 0 && { icon: "⏳", label: "Pending deliveries today", value: pendingCount, color: "#f59e0b" },
+    todayRev > 0 && { icon: "💰", label: "Revenue collected today", value: inr(todayRev), color: "#10b981" },
+    lowStockCount > 0 && { icon: "⚠️", label: "Low stock items", value: lowStockCount, color: "#ef4444" },
+    overdueCount > 0 && { icon: "🔴", label: "Overdue deliveries", value: overdueCount, color: "#ef4444" },
+    churnCount > 0 && { icon: "💤", label: `Inactive ${data.churnDays}+ days`, value: churnCount, color: "#8b5cf6" },
+    noticeCount > 0 && { icon: "📌", label: "Unread notices", value: noticeCount, color: "#0ea5e9" },
+  ].filter(Boolean);
+  return (
+    <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 20, overflow: "hidden", marginBottom: 0 }}>
+      <div style={{ background: dm ? "linear-gradient(135deg,#1c1500,#1a1a22)" : "linear-gradient(135deg,#fffbeb,#fef9ef)", padding: "16px 18px", borderBottom: `1px solid ${t.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <p style={{ color: "#f59e0b", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>📅 Morning Briefing</p>
+            <p style={{ color: t.text, fontWeight: 800, fontSize: 15 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onUnpin} style={{ background: t.inp, border: `1px solid ${t.border}`, color: t.sub, borderRadius: 10, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{pinned ? "Unpin" : "Pin"}</button>
+            <button onClick={onDismiss} style={{ background: t.inp, border: `1px solid ${t.border}`, color: t.sub, borderRadius: 10, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Dismiss</button>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <p style={{ fontSize: 22 }}>🎉</p>
+            <p style={{ color: t.sub, fontSize: 13, fontWeight: 600, marginTop: 6 }}>All clear — great day ahead!</p>
+          </div>
+        ) : items.map((item, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: t.inp, borderRadius: 12, padding: "10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 16 }}>{item.icon}</span>
+              <span style={{ color: t.sub, fontSize: 13 }}>{item.label}</span>
+            </div>
+            <span style={{ color: item.color, fontWeight: 800, fontSize: 15 }}>{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  LOGIN
 // ═══════════════════════════════════════════════════════════════
 function Login({users,onLogin,dm,settings}){
@@ -516,6 +670,9 @@ function Login({users,onLogin,dm,settings}){
   const staffNames=settings?.staffNames||[];
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const [showAdminForm,setShowAdminForm]=useState(false);
+  const [pinMode,setPinMode]=useState(false);
+  const [pinTarget,setPinTarget]=useState(null); // user being PIN-authenticated
+  const [pinVal,setPinVal]=useState("");
   function go(){
     setBusy(true);setErr("");
     setTimeout(()=>{
@@ -529,6 +686,48 @@ function Login({users,onLogin,dm,settings}){
     const shared=users.find(x=>x.active&&x.role!=="admin");
     if(shared)onLogin({...shared,loginAt:Date.now(),displayOverride:name});
     else setErr("No active staff account found. Create one in Settings.");
+  }
+  function enterPin(digit){
+    if(pinVal.length>=4)return;
+    const next=pinVal+digit;
+    setPinVal(next);
+    if(next.length===4){
+      setTimeout(()=>{
+        if(pinTarget&&pinTarget.pin===next){onLogin({...pinTarget,loginAt:Date.now()});}
+        else{setErr("Incorrect PIN. Try again.");setPinVal("");}
+      },200);
+    }
+  }
+  // PIN login screen
+  if(pinMode&&pinTarget){
+    return(
+      <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100dvh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-6">
+        <div style={{width:"100%",maxWidth:320,textAlign:"center"}}>
+          <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.3)",width:64,height:64,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
+          <p style={{color:dm?"#fafafa":"#18181b",fontWeight:800,fontSize:18,marginBottom:4}}>{pinTarget.name}</p>
+          <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:12,marginBottom:28}}>Enter your 4-digit PIN</p>
+          {/* PIN dots */}
+          <div className="flex gap-4 justify-center mb-8">
+            {[0,1,2,3].map(i=>(
+              <div key={i} style={{width:16,height:16,borderRadius:"50%",background:pinVal.length>i?"#f59e0b":dm?"#333":"#e5e5e0",border:`2px solid ${pinVal.length>i?"#f59e0b":dm?"#444":"#d1d1cd"}`,transition:"all 0.15s"}}/>
+            ))}
+          </div>
+          {err&&<p style={{color:"#ef4444",fontSize:12,fontWeight:600,marginBottom:16}}>{err}</p>}
+          {/* PIN keypad */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i)=>(
+              <button key={i} onClick={()=>{if(k==="⌫"){setPinVal(v=>v.slice(0,-1));setErr("");}else if(k!=="")enterPin(String(k));}}
+                disabled={k===""}
+                style={{height:64,borderRadius:16,fontSize:k==="⌫"?20:22,fontWeight:700,background:k===""?"transparent":dm?"#1e1e24":"#fff",color:dm?"#fafafa":"#18181b",border:k===""?"none":`1px solid ${dm?"#2e2e36":"#e5e5e0"}`,boxShadow:k===""?"none":dm?"none":"0 1px 4px rgba(0,0,0,0.08)",cursor:k===""?"default":"pointer",transition:"all 0.1s",opacity:k===""?0:1}}
+                onMouseEnter={e=>{if(k!=="")e.currentTarget.style.background=dm?"#28282f":"#f5f5f0";}}
+                onMouseLeave={e=>{if(k!=="")e.currentTarget.style.background=dm?"#1e1e24":"#fff";}}
+              >{k}</button>
+            ))}
+          </div>
+          <button onClick={()=>{setPinMode(false);setPinTarget(null);setPinVal("");setErr("");}} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>← Use password instead</button>
+        </div>
+      </div>
+    );
   }
   // ── STAFF PICKER MODE ──────────────────────────────────────────
   if(mode==="picker"&&!showAdminForm){
@@ -600,12 +799,25 @@ function Login({users,onLogin,dm,settings}){
       </div>
       {/* Right panel */}
       <div className="flex flex-col items-center justify-center flex-1 px-6 py-12">
-        <div style={{width:"100%",maxWidth:360}}>
-          <div className="text-center mb-8 lg:hidden">
-            <div style={{background:"rgba(217,119,6,0.1)",border:"2px solid rgba(217,119,6,0.2)"}} className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 select-none">{settings?.appEmoji||"🫓"}</div>
-            <h1 style={{color:dm?"#fafafa":"#18181b",fontWeight:900,fontSize:22,letterSpacing:-0.5}}>{settings?.appName||"TAS Healthy World"}</h1>
-            <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:12,marginTop:4}}>{settings?.appSubtitle||""}</p>
+        {/* Mobile hero banner — hidden on desktop (desktop uses the left panel instead) */}
+        <div className="lg:hidden w-full mb-8" style={{borderRadius:24,overflow:"hidden",position:"relative",background:"#111115"}}>
+          <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 25% 40%, rgba(245,158,11,0.18) 0%, transparent 55%), radial-gradient(circle at 75% 70%, rgba(124,58,237,0.12) 0%, transparent 50%)"}}/>
+          <div style={{position:"relative",zIndex:1,padding:"28px 24px 24px",textAlign:"center"}}>
+            <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.25)",width:72,height:72,borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 14px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
+            <h1 style={{color:"#fafafa",fontWeight:900,fontSize:24,letterSpacing:-0.8,lineHeight:1.1,marginBottom:5}}>{settings?.appName||"TAS Healthy World"}</h1>
+            <p style={{color:"rgba(255,255,255,0.45)",fontSize:12,fontWeight:500,marginBottom:20}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
+            <div style={{height:1,background:"rgba(255,255,255,0.08)",marginBottom:18}}/>
+            <div style={{display:"flex",gap:0,justifyContent:"center"}}>
+              {[{label:"Real-time sync",icon:"⚡"},{label:"Multi-role",icon:"🔐"},{label:"Firebase",icon:"🔥"}].map((f,i,a)=>(
+                <div key={f.label} style={{flex:1,textAlign:"center",borderRight:i<a.length-1?"1px solid rgba(255,255,255,0.08)":"none",padding:"0 8px"}}>
+                  <div style={{fontSize:18,marginBottom:4}}>{f.icon}</div>
+                  <p style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",lineHeight:1.3}}>{f.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
+        </div>
+        <div style={{width:"100%",maxWidth:360}}>
           <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:20}}>Sign in to your account</p>
           <div style={{background:dm?"#17171b":"#fff",border:`1.5px solid ${dm?"#26262c":"#e2e1db"}`,borderRadius:20,padding:24,boxShadow:dm?"0 4px 24px rgba(0,0,0,0.4)":"0 4px 20px rgba(0,0,0,0.08)"}}>
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -644,6 +856,45 @@ export default function Root(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  WeatherWidget — extracted so hooks are at component top-level
+// ═══════════════════════════════════════════════════════════════
+function WeatherWidget({dm}){
+  const t=T(dm);
+  const [wx,setWx]=useState(null);
+  const [wxLoad,setWxLoad]=useState(true);
+  useEffect(()=>{
+    fetch("https://api.open-meteo.com/v1/forecast?latitude=15.4909&longitude=73.8278&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m&timezone=Asia%2FKolkata")
+      .then(r=>r.json()).then(d=>{setWx(d.current);setWxLoad(false);}).catch(()=>setWxLoad(false));
+  },[]);
+  const wCode=wx?.weathercode||0;
+  const wIcon=wCode===0?"☀️":wCode<=3?"⛅":wCode<=48?"🌫️":wCode<=67?"🌧️":wCode<=77?"❄️":wCode<=82?"🌦️":"⛈️";
+  const wDesc=wCode===0?"Clear skies":wCode<=3?"Partly cloudy":wCode<=48?"Foggy / hazy":wCode<=67?"Rain expected":wCode<=77?"Sleet/Snow":wCode<=82?"Showers":wCode<=99?"Thunderstorm":"Stormy";
+  const deliveryRisk=wCode>=61?"high":wCode>=45?"moderate":"low";
+  const riskColor=deliveryRisk==="high"?"#ef4444":deliveryRisk==="moderate"?"#f59e0b":"#10b981";
+  return <div style={{background:dm?"linear-gradient(135deg,#0c1a2e,#111820)":"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:dm?"1px solid #1e3a5f":"1px solid #bfdbfe",borderRadius:20,padding:"16px 20px"}}>
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-1">🌤 Goa Weather · Now</p>
+        {wxLoad?<p style={{color:t.sub}} className="text-sm">Loading…</p>:<>
+          <div className="flex items-center gap-3">
+            <span style={{fontSize:36,lineHeight:1}}>{wIcon}</span>
+            <div>
+              <p style={{color:t.text}} className="font-black text-2xl leading-none">{wx?.temperature_2m??'—'}°C</p>
+              <p style={{color:t.sub}} className="text-xs mt-0.5">{wDesc} · {wx?.windspeed_10m??'—'} km/h wind · {wx?.relative_humidity_2m??'—'}% humidity</p>
+            </div>
+          </div>
+        </>}
+      </div>
+      {!wxLoad&&<div className="text-right">
+        <p style={{color:riskColor}} className="text-xs font-bold uppercase tracking-wide">Delivery risk</p>
+        <p style={{color:riskColor}} className="text-lg font-black capitalize">{deliveryRisk}</p>
+        {deliveryRisk==="high"&&<p style={{color:t.sub}} className="text-[10px] mt-0.5">⚠️ Rain may affect routes</p>}
+      </div>}
+    </div>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  CRM
 // ═══════════════════════════════════════════════════════════════
 function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
@@ -653,10 +904,12 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const userPerms=sess.permissions||ROLE_DEF[sess.role]||ROLE_DEF.agent;
   const t=T(dm);
 
-  // Can this user see prices?
-  const canSeePrices = isAdmin || (settings?.showPricesTo||["admin"]).includes(sess.role);
-  // Can this user see financial summaries (paid/pending/profit)?
-  const canSeeFinancials = isAdmin || (settings?.showFinancialsTo||["admin"]).includes(sess.role);
+  // Fine-grained permission helper — use this everywhere instead of isAdmin/isAgent/isFactory checks
+  const can = (key) => hasPerm(sess, key);
+
+  // Backward-compat derived flags (now driven by finePerms)
+  const canSeePrices    = isAdmin || can("cust_seePrices")  || can("deliv_seePrices");
+  const canSeeFinancials= isAdmin || can("cust_seeFinance");
 
   const [customers, setCust] =useStore("tas9_cust", D_CUST);
   const [deliveries,setDeliv]=useStore("tas9_deliv",D_DELIV);
@@ -669,11 +922,19 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Agent live locations — stored so admin can see all agents
   const [agentLocs, setAgentLocs]=useStore("tas9_locs",{});
   const [notifs, setNotifs]=useStore("tas9_notifs",[]);
+  // eslint-disable-next-line no-unused-vars
+  const [qcLogs,    setQcLogs]   = useStore("tas9_qclogs", []);
+  const [handovers, setHandovers]= useStore("tas9_handovers", []);
+  const [notices,   setNotices]  = useStore("tas9_notices", []);
+  const [briefingDismissed, setBriefingDismissed] = useState(() => ls("tas_briefing_dismissed",""));
+  const [briefingPinned, setBriefingPinned] = useState(() => ls("tas_briefing_pinned", true));
   const [notifOpen, setNotifOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
-  function addNotif(title,body,type="info"){
+  function addNotif(title,body,type="info",notifType="newentry"){
     const n={id:uid(),title,body,type,ts:ts(),read:false};
     setNotifs(p=>[n,...p.slice(0,49)]);
+    const targets=(settings?.notifTargets||{})[notifType]||["admin"];
+    if(targets.includes(sess.role)) sendBrowserNotif(title,body);
   }
   function markAllRead(){setNotifs(p=>p.map(n=>({...n,read:true})));}
   function delNotif(id){setNotifs(p=>p.filter(n=>n.id!==id));}
@@ -739,6 +1000,35 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const netProfit=totalRev-totalExpOp-totalSupC;
   const pendingD=deliveries.filter(d=>d.status==="Pending");
 
+  // ── PUSH PERMISSION ──────────────────────────────────────────
+  useEffect(() => { requestPushPermission(); }, []);
+
+  // ── LOW STOCK ALERTS ─────────────────────────────────────────
+  const lowStockThreshold = settings?.lowStockThreshold ?? 5;
+  const lowStockItems = supplies.filter(s => (s.qty || 0) <= lowStockThreshold && s.item);
+  const lowStockNotifiedRef = useRef({});
+  useEffect(() => {
+    lowStockItems.forEach(s => {
+      if (!lowStockNotifiedRef.current[s.id]) {
+        lowStockNotifiedRef.current[s.id] = true;
+        addNotif(`⚠️ Low Stock: ${s.item}`, `Only ${s.qty} ${s.unit} remaining`, "warning", "lowstock");
+      }
+    });
+  }, [lowStockItems.map(s=>s.id).join(",")]); // eslint-disable-line
+
+  // ── CHURN ALERTS ─────────────────────────────────────────────
+  const churnDays = settings?.churnDays ?? 14;
+  const churnedCustomers = useMemo(() => {
+    const now = new Date();
+    return customers.filter(c => {
+      if (!c.active) return false;
+      const custDelivs = deliveries.filter(d => d.customerId === c.id);
+      if (custDelivs.length === 0) return c.joinDate && (now - new Date(c.joinDate)) > churnDays * 86400000;
+      const lastDate = [...custDelivs].sort((a,b) => b.date.localeCompare(a.date))[0]?.date;
+      return lastDate && (now - new Date(lastDate)) > churnDays * 86400000;
+    });
+  }, [customers, deliveries, churnDays]);
+
   const chartData=useMemo(()=>{
     const days=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}).reverse();
     return days.map(date=>({date:date.slice(5),Revenue:deliveries.filter(d=>d.date===date&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),Expenses:expenses.filter(e=>e.date===date).reduce((s,e)=>s+(e.amount||0),0)}));
@@ -775,6 +1065,17 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [ptSh,setPtSh]=useState(null);
   const [ptF,setPtF]=useState(()=>({date:today(),shift:"Morning",product:"",target:0,actual:0,notes:""}));
   const [ptDateFilter,setPtDateFilter]=useState("today");
+  const [nbSh,setNbSh]=useState(false);
+  const [nbF,setNbF]=useState({title:"",body:"",pinned:false});
+  const [hvSh,setHvSh]=useState(false);
+  const [hvF,setHvF]=useState({shift:"Morning",date:today(),note:"",nextShift:"",issues:"",loggedBy:""});
+  const [bulkSelect,setBulkSelect]=useState(false);
+  const [bulkSelected,setBulkSelected]=useState(new Set());
+  const [auditUserFilter,setAuditUserFilter]=useState("all");
+  const [auditRoleFilter,setAuditRoleFilter]=useState("all");
+  const [auditActionFilter,setAuditActionFilter]=useState("");
+  const [qcSh,setQcSh]=useState(null);
+  const [qcF,setQcF]=useState({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:""});
   const [showMoreNav,setShowMoreNav]=useState(false);
   const [changePwSh,setChangePwSh]=useState(false);
   const [changePwF,setChangePwF]=useState({current:"",next:"",confirm:""});
@@ -824,7 +1125,16 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   }
   function delW(w){ask(`Delete wastage record for "${w.product}"?`,()=>{setWaste(p=>p.filter(x=>x.id!==w.id));addLog("Deleted wastage",`${w.product} ${w.qty} ${w.unit}`);notify("Deleted");});}
 
-  // PRODUCTION TARGETS
+  // QC LOGS
+  function saveQC(){
+    if(!qcF.product.trim()){notify("Product required");return;}
+    const rec={...qcF,id:uid(),loggedBy:displayName,createdAt:ts()};
+    setQcLogs(p=>[rec,...p]);
+    addLog("QC check logged",`${rec.product} — Grade ${rec.grade}`);
+    notify("QC log saved ✓");
+    setQcSh(null);
+  }
+  function delQC(q){ask(`Delete QC record for "${q.product}"?`,()=>{setQcLogs(p=>p.filter(x=>x.id!==q.id));addLog("Deleted QC log",q.product);notify("Deleted");});}
   function savePT(){
     if(!ptF.product.trim()){notify("Product required");return;}
     const rec={...ptF,target:+ptF.target||0,actual:+ptF.actual||0};
@@ -845,8 +1155,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     const isEdit=uSh!=="add";
     const orig=isEdit?users.find(x=>x.id===uSh.id):null;
     const pw=isEdit&&!uF.password?orig.password:hashPw(uF.password);
+    const pin=uF.pin&&uF.pin.length===4?uF.pin:(isEdit?orig.pin||"":"");
     const perms=uF.role==="admin"?ROLE_DEF.admin:(uF.permissions||ROLE_DEF[uF.role]||ROLE_DEF.agent);
-    const rec={...uF,password:pw,permissions:perms};
+    const finePerms=uF.role==="admin"?defaultFinePerms("admin"):(uF.finePerms||defaultFinePerms(uF.role));
+    const rec={...uF,password:pw,pin,permissions:perms,finePerms};
     if(uSh==="add"){if(users.find(x=>x.username===rec.username)){notify("Username exists");return;}setUsers(p=>[...p,{...rec,id:uid(),createdAt:today()}]);addLog("Created user",`@${rec.username} (${rec.role})`);notify("User created ✓");}
     else{setUsers(p=>p.map(x=>x.id===uSh.id?{...rec,id:x.id}:x));addLog("Edited user",`@${rec.username}`);notify("Updated ✓");}
     setUsh(null);
@@ -941,7 +1253,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const activeAgents=Object.values(safeO(agentLocs)).filter(l=>l&&l.lat);
 
   // Tab icons for nav
-  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","Settings":"⚙️"};
+  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅","Settings":"⚙️"};
 
   // ═══════════════════════════════════════════════════════════════
   return (
@@ -1000,10 +1312,10 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:pb-0 sm:pb-0" style={{paddingBottom:"calc(4.5rem + env(safe-area-inset-bottom))"}}>
 
       {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
-      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`}} className="sticky top-0 z-30">
+      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30">
         <div className="px-4 py-3 flex items-center justify-between lg:px-6">
           <div className="flex items-center gap-2.5 lg:hidden">
             <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-base select-none shrink-0">{settings?.appEmoji||"🫓"}</div>
@@ -1027,11 +1339,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <h1 style={{color:t.text}} className="font-black text-xl tracking-tight">{tab}</h1>
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            {isAgent&&(trk
+            {can("gps_track")&&(trk
               ?<button onClick={stopTrk} className="text-[11px] px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-semibold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"/>Live</button>
               :<button onClick={startTrk} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold">📍 Track</button>
             )}
-            {isAdmin&&activeAgents.length>0&&(
+            {can("gps_seeAgents")&&activeAgents.length>0&&(
               <a href={mapU("",activeAgents[0].lat,activeAgents[0].lng)} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] px-3 py-1.5 rounded-xl bg-sky-500 text-white font-semibold hidden sm:inline-flex items-center gap-1">🗺 {activeAgents.length} online</a>
             )}
@@ -1041,7 +1353,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 🔔
                 {unreadNotifs>0&&<span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
-              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-80 rounded-2xl overflow-hidden">
+              {notifOpen&&<div style={{background:t.card,border:`1px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}} className="absolute right-0 top-11 w-72 sm:w-80 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3" style={{borderBottom:`1px solid ${t.border}`}}>
                   <span style={{color:t.text}} className="text-sm font-bold tracking-tight">Notifications</span>
                   <div className="flex gap-3">
@@ -1072,7 +1384,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           </div>
         </div>
         {/* Mobile tab scrollbar */}
-        <div className="px-4 pb-3 flex gap-1.5 overflow-x-auto scrollbar-none lg:hidden" style={{scrollbarWidth:"none"}}>
+        <div className="px-4 pb-3 flex gap-1.5 overflow-x-auto scrollbar-none hidden sm:flex lg:hidden" style={{scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}}>
           {TABS.map(tb=>(
             <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
               style={tab===tb?{background:t.accent,color:t.accentFg}:{color:t.sub,background:t.inp,border:`1px solid ${t.border}`}}
@@ -1082,8 +1394,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </header>
 
       {/* Agent GPS bar */}
-      {isAgent&&trk&&loc&&(
-        <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 lg:px-6 pt-3">
+      {can("gps_track")&&trk&&loc&&(
+        <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-4 py-2.5 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-emerald-500">📍 Sharing location · {loc.at} · ±{loc.acc}m</p>
@@ -1095,8 +1407,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       )}
 
       {/* Admin: active agent locations */}
-      {isAdmin&&activeAgents.length>0&&(
-        <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 lg:px-6 pt-3">
+      {can("gps_seeAgents")&&activeAgents.length>0&&(
+        <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 pt-3">
           <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl px-4 py-2.5">
             <p className="text-xs font-semibold text-sky-500 mb-1">🗺 Live Agent Locations</p>
             {activeAgents.map((l,i)=>(
@@ -1109,10 +1421,90 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 lg:px-6 py-4 flex flex-col gap-3">
+      <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 lg:px-6 py-4 flex flex-col gap-3">
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
+          {/* WEATHER WIDGET */}
+          {widgets.includes("weather")&&<WeatherWidget dm={dm}/>}
+
+          {/* QUICK ACTIONS */}
+          {widgets.includes("quickActions")&&(()=>{
+            const ALL_QA=[
+              {key:"newDelivery",  icon:"🚚",label:"New Delivery",   color:"#0ea5e9", action:()=>{setDf(blkD());setDsh("add");setTab("Deliveries");}},
+              {key:"newCustomer",  icon:"👤",label:"New Customer",   color:"#d97706", action:()=>{setCf(blkC());setCsh("add");setTab("Customers");}},
+              {key:"markDone",     icon:"✅",label:"Mark Delivered", color:"#10b981", action:()=>{setTab("Deliveries");}},
+              {key:"logWastage",   icon:"🗑️",label:"Log Wastage",    color:"#f97316", action:()=>{setWF(blkW());setWSh("add");setTab("Wastage");}},
+              {key:"addExpense",   icon:"💸",label:"Add Expense",    color:"#ef4444", action:()=>{setEf(blkE());setEsh("add");setTab("Expenses");}},
+              {key:"logSupply",    icon:"📦",label:"Log Supply",     color:"#8b5cf6", action:()=>{setSf(blkS());setSsh("add");setTab("Supplies");}},
+              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0],product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");setTab("Production");}},
+              {key:"qcCheck",      icon:"✅",label:"QC Check",       color:"#14b8a6", action:()=>{setQcF({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");setTab("QC");}},
+            ];
+            const activeKeys=settings?.quickActions||["newDelivery","markDone","logWastage","addExpense"];
+            const visibleQA=ALL_QA.filter(q=>activeKeys.includes(q.key));
+            if(visibleQA.length===0)return null;
+            return <div>
+              <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mb-2">⚡ Quick Actions</p>
+              <div className="grid grid-cols-4 gap-2">
+                {visibleQA.map(q=>(
+                  <button key={q.key} onClick={q.action}
+                    style={{background:q.color+"15",border:`1.5px solid ${q.color}30`,borderRadius:16,padding:"12px 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:6,transition:"all 0.15s",cursor:"pointer"}}
+                    onMouseEnter={e=>{e.currentTarget.style.background=q.color+"25";e.currentTarget.style.transform="translateY(-2px)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background=q.color+"15";e.currentTarget.style.transform="";}}>
+                    <span style={{fontSize:22,lineHeight:1}}>{q.icon}</span>
+                    <p style={{color:q.color,fontSize:10,fontWeight:700,lineHeight:1.2,textAlign:"center"}}>{q.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>;
+          })()}
+
+          {/* DAILY PRODUCTION PROGRESS BAR */}
+          {widgets.includes("productionBar")&&(()=>{
+            const todayPT=prodTargets.filter(x=>x.date===today());
+            if(todayPT.length===0)return null;
+            const totalTarget=todayPT.reduce((s,x)=>s+x.target,0);
+            const totalActual=todayPT.reduce((s,x)=>s+x.actual,0);
+            const pct=totalTarget>0?Math.min(Math.round(totalActual/totalTarget*100),100):0;
+            const pctColor=pct>=100?"#10b981":pct>=75?"#f59e0b":"#ef4444";
+            return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest">🏭 Today's Production</p>
+                  <p style={{color:t.text}} className="font-bold text-sm mt-0.5">{totalActual} <span style={{color:t.sub}} className="font-normal text-xs">/ {totalTarget} units target</span></p>
+                </div>
+                <p style={{color:pctColor}} className="font-black text-2xl">{pct}%</p>
+              </div>
+              <div style={{background:t.border,height:8,borderRadius:8,overflow:"hidden"}}>
+                <div style={{width:`${pct}%`,background:pct>=100?"linear-gradient(90deg,#10b981,#059669)":pct>=75?"linear-gradient(90deg,#f59e0b,#d97706)":"linear-gradient(90deg,#ef4444,#dc2626)",height:"100%",borderRadius:8,transition:"width 1s ease"}}/>
+              </div>
+              <div className="flex gap-3 mt-2">
+                {todayPT.slice(0,3).map(r=>{
+                  const rPct=r.target>0?Math.min(Math.round(r.actual/r.target*100),100):0;
+                  return <div key={r.id} className="flex-1 min-w-0">
+                    <p style={{color:t.sub}} className="text-[10px] truncate">{r.product} · {r.shift}</p>
+                    <p style={{color:rPct>=100?"#10b981":rPct>=75?"#f59e0b":"#ef4444"}} className="text-[11px] font-bold">{r.actual}/{r.target}</p>
+                  </div>;
+                })}
+                {todayPT.length>3&&<div className="flex-1 min-w-0 flex items-end"><p style={{color:t.sub}} className="text-[10px]">+{todayPT.length-3} more</p></div>}
+              </div>
+            </div>;
+          })()}
+          {can("dash_seeBriefing")&&(briefingPinned||briefingDismissed!==today())&&<MorningBriefing
+            dm={dm}
+            pinned={briefingPinned}
+            onDismiss={()=>{setBriefingDismissed(today());lsw("tas_briefing_dismissed",today());}}
+            onUnpin={()=>{const v=!briefingPinned;setBriefingPinned(v);lsw("tas_briefing_pinned",v);}}
+            data={{
+              pendingCount:pendingD.length,
+              todayRev:deliveries.filter(d=>d.date===today()&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
+              lowStockCount:lowStockItems.length,
+              overdueCount:deliveries.filter(d=>d.status==="Pending"&&d.date<today()).length,
+              churnCount:churnedCustomers.length,
+              churnDays,
+              noticeCount:(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id)).length,
+            }}
+          />}
           {/* TODAY SUMMARY HERO BANNER */}
           {(()=>{
             const todayStr=today();
@@ -1241,7 +1633,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <p className="text-sm font-black text-red-500">{inr(c.pending)}</p>
-                      {isAdmin&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">+ Pay</button>}
+                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">+ Pay</button>}
                     </div>
                   </div>
                   <div style={{background:t.border,height:3,borderRadius:3,overflow:"hidden"}}><div style={{width:`${collPct}%`,background:"#10b981",height:"100%",borderRadius:3}}/></div>
@@ -1251,7 +1643,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           </Card>}
 
           {/* TODAY'S WASTAGE */}
-          {widgets.includes("wastageToday")&&(isAdmin||(settings?.showWastageTo||["admin","factory"]).includes(sess.role))&&(()=>{
+          {widgets.includes("wastageToday")&&can("dash_seeWastage")&&(()=>{
             const tw=wastage.filter(w=>w.date===today());
             const twQty=tw.reduce((s,w)=>s+(w.qty||0),0);
             const twCost=tw.reduce((s,w)=>s+(w.cost||0),0);
@@ -1263,7 +1655,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
                 <div className="flex items-center gap-2">
                   <span style={{color:"#f97316"}} className="text-sm font-black">{twQty} units</span>
-                  {isAdmin&&twCost>0&&<span className="text-sm font-bold text-red-500">{inr(twCost)}</span>}
+                  {can("waste_seeCost")&&twCost>0&&<span className="text-sm font-bold text-red-500">{inr(twCost)}</span>}
                 </div>
               </div>
               <Hr dm={dm}/>
@@ -1279,6 +1671,68 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
               ))}
             </Card>;
+          })()}
+
+          {/* NOTICE BOARD */}
+          {(()=>{
+            const unreadNotices=(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id));
+            function saveNotice(){
+              if(!nbF.title.trim()||!nbF.body.trim()){notify("Title and message required");return;}
+              const rec={...nbF,id:uid(),postedBy:sess.name,postedAt:ts(),readBy:[]};
+              setNotices(p=>[rec,...p]);
+              addLog("Notice posted",rec.title);
+              addNotif("📌 Notice: "+rec.title,rec.body,"info","noticeboard");
+              notify("Notice posted ✓");
+              setNbSh(false);
+              setNbF({title:"",body:"",pinned:false});
+            }
+            function markRead(id){setNotices(p=>p.map(n=>n.id===id?{...n,readBy:[...(n.readBy||[]),sess.id]}:n));}
+            return (<>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <p style={{color:t.text}} className="font-bold text-sm">📌 Notice Board</p>
+                  {unreadNotices.length>0&&<Pill dm={dm} c="sky">{unreadNotices.length} new</Pill>}
+                </div>
+                {can("dash_postNotice")&& <Btn dm={dm} size="sm" onClick={()=>{setNbF({title:"",body:"",pinned:false});setNbSh(true);}}>+ Post Notice</Btn>}
+              </div>
+              {(notices||[]).length===0&&<div style={{background:t.inp,borderRadius:14,padding:"20px",textAlign:"center"}}><p style={{color:t.sub}} className="text-sm">No notices posted yet.</p></div>}
+              {[...(notices||[])].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(n=>{
+                const isRead=(n.readBy||[]).includes(sess.id);
+                return <div key={n.id} style={{background:n.pinned?(dm?"rgba(245,158,11,0.08)":"rgba(245,158,11,0.06)"):t.card,border:`1.5px solid ${n.pinned?"rgba(245,158,11,0.3)":isRead?t.border:"rgba(14,165,233,0.3)"}`,borderRadius:16,padding:"14px 16px"}}>
+                  <div className="flex items-start justify-between mb-2 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {n.pinned&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>📌 Pinned</span>}
+                        {!isRead&&<span style={{background:"#0ea5e920",color:"#0ea5e9",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>New</span>}
+                        <p style={{color:t.text}} className="font-bold text-sm">{n.title}</p>
+                      </div>
+                      <p style={{color:t.sub}} className="text-[11px]">by {n.postedBy} · {n.postedAt}</p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {!isRead&&<button onClick={()=>markRead(n.id)} style={{background:"#0ea5e920",color:"#0ea5e9",border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Mark read</button>}
+                      {can("dash_delNotice")&& <button onClick={()=>setNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:t.inp,color:t.sub,border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>}
+                    </div>
+                  </div>
+                  <p style={{color:t.text,lineHeight:1.6}} className="text-sm">{n.body}</p>
+                </div>;
+              })}
+              <Sheet dm={dm} open={nbSh} onClose={()=>setNbSh(false)} title="Post Notice">
+                <Inp dm={dm} label="Title *" value={nbF.title} onChange={e=>setNbF({...nbF,title:e.target.value})} placeholder="e.g. Holiday schedule update"/>
+                <div>
+                  <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">Message *</label>
+                  <textarea value={nbF.body} onChange={e=>setNbF({...nbF,body:e.target.value})} placeholder="Write your announcement here…" rows={5}
+                    style={{width:"100%",background:T(dm).inp,border:`1.5px solid ${T(dm).inpB}`,color:T(dm).text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
+                </div>
+                <div style={{background:T(dm).inp,borderRadius:14,padding:"12px 16px"}} className="flex items-center justify-between">
+                  <div>
+                    <p style={{color:T(dm).text}} className="text-sm font-semibold">Pin this notice</p>
+                    <p style={{color:T(dm).sub}} className="text-[11px]">Pinned notices appear at the top</p>
+                  </div>
+                  <Tog dm={dm} on={nbF.pinned} onChange={()=>setNbF(f=>({...f,pinned:!f.pinned}))}/>
+                </div>
+                <Btn dm={dm} onClick={saveNotice} className="w-full">Post Notice</Btn>
+              </Sheet>
+            </>);
           })()}
         </>)}
 
@@ -1296,7 +1750,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <Pill dm={dm} c="stone">{customers.filter(c=>!c.active).length} inactive</Pill>
             </div>
             <div className="flex gap-2">
-              {isAdmin&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines)},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+              {can("cust_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines)},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ Customer</Btn>
             </div>
           </div>
@@ -1378,9 +1832,9 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   <button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
                   <button onClick={()=>exportPDF(c,products,"customer",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
                   {isAdmin&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">+ Pay</button>}
-                  {isAdmin&&<button onClick={()=>togActive(c)} style={{background:t.inp,color:"#38bdf8"}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">{c.active?"Deactivate":"Activate"}</button>}
+                  {can("cust_deactivate")&& <button onClick={()=>togActive(c)} style={{background:t.inp,color:"#38bdf8"}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">{c.active?"Deactivate":"Activate"}</button>}
                   {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">📍 Map</a>}
-                  {isAdmin&&<button onClick={()=>delC(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                  {can("cust_delete")&& <button onClick={()=>delC(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
                 </div>
               </div></Card>
             );
@@ -1397,12 +1851,26 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <Pill dm={dm} c="green">{deliveries.filter(d=>d.status==="Delivered").length} done</Pill>
             </div>
             <div className="flex gap-2">
+              <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1px solid ${bulkSelect?"#f59e0b":t.border}`}} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">{bulkSelect?"✕ Cancel":"☑ Bulk"}</button>
               <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub}} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">{delivCalendar?"📋 List":"📅 Calendar"}</button>
-              {isAdmin&&<Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
-              {isAdmin&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
+              {can("deliv_report")&& <Btn v="purple" size="sm" onClick={exportFullReport}>📊 Report</Btn>}
+              {can("deliv_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
             </div>
           </div>
+          {/* BULK ACTION BAR */}
+          {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <button onClick={()=>{const pending=fDeliv.filter(d=>d.status==="Pending").map(d=>d.id);setBulkSelected(new Set(pending));}} style={{color:"#f59e0b"}} className="text-xs font-semibold">Select all pending</button>
+              <span style={{color:t.sub}} className="text-xs">|</span>
+              <button onClick={()=>setBulkSelected(new Set())} style={{color:t.sub}} className="text-xs font-semibold">Clear</button>
+              <span style={{color:t.text}} className="text-xs font-bold">{bulkSelected.size} selected</span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500 text-white">✓ Mark Delivered</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">🚚 Set In Transit</button>
+            </div>
+          </div>}
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status…"/>
 
           {/* CALENDAR VIEW */}
@@ -1466,15 +1934,21 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           {!delivCalendar&&fDeliv.map(d=>{
             const rows=lineRows(d.orderLines,products);
             const tot=lineTotal(d.orderLines);
+            const isBulkChecked=bulkSelected.has(d.id);
             return (
-              <Card key={d.id} dm={dm}><div className="p-4">
+              <Card key={d.id} dm={dm} style={isBulkChecked?{border:`2px solid #f59e0b`}:{}}><div className="p-4">
                 <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p style={{color:t.text}} className="font-semibold">{d.customer}</p>
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
-                      <span style={{color:t.sub}} className="text-xs">📅 {d.date}</span>
-                      {d.deliveryDate&&<span style={{color:t.sub}} className="text-xs">→ by {d.deliveryDate}</span>}
-                      <span style={{color:t.sub}} className="text-xs">by {d.createdBy||"—"}</span>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    {bulkSelect&&<button onClick={()=>{const s=new Set(bulkSelected);if(s.has(d.id))s.delete(d.id);else s.add(d.id);setBulkSelected(s);}} style={{width:22,height:22,borderRadius:6,border:`2px solid ${isBulkChecked?"#f59e0b":t.inpB}`,background:isBulkChecked?"#f59e0b":t.inp,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
+                      {isBulkChecked&&<span style={{color:"#000",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
+                    </button>}
+                    <div className="min-w-0">
+                      <p style={{color:t.text}} className="font-semibold">{d.customer}</p>
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                        <span style={{color:t.sub}} className="text-xs">📅 {d.date}</span>
+                        {d.deliveryDate&&<span style={{color:t.sub}} className="text-xs">→ by {d.deliveryDate}</span>}
+                        <span style={{color:t.sub}} className="text-xs">by {d.createdBy||"—"}</span>
+                      </div>
                     </div>
                   </div>
                   <button onClick={()=>tglD(d)}><Pill dm={dm} c={d.status==="Delivered"?"green":d.status==="In Transit"?"blue":"amber"}>{d.status}</Pill></button>
@@ -1503,8 +1977,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   <button onClick={()=>exportPDF(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white">PDF</button>
                   <button onClick={()=>exportWord(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-500 text-white">Word</button>
                   <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{background:"#25D366"}}>WhatsApp</button>
-                  {isFactory&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
-                  {isAdmin&&<button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");}} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 text-white">Dispatch</button>}
+                  {can("deliv_delete")&& <button onClick={()=>delD(d)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
                 </div>
               </div></Card>
             );
@@ -1550,7 +2024,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               {canSeeFinancials&&<Pill dm={dm} c="purple">{inr(totalSupC)} total</Pill>}
             </div>
             <div className="flex gap-2">
-              {isAdmin&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+              {can("sup_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setSf(blkS());setSsh("add");}}>+ Supply</Btn>
             </div>
           </div>
@@ -1569,10 +2043,10 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
                 <div className="text-right shrink-0 ml-3">
                   <p style={{color:t.text}} className="font-bold text-base leading-none">{s.qty}<span style={{color:t.sub}} className="text-xs font-normal ml-1">{s.unit}</span></p>
-                  {canSeeFinancials&&s.cost>0&&<p className="text-purple-500 font-bold text-sm mt-0.5">{inr(s.cost)}</p>}
+                  {can("sup_seeCost")&&s.cost>0&&<p className="text-purple-500 font-bold text-sm mt-0.5">{inr(s.cost)}</p>}
                   <div className="flex gap-1.5 justify-end mt-2">
                     <button onClick={()=>{setSf({...s});setSsh(s);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                    {isAdmin&&<button onClick={()=>delS(s)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                    {can("sup_delete")&& <button onClick={()=>delS(s)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
                   </div>
                 </div>
               </div>
@@ -1681,7 +2155,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard dm={dm} label="Total Wastage" value={totalWasteQty} sub={`${wastage.length} records`} accent="#f97316"/>
                 <StatCard dm={dm} label="Today's Wastage" value={todayWaste.reduce((s,w)=>s+(w.qty||0),0)} sub={`${todayWaste.length} entries today`} accent="#ef4444"/>
-                {isAdmin&&<><StatCard dm={dm} label="Wastage Cost" value={inr(totalWasteCost)} sub="Estimated loss" accent="#8b5cf6"/>
+                {can("waste_seeCost")&& <><StatCard dm={dm} label="Wastage Cost" value={inr(totalWasteCost)} sub="Estimated loss" accent="#8b5cf6"/>
                 <StatCard dm={dm} label="This Week" value={wastage.filter(w=>{const d=new Date(w.date||"");const n=new Date();return(n-d)<7*86400000;}).reduce((s,w)=>s+(w.qty||0),0)} sub="Last 7 days qty" accent="#f59e0b"/></>}
               </div>
 
@@ -1770,11 +2244,11 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                     </div>
                   </div>
                   {w.reason&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{w.reason}"</p>}
-                  {isAdmin&&w.cost>0&&<p className="text-xs font-semibold text-red-400 mb-2">Estimated cost loss: {inr(w.cost)}</p>}
+                  {can("waste_seeCost")&&w.cost>0&&<p className="text-xs font-semibold text-red-400 mb-2">Estimated cost loss: {inr(w.cost)}</p>}
                   {(isAdmin||(sess.id&&w.loggedBy===sess.name))&&(
                     <div className="flex gap-1.5">
                       <button onClick={()=>{setWF({...w,qty:String(w.qty),cost:String(w.cost||"")});setWSh(w);}} style={{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-1.5 rounded-lg">Edit</button>
-                      {isAdmin&&<button onClick={()=>delW(w)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
+                      {can("waste_delete")&& <button onClick={()=>delW(w)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>}
                     </div>
                   )}
                 </div></Card>
@@ -2047,9 +2521,34 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                 </div>;
               })}
             </Card>
+            {/* INVOICE AGING REPORT */}
+            {(()=>{
+              const now=new Date();
+              const aged=customers.filter(c=>c.pending>0).map(c=>{
+                const daysDue=Math.floor((now-new Date(c.joinDate||"2026-01-01"))/86400000);
+                const bucket=daysDue<=30?"0-30 days":daysDue<=60?"31-60 days":daysDue<=90?"61-90 days":"90+ days";
+                const color=daysDue<=30?"#f59e0b":daysDue<=60?"#f97316":daysDue<=90?"#ef4444":"#7f1d1d";
+                return {...c,daysDue,bucket,color};
+              }).sort((a,b)=>b.daysDue-a.daysDue);
+              if(aged.length===0)return null;
+              return <Card dm={dm} className="overflow-hidden">
+                <div className="px-4 pt-4 pb-3"><p style={{color:t.text}} className="font-bold text-sm">📋 Invoice Aging Report</p><p style={{color:t.sub}} className="text-[11px]">Customers with outstanding balances by age</p></div>
+                <Hr dm={dm}/>
+                {aged.map((c)=>(
+                  <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0">
+                    <div className="flex items-center justify-between">
+                      <div><p style={{color:t.text}} className="text-sm font-semibold">{c.name}</p><p style={{color:t.sub}} className="text-xs">{c.daysDue} days since joining</p></div>
+                      <div className="flex items-center gap-3">
+                        <span style={{background:c.color+"15",color:c.color,borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:700}}>{c.bucket}</span>
+                        <span style={{color:"#ef4444"}} className="font-black text-sm">{inr(c.pending)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </Card>;
+            })()}
           </>;
         })()}
-
 
         {/* ANALYTICS TAB */}
         {tab==="Analytics"&&isAdmin&&(()=>{
@@ -2454,7 +2953,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                         </p>
                         <div className="flex gap-1">
                           <button onClick={()=>{setPtF({...r,target:String(r.target),actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2 py-1 rounded-lg">Edit</button>
-                          {isAdmin&&<button onClick={()=>delPT(r)} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-red-600 text-white">Del</button>}
+                          {can("prod_delete")&& <button onClick={()=>delPT(r)} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-red-600 text-white">Del</button>}
                         </div>
                       </div>
                     </div>
@@ -2463,6 +2962,135 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
               </div></Card>;
             })}
             {filteredPT.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No production records yet. Tap + Log Production to start tracking.":"No records for this period."}</p>}
+
+            {/* ── SHIFT HANDOVER NOTES ── */}
+            {(isAdmin||isFactory)&&(()=>{
+              function saveHandover(){
+                if(!hvF.note.trim()){notify("Note is required");return;}
+                const rec={...hvF,id:uid(),createdAt:ts()};
+                setHandovers(p=>[rec,...p.slice(0,99)]);
+                addLog("Shift handover logged",`${rec.shift} → ${rec.nextShift||"next"}`);
+                addNotif("Shift Handover",`${rec.shift} handover by ${rec.loggedBy}`,"info","newentry");
+                notify("Handover note saved ✓");
+                setHvSh(false);
+              }
+              const fHV=(handovers||[]).filter(h=>!srch||(h.note.toLowerCase().includes(srch.toLowerCase())||h.shift.toLowerCase().includes(srch.toLowerCase())||h.loggedBy?.toLowerCase().includes(srch.toLowerCase())));
+              return (<>
+                <div className="flex items-center justify-between">
+                  <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider">📋 Shift Handover Notes</p>
+                  <Btn dm={dm} size="sm" onClick={()=>{setHvF({shift:(settings?.shifts||["Morning"])[0],date:today(),note:"",nextShift:"",issues:"",loggedBy:displayName});setHvSh(true);}}>+ Handover</Btn>
+                </div>
+                {fHV.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No handover notes yet.</p>}
+                {fHV.slice(0,10).map(h=>(
+                  <Card key={h.id} dm={dm}><div className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{h.shift}</span>
+                          {h.nextShift&&<><span style={{color:t.sub,fontSize:10}}>→</span><span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{h.nextShift}</span></>}
+                        </div>
+                        <p style={{color:t.sub}} className="text-xs">📅 {h.date} · by {h.loggedBy}</p>
+                      </div>
+                      {can("prod_handover")&& <button onClick={()=>setHandovers(p=>p.filter(x=>x.id!==h.id))} style={{background:t.inp,color:t.sub}} className="text-xs px-2.5 py-1.5 rounded-lg font-semibold">Delete</button>}
+                    </div>
+                    <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:12,padding:"10px 14px",color:t.text}} className="text-sm">{h.note}</div>
+                    {h.issues&&<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"8px 12px",marginTop:8}}>
+                      <p style={{color:"#ef4444",fontSize:11,fontWeight:600}}>⚠️ Issues: {h.issues}</p>
+                    </div>}
+                  </div></Card>
+                ))}
+                <Sheet dm={dm} open={hvSh} onClose={()=>setHvSh(false)} title="Log Shift Handover">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Sel dm={dm} label="Current Shift *" value={hvF.shift} onChange={e=>setHvF({...hvF,shift:e.target.value})}>
+                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                    </Sel>
+                    <Sel dm={dm} label="Handing Over To" value={hvF.nextShift||""} onChange={e=>setHvF({...hvF,nextShift:e.target.value})}>
+                      <option value="">Select shift</option>
+                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                    </Sel>
+                  </div>
+                  <Inp dm={dm} label="Date" type="date" value={hvF.date} onChange={e=>setHvF({...hvF,date:e.target.value})}/>
+                  <div>
+                    <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">Handover Note *</label>
+                    <textarea value={hvF.note} onChange={e=>setHvF({...hvF,note:e.target.value})} placeholder="What happened this shift?" rows={4}
+                      style={{width:"100%",background:T(dm).inp,border:`1.5px solid ${T(dm).inpB}`,color:T(dm).text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
+                  </div>
+                  <Inp dm={dm} label="Issues / Problems" value={hvF.issues} onChange={e=>setHvF({...hvF,issues:e.target.value})} placeholder="Any problems, machine issues…"/>
+                  <Btn dm={dm} onClick={saveHandover} className="w-full">Save Handover Note</Btn>
+                </Sheet>
+              </>);
+            })()}
+          </>;
+        })()}
+
+        {/* QC LOG TAB */}
+        {tab==="QC"&&(()=>{
+          const canQC=isAdmin||isFactory;
+          if(!canQC)return <p style={{color:t.sub}} className="text-sm text-center py-8">Access restricted.</p>;
+          const GRADES=[{g:"A",color:"#10b981",label:"Pass — Grade A"},{g:"B",color:"#f59e0b",label:"Pass — Grade B"},{g:"C",color:"#f97316",label:"Marginal — Grade C"},{g:"F",color:"#ef4444",label:"Fail — Reject"}];
+          const gradeColor=g=>GRADES.find(x=>x.g===g)?.color||"#6b7280";
+          const fQC=qcLogs.filter(q=>!srch||(q.product.toLowerCase().includes(srch.toLowerCase())||q.grade.toLowerCase().includes(srch.toLowerCase())||q.checker?.toLowerCase().includes(srch.toLowerCase())));
+          const totalChecks=qcLogs.length;
+          const passRate=totalChecks>0?Math.round(qcLogs.filter(q=>q.grade!=="F").length/totalChecks*100):0;
+          const todayQC=qcLogs.filter(q=>q.date===today());
+          const gradeBreakdown=GRADES.map(({g,color,label})=>({g,color,label,count:qcLogs.filter(q=>q.grade===g).length}));
+          return <>
+            {/* Summary */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard dm={dm} label="Total QC Checks" value={totalChecks} sub={`${todayQC.length} today`} accent="#14b8a6"/>
+              <StatCard dm={dm} label="Pass Rate" value={`${passRate}%`} sub="Grade A, B & C" accent={passRate>=90?"#10b981":passRate>=70?"#f59e0b":"#ef4444"}/>
+              <StatCard dm={dm} label="Rejections" value={qcLogs.filter(q=>q.grade==="F").length} sub="Grade F failures" accent="#ef4444"/>
+              <StatCard dm={dm} label="Grade A" value={qcLogs.filter(q=>q.grade==="A").length} sub={`${totalChecks>0?Math.round(qcLogs.filter(q=>q.grade==="A").length/totalChecks*100):0}% of checks`} accent="#10b981"/>
+            </div>
+            {/* Grade breakdown bar */}
+            {totalChecks>0&&<Card dm={dm} className="p-4">
+              <p style={{color:t.text}} className="font-bold text-sm mb-3">Grade Distribution</p>
+              <div className="flex h-4 rounded-lg overflow-hidden gap-0.5 mb-3">
+                {gradeBreakdown.filter(x=>x.count>0).map(x=>(
+                  <div key={x.g} style={{flex:x.count,background:x.color,minWidth:4}} title={`${x.g}: ${x.count}`}/>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {gradeBreakdown.map(x=>(
+                  <div key={x.g} className="text-center">
+                    <p style={{color:x.color}} className="font-black text-lg">{x.count}</p>
+                    <p style={{color:t.sub}} className="text-[10px] font-semibold">Grade {x.g}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>}
+            {/* Controls */}
+            <div className="flex items-center justify-between">
+              <Pill dm={dm} c="sky">{fQC.length} records</Pill>
+              <div className="flex gap-2">
+                {can("qc_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(qcLogs,"qc_logs",[{label:"Product",key:"product"},{label:"Grade",key:"grade"},{label:"Shift",key:"shift"},{label:"Date",key:"date"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+                <Btn dm={dm} size="sm" onClick={()=>{setQcF({product:"",shift:(settings?.shifts||["Morning"])[0],date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");}}>+ QC Check</Btn>
+              </div>
+            </div>
+            <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search product, grade, checker…"/>
+            {fQC.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No QC logs yet. Tap + QC Check to start.</p>}
+            {fQC.map(q=>(
+              <Card key={q.id} dm={dm}><div className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{q.grade}</div>
+                    <div>
+                      <p style={{color:t.text}} className="font-bold text-sm">{q.product}</p>
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                        <span style={{color:t.sub}} className="text-xs">📅 {q.date}</span>
+                        <span style={{color:t.sub}} className="text-xs">🕐 {q.shift}</span>
+                        {q.checker&&<span style={{color:t.sub}} className="text-xs">👤 {q.checker}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),borderRadius:8,padding:"2px 8px",fontSize:10,fontWeight:700}}>{GRADES.find(x=>x.g===q.grade)?.label||q.grade}</span>
+                    {can("qc_delete")&& <button onClick={()=>delQC(q)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>}
+                  </div>
+                </div>
+                {q.notes&&<p style={{color:t.sub,background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:10}} className="text-xs">"{q.notes}"</p>}
+              </div></Card>
+            ))}
           </>;
         })()}
 
@@ -2476,6 +3104,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             {id:"access",icon:"🔒",label:"Access"},
             {id:"app",icon:"🎨",label:"App"},
             {id:"data",icon:"💾",label:"Data"},
+            {id:"notifications",icon:"🔔",label:"Notifications"},
           ];
           return <>
           {/* Section pill nav */}
@@ -2571,127 +3200,41 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
           {/* ── STAFF / USERS ── */}
           {settingsSection==="staff"&&(()=>{
-            // Human-readable permission definitions per role
-            const FACTORY_PERMS=[
-              {tab:"Customers",  label:"View Customers",        desc:"See customer list and profiles"},
-              {tab:"Deliveries", label:"Manage Deliveries",     desc:"Create, update and view delivery orders"},
-              {tab:"Supplies",   label:"Log Supplies",          desc:"Record incoming stock and supply costs"},
-              {tab:"Wastage",    label:"Log Wastage",           desc:"Record wasted or rejected products"},
-              {tab:"Production", label:"Track Production",      desc:"Log shift targets and actual output"},
-              {tab:"Dashboard",  label:"View Dashboard",        desc:"See today's summary and stats"},
-              {tab:"Analytics",  label:"View Analytics",        desc:"Access charts and performance reports"},
-              {tab:"P&L",        label:"View P&L Report",       desc:"See profit & loss breakdown"},
-              {tab:"Expenses",   label:"Log Expenses",          desc:"Record operational expenses"},
-            ];
-            const AGENT_PERMS=[
-              {tab:"Customers",  label:"View Customers",        desc:"See customer list and profiles"},
-              {tab:"Deliveries", label:"Manage Deliveries",     desc:"Update delivery status and notes"},
-              {tab:"Dashboard",  label:"View Dashboard",        desc:"See today's delivery summary"},
-              {tab:"Supplies",   label:"View Supplies",         desc:"See stock levels (read-only context)"},
-              {tab:"Wastage",    label:"Log Wastage",           desc:"Report damaged or rejected items on route"},
-            ];
             const factoryUsers=users.filter(u=>u.role==="factory");
             const agentUsers=users.filter(u=>u.role==="agent");
-            // Default permissions per role for display
-            const factoryDef=settings?.factoryDefaultPerms||ROLE_DEF.factory;
-            const agentDef=settings?.agentDefaultPerms||ROLE_DEF.agent;
-            return <>
-              {/* ── FACTORY STAFF ── */}
-              <Card dm={dm} className="overflow-hidden">
-                <div className="p-4 pb-3" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div style={{background:"#a855f722",color:"#a855f7"}} className="w-9 h-9 rounded-xl flex items-center justify-center text-lg">🏭</div>
-                      <div>
-                        <p style={{color:t.text}} className="text-sm font-bold">Factory Staff</p>
-                        <p style={{color:t.sub}} className="text-[11px]">{factoryUsers.length} account{factoryUsers.length!==1?"s":""} · Controls what factory workers can access</p>
-                      </div>
-                    </div>
-                    <Btn dm={dm} size="sm" onClick={()=>{setUf({...blkU(),role:"factory",permissions:[...factoryDef]});setUsh("add");}}>+ Add</Btn>
-                  </div>
-                </div>
-                {/* Default permission toggles for this role */}
-                <div className="px-4 py-3">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-3">Default permissions for new factory accounts</p>
-                  {FACTORY_PERMS.map(({tab,label,desc})=>{
-                    const on=factoryDef.includes(tab);
-                    return <div key={tab} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p style={{color:t.text}} className="text-sm font-semibold">{label}</p>
-                        <p style={{color:t.sub}} className="text-[11px]">{desc}</p>
-                      </div>
-                      <Tog dm={dm} on={on} onChange={()=>{
-                        const next=on?factoryDef.filter(x=>x!==tab):[...factoryDef,tab];
-                        setSettings(s=>({...s,factoryDefaultPerms:next}));
-                        // Also update all existing factory users that still have the old default set
-                        setUsers(p=>p.map(u=>u.role==="factory"?{...u,permissions:on?u.permissions.filter(x=>x!==tab):[...new Set([...u.permissions,tab])]}:u));
-                      }}/>
-                    </div>;
-                  })}
-                </div>
-                {/* Existing accounts */}
-                {factoryUsers.length>0&&<div className="px-4 pb-4">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-3 mb-2">Accounts</p>
-                  {factoryUsers.map(u=>(
-                    <div key={u.id} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div style={{background:"#a855f722",color:"#a855f7"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0">{u.name.charAt(0).toUpperCase()}</div>
-                        <div className="min-w-0">
-                          <p style={{color:t.text}} className="text-sm font-semibold truncate">{u.name}</p>
-                          <p style={{color:t.sub}} className="text-[11px]">@{u.username} · <span className={u.active?"text-emerald-500":"text-red-400"}>{u.active?"Active":"Inactive"}</span></p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        <button onClick={()=>{setUf({...u,password:""});setUsh(u);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                        <button onClick={()=>delU(u)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>}
-              </Card>
+            const sectionColors={Customers:"#0ea5e9",Deliveries:"#f59e0b",Supplies:"#8b5cf6",Wastage:"#f97316",Production:"#6366f1",QC:"#14b8a6",Dashboard:"#10b981",GPS:"#22c55e",Data:"#64748b"};
+            // Role default finePerms stored in settings
+            const factoryFpDef = settings?.factoryFinePermsDef || defaultFinePerms("factory");
+            const agentFpDef   = settings?.agentFinePermsDef   || defaultFinePerms("agent");
+            const factoryTabDef= settings?.factoryDefaultPerms || ROLE_DEF.factory;
+            const agentTabDef  = settings?.agentDefaultPerms   || ROLE_DEF.agent;
 
-              {/* ── DELIVERY AGENTS ── */}
-              <Card dm={dm} className="overflow-hidden">
+            function RoleDefaultsCard({role,color,emoji,title,subtitle,tabDef,fpDef,tabDefKey,fpDefKey,accounts}){
+              const sections=[...new Set(FINE_PERM_DEFS.map(d=>d.section))];
+              const [openSec,setOpenSec]=useState(null);
+              return <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-3" style={{borderBottom:`1px solid ${t.border}`}}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div style={{background:"#0ea5e922",color:"#0ea5e9"}} className="w-9 h-9 rounded-xl flex items-center justify-center text-lg">🚚</div>
+                      <div style={{background:color+"22",color}} className="w-9 h-9 rounded-xl flex items-center justify-center text-lg">{emoji}</div>
                       <div>
-                        <p style={{color:t.text}} className="text-sm font-bold">Delivery Agents</p>
-                        <p style={{color:t.sub}} className="text-[11px]">{agentUsers.length} account{agentUsers.length!==1?"s":""} · Controls what agents can see on the road</p>
+                        <p style={{color:t.text}} className="text-sm font-bold">{title}</p>
+                        <p style={{color:t.sub}} className="text-[11px]">{accounts.length} account{accounts.length!==1?"s":""} · {subtitle}</p>
                       </div>
                     </div>
-                    <Btn dm={dm} size="sm" onClick={()=>{setUf({...blkU(),role:"agent",permissions:[...agentDef]});setUsh("add");}}>+ Add</Btn>
+                    <Btn dm={dm} size="sm" onClick={()=>{setUf({...blkU(),role,permissions:[...tabDef],finePerms:{...fpDef}});setUsh("add");}}>+ Add</Btn>
                   </div>
                 </div>
-                {/* Default permission toggles for this role */}
-                <div className="px-4 py-3">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-3">Default permissions for new agent accounts</p>
-                  {AGENT_PERMS.map(({tab,label,desc})=>{
-                    const on=agentDef.includes(tab);
-                    return <div key={tab} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p style={{color:t.text}} className="text-sm font-semibold">{label}</p>
-                        <p style={{color:t.sub}} className="text-[11px]">{desc}</p>
-                      </div>
-                      <Tog dm={dm} on={on} onChange={()=>{
-                        const next=on?agentDef.filter(x=>x!==tab):[...agentDef,tab];
-                        setSettings(s=>({...s,agentDefaultPerms:next}));
-                        setUsers(p=>p.map(u=>u.role==="agent"?{...u,permissions:on?u.permissions.filter(x=>x!==tab):[...new Set([...u.permissions,tab])]}:u));
-                      }}/>
-                    </div>;
-                  })}
-                </div>
                 {/* Existing accounts */}
-                {agentUsers.length>0&&<div className="px-4 pb-4">
-                  <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-3 mb-2">Accounts</p>
-                  {agentUsers.map(u=>(
-                    <div key={u.id} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                {accounts.length>0&&<div className="px-4 pt-3 pb-1">
+                  <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-2">Accounts</p>
+                  {accounts.map(u=>(
+                    <div key={u.id} className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div style={{background:"#0ea5e922",color:"#0ea5e9"}} className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0">{u.name.charAt(0).toUpperCase()}</div>
+                        <div style={{background:color+"22",color}} className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0">{u.name.charAt(0).toUpperCase()}</div>
                         <div className="min-w-0">
-                          <p style={{color:t.text}} className="text-sm font-semibold truncate">{u.name}</p>
-                          <p style={{color:t.sub}} className="text-[11px]">@{u.username} · <span className={u.active?"text-emerald-500":"text-red-400"}>{u.active?"Active":"Inactive"}</span></p>
+                          <p style={{color:t.text}} className="text-xs font-semibold truncate">{u.name}</p>
+                          <p style={{color:t.sub}} className="text-[10px]">@{u.username} · <span className={u.active?"text-emerald-500":"text-red-400"}>{u.active?"Active":"Inactive"}</span></p>
                         </div>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
@@ -2701,9 +3244,73 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                     </div>
                   ))}
                 </div>}
-              </Card>
+                {/* Default tab access */}
+                <div className="px-4 py-3" style={{borderTop:`1px solid ${t.border}`}}>
+                  <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-2">Default accessible sections (for new accounts)</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ALL_TABS.filter(tb=>tb!=="Settings").map(tb=>{
+                      const on=tabDef.includes(tb);
+                      const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅"};
+                      return <button key={tb} onClick={()=>{
+                          const next=on?tabDef.filter(x=>x!==tb):[...tabDef,tb];
+                          setSettings(s=>({...s,[tabDefKey]:next}));
+                        }}
+                        style={{background:on?color+"18":t.card,border:`1.5px solid ${on?color:t.border}`,borderRadius:10,padding:"7px 10px",display:"flex",alignItems:"center",gap:7,textAlign:"left",transition:"all 0.15s"}}>
+                        <span style={{fontSize:14}}>{icons[tb]||"•"}</span>
+                        <span style={{color:on?color:t.sub,fontSize:11,fontWeight:700,flex:1}}>{tb}</span>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:on?color:"transparent",border:`2px solid ${on?color:t.border}`,flexShrink:0}}/>
+                      </button>;
+                    })}
+                  </div>
+                </div>
+                {/* Default fine perms by section */}
+                <div className="px-4 pb-3" style={{borderTop:`1px solid ${t.border}`}}>
+                  <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mt-3 mb-2">Default action permissions (for new accounts)</p>
+                  <p style={{color:t.sub}} className="text-[10px] mb-3">These apply when creating a new account of this role. Existing accounts keep their own settings.</p>
+                  {[...new Set(FINE_PERM_DEFS.map(d=>d.section))].map(sec=>{
+                    const perms=FINE_PERM_DEFS.filter(d=>d.section===sec);
+                    const sc=sectionColors[sec]||"#6b7280";
+                    const allOn=perms.every(d=>fpDef[d.key]);
+                    const anyOn=perms.some(d=>fpDef[d.key]);
+                    const isOpen=openSec===sec;
+                    return <div key={sec} style={{border:`1px solid ${t.border}`,borderRadius:12,marginBottom:6,overflow:"hidden"}}>
+                      <button onClick={()=>setOpenSec(isOpen?null:sec)} style={{width:"100%",padding:"9px 12px",display:"flex",alignItems:"center",gap:8,background:"transparent",border:"none",cursor:"pointer",textAlign:"left"}}>
+                        <div style={{width:7,height:7,borderRadius:"50%",background:allOn?sc:anyOn?sc+"88":"transparent",border:`2px solid ${allOn?sc:sc+"44"}`,flexShrink:0}}/>
+                        <p style={{color:t.text,fontWeight:700,fontSize:12,flex:1}}>{sec}</p>
+                        <span style={{color:t.sub,fontSize:10}}>{perms.filter(d=>fpDef[d.key]).length}/{perms.length} on</span>
+                        <span style={{color:t.sub,fontSize:11}}>{isOpen?"▲":"▼"}</span>
+                      </button>
+                      {isOpen&&<div style={{borderTop:`1px solid ${t.border}`}}>
+                        <div style={{padding:"6px 12px",display:"flex",justifyContent:"flex-end",gap:8,borderBottom:`1px solid ${t.border}`}}>
+                          <button onClick={()=>{const upd={...fpDef};perms.forEach(d=>{upd[d.key]=true;});setSettings(s=>({...s,[fpDefKey]:upd}));}} style={{fontSize:10,fontWeight:700,color:sc,background:sc+"18",border:`1px solid ${sc+"44"}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}}>Grant all</button>
+                          <button onClick={()=>{const upd={...fpDef};perms.forEach(d=>{upd[d.key]=false;});setSettings(s=>({...s,[fpDefKey]:upd}));}} style={{fontSize:10,fontWeight:700,color:t.sub,background:"transparent",border:`1px solid ${t.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}}>Revoke all</button>
+                        </div>
+                        {perms.map(({key,label,desc,icon})=>{
+                          const on=fpDef[key]===true;
+                          return <div key={key} style={{padding:"9px 12px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:14,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <p style={{color:on?t.text:t.sub,fontSize:11,fontWeight:600}}>{label}</p>
+                              <p style={{color:t.sub,fontSize:10}}>{desc}</p>
+                            </div>
+                            <Tog dm={dm} on={on} onChange={()=>{setSettings(s=>({...s,[fpDefKey]:{...(s[fpDefKey]||defaultFinePerms(role)),[key]:!on}}));}}/>
+                          </div>;
+                        })}
+                      </div>}
+                    </div>;
+                  })}
+                </div>
+              </Card>;
+            }
+            return <>
+              <RoleDefaultsCard role="factory" color="#a855f7" emoji="🏭" title="Factory Staff" subtitle="Manages production, supplies & QC"
+                tabDef={factoryTabDef} fpDef={factoryFpDef} tabDefKey="factoryDefaultPerms" fpDefKey="factoryFinePermsDef" accounts={factoryUsers}/>
+              <RoleDefaultsCard role="agent" color="#0ea5e9" emoji="🚚" title="Delivery Agents" subtitle="On the road, delivering orders"
+                tabDef={agentTabDef} fpDef={agentFpDef} tabDefKey="agentDefaultPerms" fpDefKey="agentFinePermsDef" accounts={agentUsers}/>
             </>;
           })()}
+
+          {/* ── PRODUCTS ── */}
 
           {/* ── PRODUCTS ── */}
           {settingsSection==="products"&&<>
@@ -2813,13 +3420,38 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             </div></Card>
             <Card dm={dm}><div className="p-4">
               <p style={{color:t.text}} className="text-sm font-bold mb-3">Dashboard Widgets</p>
-              {[{key:"stats",label:"Stat Cards"},{key:"chart",label:"Revenue Chart"},{key:"pendingDeliveries",label:"Pending Deliveries"},{key:"outstanding",label:"Outstanding Payments"},{key:"wastageToday",label:"Today's Wastage"}].map(w=>{
+              {[{key:"stats",label:"Stat Cards"},{key:"chart",label:"Revenue Chart"},{key:"pendingDeliveries",label:"Pending Deliveries"},{key:"outstanding",label:"Outstanding Payments"},{key:"wastageToday",label:"Today's Wastage"},{key:"weather",label:"🌤 Weather Widget (Goa)"},{key:"quickActions",label:"⚡ Quick Actions"},{key:"productionBar",label:"🏭 Daily Production Progress"}].map(w=>{
                 const on=(settings?.dashWidgets||[]).includes(w.key);
                 return <div key={w.key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
                   <span style={{color:t.text}} className="text-sm">{w.label}</span>
                   <Tog dm={dm} on={on} onChange={()=>setSettings(s=>({...s,dashWidgets:on?(s.dashWidgets||[]).filter(k=>k!==w.key):[...(s.dashWidgets||[]),w.key]}))}/>
                 </div>;
               })}
+            </div></Card>
+            {/* Quick Actions configuration */}
+            {(settings?.dashWidgets||[]).includes("quickActions")&&<Card dm={dm}><div className="p-4">
+              <p style={{color:t.text}} className="text-sm font-bold mb-1">Quick Action Buttons</p>
+              <p style={{color:t.sub}} className="text-[11px] mb-3">Choose which actions appear on the dashboard. Up to 8 buttons.</p>
+              {[{key:"newDelivery",icon:"🚚",label:"New Delivery"},{key:"newCustomer",icon:"👤",label:"New Customer"},{key:"markDone",icon:"✅",label:"Mark Delivered"},{key:"logWastage",icon:"🗑️",label:"Log Wastage"},{key:"addExpense",icon:"💸",label:"Add Expense"},{key:"logSupply",icon:"📦",label:"Log Supply"},{key:"logProduction",icon:"🏭",label:"Log Production"},{key:"qcCheck",icon:"✅",label:"QC Check"}].map(q=>{
+                const on=(settings?.quickActions||[]).includes(q.key);
+                return <div key={q.key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.text}} className="text-sm">{q.icon} {q.label}</span>
+                  <Tog dm={dm} on={on} onChange={()=>setSettings(s=>({...s,quickActions:on?(s.quickActions||[]).filter(k=>k!==q.key):[...(s.quickActions||[]),q.key]}))}/>
+                </div>;
+              })}
+            </div></Card>}
+            {/* PIN Mode */}
+            <Card dm={dm}><div className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <p style={{color:t.text}} className="text-sm font-bold">PIN Login Mode</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Staff can log in with a 4-digit PIN instead of their password. PINs are set per user account.</p>
+                </div>
+                <Tog dm={dm} on={settings?.pinMode||false} onChange={()=>setSettings(s=>({...s,pinMode:!s.pinMode}))}/>
+              </div>
+              {settings?.pinMode&&<div style={{background:"#f59e0b10",border:"1px solid #f59e0b30",borderRadius:10,padding:"10px 12px",marginTop:12}}>
+                <p style={{color:"#f59e0b"}} className="text-[11px] font-semibold">✓ PIN mode active — set PINs per user in Staff → Edit account</p>
+              </div>}
             </div></Card>
           </>}
 
@@ -2850,13 +3482,37 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                   <button onClick={()=>ask("Clear entire activity log?",()=>{setAct([]);notify("Log cleared");})} style={{color:"#ef4444"}} className="text-[11px] font-semibold">Clear</button>
                 </div>
               </div>
-              {actLog.length===0?<p style={{color:t.sub}} className="text-xs text-center py-3">No activity yet.</p>
-                :actLog.slice(0,200).map(l=>(
-                <div key={l.id} style={{borderBottom:`1px solid ${t.border}`}} className="py-2 last:border-0">
-                  <div className="flex items-start justify-between gap-2"><span style={{color:t.text}} className="text-xs font-semibold flex-1">{l.action}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.user} · {l.role}</span></div>
-                  <div className="flex items-start justify-between gap-2 mt-0.5"><span style={{color:t.sub}} className="text-[11px] flex-1">{l.detail}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.ts}</span></div>
-                </div>
-              ))}
+              {/* Audit Filters */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                <select value={auditUserFilter} onChange={e=>setAuditUserFilter(e.target.value)}
+                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none"}}>
+                  <option value="all">All users</option>
+                  {[...new Set(actLog.map(l=>l.user).filter(Boolean))].map(u=><option key={u}>{u}</option>)}
+                </select>
+                <select value={auditRoleFilter} onChange={e=>setAuditRoleFilter(e.target.value)}
+                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none"}}>
+                  <option value="all">All roles</option>
+                  {["admin","factory","agent"].map(r=><option key={r} value={r} style={{textTransform:"capitalize"}}>{r}</option>)}
+                </select>
+                <input value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)} placeholder="Filter action…"
+                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none",minWidth:100,flex:1}}/>
+                {(auditUserFilter!=="all"||auditRoleFilter!=="all"||auditActionFilter)&&<button onClick={()=>{setAuditUserFilter("all");setAuditRoleFilter("all");setAuditActionFilter("");}} style={{color:"#f59e0b"}} className="text-[11px] font-semibold">Clear filters</button>}
+              </div>
+              {(()=>{
+                const filtered=actLog.filter(l=>
+                  (auditUserFilter==="all"||l.user===auditUserFilter)&&
+                  (auditRoleFilter==="all"||l.role===auditRoleFilter)&&
+                  (!auditActionFilter||l.action?.toLowerCase().includes(auditActionFilter.toLowerCase())||l.detail?.toLowerCase().includes(auditActionFilter.toLowerCase()))
+                );
+                return filtered.length===0
+                  ?<p style={{color:t.sub}} className="text-xs text-center py-3">{actLog.length===0?"No activity yet.":"No entries match the filters."}</p>
+                  :filtered.slice(0,200).map(l=>(
+                  <div key={l.id} style={{borderBottom:`1px solid ${t.border}`}} className="py-2 last:border-0">
+                    <div className="flex items-start justify-between gap-2"><span style={{color:t.text}} className="text-xs font-semibold flex-1">{l.action}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.user} · {l.role}</span></div>
+                    <div className="flex items-start justify-between gap-2 mt-0.5"><span style={{color:t.sub}} className="text-[11px] flex-1">{l.detail}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.ts}</span></div>
+                  </div>
+                ));
+              })()}
             </div></Card>
             <Card dm={dm}><div className="p-4">
               <p style={{color:"#ef4444"}} className="text-sm font-bold mb-1">⚠️ Danger Zone</p>
@@ -2870,8 +3526,8 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
 
       {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
       {/* More menu overlay — tapping outside closes it */}
-      {showMoreNav&&<div className="fixed inset-0 z-40 lg:hidden" onClick={()=>setShowMoreNav(false)}/>}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 lg:hidden flex">
+      {showMoreNav&&<div className="fixed inset-0 z-40 sm:hidden" onClick={()=>setShowMoreNav(false)}/>}
+      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom)",boxShadow:"0 -4px 20px rgba(0,0,0,0.08)"}} className="fixed bottom-0 left-0 right-0 z-50 flex sm:hidden">
         {TABS.slice(0,5).map(tb=>(
           <button key={tb} onClick={()=>{setTab(tb);setSrch("");setShowMoreNav(false);}} className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative"
             style={{color:tab===tb?t.accent:t.sub}}>
@@ -2881,7 +3537,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           </button>
         ))}
         {TABS.length>5&&(
-          <div className="flex-1 relative">
+          <div className="flex-1 relative sm:hidden">
             <button onClick={()=>setShowMoreNav(v=>!v)} style={{color:TABS.slice(5).includes(tab)?t.accent:t.sub}} className="w-full flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative">
               {TABS.slice(5).includes(tab)&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:32,height:2,background:t.accent,borderRadius:"0 0 4px 4px"}}/>}
               <span className="text-lg leading-none">⋯</span>
@@ -3112,6 +3768,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           <Inp dm={dm} label="Full Name *" value={uF.name} onChange={e=>setUf({...uF,name:e.target.value})} placeholder="e.g. Ravi Kumar"/>
           <Inp dm={dm} label="Username *" value={uF.username} onChange={e=>setUf({...uF,username:e.target.value.toLowerCase().replace(/\s/g,"")})} placeholder="lowercase, no spaces"/>
           <Inp dm={dm} label={uSh==="add"?"Password *":"New Password (blank = keep)"} type="password" value={uF.password} onChange={e=>setUf({...uF,password:e.target.value})} placeholder="Min 6 characters"/>
+          {settings?.pinMode&&<Inp dm={dm} label="4-Digit PIN (optional)" type="number" value={uF.pin||""} onChange={e=>setUf({...uF,pin:e.target.value.slice(0,4)})} placeholder="e.g. 1234 — leave blank to disable PIN"/>}
         </div>
         {/* Role selector */}
         <div style={{background:t.inp,borderRadius:14,padding:"14px 16px"}}>
@@ -3127,37 +3784,58 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
             ))}
           </div>
         </div>
-        {/* Permissions — plain English for factory/agent, raw tabs for admin */}
+        {/* ── TABS: what sections they can access ── */}
+        {uF.role!=="admin"&&<div style={{background:t.inp,borderRadius:14,padding:"14px 16px"}}>
+          <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-1">📱 Accessible Sections</p>
+          <p style={{color:t.sub}} className="text-[11px] mb-3">Which tabs/screens this person can open.</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {ALL_TABS.filter(tb=>tb!=="Settings").map(tb=>{
+              const on=(uF.permissions||[]).includes(tb);
+              const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅"};
+              return <button key={tb} onClick={()=>{const p=uF.permissions||[];setUf({...uF,permissions:on?p.filter(x=>x!==tb):[...p,tb]});}}
+                style={{background:on?t.accent+"22":t.card,border:`1.5px solid ${on?t.accent:t.border}`,borderRadius:10,padding:"8px 10px",display:"flex",alignItems:"center",gap:8,textAlign:"left",transition:"all 0.15s"}}>
+                <span style={{fontSize:16,lineHeight:1}}>{icons[tb]||"•"}</span>
+                <span style={{color:on?t.accent:t.sub,fontSize:12,fontWeight:700,flex:1}}>{tb}</span>
+                <span style={{width:8,height:8,borderRadius:"50%",background:on?t.accent:"transparent",border:`2px solid ${on?t.accent:t.border}`,flexShrink:0}}/>
+              </button>;
+            })}
+          </div>
+        </div>}
+        {/* ── FINE-GRAINED PERMISSIONS ── */}
         {uF.role!=="admin"&&(()=>{
-          const PERM_MAP = uF.role==="factory" ? [
-            {tab:"Customers",  label:"View Customers",       desc:"See customer list & profiles",    icon:"👥"},
-            {tab:"Deliveries", label:"Manage Deliveries",    desc:"Create & update delivery orders", icon:"🚚"},
-            {tab:"Supplies",   label:"Log Supplies",         desc:"Record incoming stock",            icon:"📦"},
-            {tab:"Wastage",    label:"Log Wastage",          desc:"Record wasted products",           icon:"🗑️"},
-            {tab:"Production", label:"Track Production",     desc:"Log shift targets & output",       icon:"📋"},
-            {tab:"Dashboard",  label:"View Dashboard",       desc:"See today's summary",              icon:"📊"},
-            {tab:"Expenses",   label:"Log Expenses",         desc:"Record operational expenses",      icon:"💸"},
-            {tab:"Analytics",  label:"View Analytics",       desc:"Charts & performance data",        icon:"🔍"},
-            {tab:"P&L",        label:"View P&L Report",      desc:"Profit & loss breakdown",          icon:"📈"},
-          ] : [
-            {tab:"Customers",  label:"View Customers",       desc:"See who they're delivering to",   icon:"👥"},
-            {tab:"Deliveries", label:"Manage Deliveries",    desc:"Update delivery status on the go", icon:"🚚"},
-            {tab:"Dashboard",  label:"View Dashboard",       desc:"See today's delivery summary",     icon:"📊"},
-            {tab:"Wastage",    label:"Report Wastage",       desc:"Log damaged items on route",       icon:"🗑️"},
-            {tab:"Supplies",   label:"View Supplies",        desc:"Check stock levels",               icon:"📦"},
-          ];
-          return <div style={{background:t.inp,borderRadius:14,padding:"14px 16px"}}>
-            <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-1">What can they do?</p>
-            <p style={{color:t.sub}} className="text-[11px] mb-3">Turn off anything this person doesn't need to see.</p>
-            {PERM_MAP.map(({tab,label,desc,icon})=>{
-              const on=(uF.permissions||[]).includes(tab);
-              return <div key={tab} className="flex items-center gap-3 py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                <span className="text-base w-6 text-center shrink-0">{icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p style={{color:t.text}} className="text-sm font-semibold">{label}</p>
-                  <p style={{color:t.sub}} className="text-[11px]">{desc}</p>
+          const fp = uF.finePerms || defaultFinePerms(uF.role);
+          const setFp = (key,val) => setUf(f=>({...f,finePerms:{...(f.finePerms||defaultFinePerms(f.role)),[key]:val}}));
+          const sections = [...new Set(FINE_PERM_DEFS.map(d=>d.section))];
+          const sectionColors = {Customers:"#0ea5e9",Deliveries:"#f59e0b",Supplies:"#8b5cf6",Wastage:"#f97316",Production:"#6366f1",QC:"#14b8a6",Dashboard:"#10b981",GPS:"#22c55e",Data:"#64748b"};
+          return <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mt-1">⚙️ What they can do — per section</p>
+            {sections.map(sec=>{
+              const perms = FINE_PERM_DEFS.filter(d=>d.section===sec);
+              const color = sectionColors[sec]||"#6b7280";
+              const allOn = perms.every(d=>fp[d.key]);
+              const anyOn = perms.some(d=>fp[d.key]);
+              return <div key={sec} style={{background:t.inp,borderRadius:14,overflow:"hidden"}}>
+                {/* Section header with bulk toggle */}
+                <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:allOn?color:anyOn?color+"88":"transparent",border:`2px solid ${allOn?color:color+"44"}`,flexShrink:0}}/>
+                  <p style={{color:t.text,fontWeight:700,fontSize:13,flex:1}}>{sec}</p>
+                  <button onClick={()=>{perms.forEach(d=>setFp(d.key,!allOn));}}
+                    style={{fontSize:10,fontWeight:700,color:allOn?color:t.sub,background:allOn?color+"18":"transparent",border:`1px solid ${allOn?color+"44":t.border}`,borderRadius:6,padding:"3px 8px",cursor:"pointer"}}>
+                    {allOn?"Revoke all":"Grant all"}
+                  </button>
                 </div>
-                <Tog dm={dm} on={on} onChange={()=>{const p=uF.permissions||[];setUf({...uF,permissions:on?p.filter(x=>x!==tab):[...p,tab]});}}/>
+                {/* Individual perms */}
+                {perms.map(({key,label,desc,icon})=>{
+                  const on=fp[key]===true;
+                  return <div key={key} style={{padding:"10px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:15,width:22,textAlign:"center",flexShrink:0}}>{icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{color:on?t.text:t.sub,fontSize:12,fontWeight:600,lineHeight:1.2}}>{label}</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{desc}</p>
+                    </div>
+                    <Tog dm={dm} on={on} onChange={()=>setFp(key,!on)}/>
+                  </div>;
+                })}
               </div>;
             })}
           </div>;
@@ -3217,7 +3895,7 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
         </Sel>
         <div className="grid grid-cols-2 gap-3">
           <Inp dm={dm} label="Date" type="date" value={wF.date} onChange={e=>setWF({...wF,date:e.target.value})}/>
-          {isAdmin&&<Inp dm={dm} label="Estimated Cost Loss (₹)" type="number" value={wF.cost} onChange={e=>setWF({...wF,cost:e.target.value})} placeholder="0"/>}
+          {can("waste_logCost")&& <Inp dm={dm} label="Estimated Cost Loss (₹)" type="number" value={wF.cost} onChange={e=>setWF({...wF,cost:e.target.value})} placeholder="0"/>}
         </div>
         <Inp dm={dm} label="Reason / Notes" value={wF.reason} onChange={e=>setWF({...wF,reason:e.target.value})} placeholder="What caused this wastage? e.g. Overcooked, power cut…"/>
         {/* Quick reference: today's wastage so far */}
@@ -3259,6 +3937,39 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
         <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff..."/>
         <Btn dm={dm} onClick={savePT} className="w-full">Save Production Record</Btn>
       </Sheet>
+
+      {/* QC Sheet */}
+      <Sheet dm={dm} open={!!qcSh} onClose={()=>setQcSh(null)} title="Log QC Check">
+        <Sel dm={dm} label="Product *" value={qcF.product} onChange={e=>setQcF({...qcF,product:e.target.value})}>
+          <option value="">— Select product —</option>
+          {products.map(p=><option key={p.id}>{p.name}</option>)}
+          <option value="__custom__">Other / Custom</option>
+        </Sel>
+        {qcF.product==="__custom__"&&<Inp dm={dm} label="Custom Product" value={qcF.customProduct||""} onChange={e=>setQcF({...qcF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
+        <div className="grid grid-cols-2 gap-3">
+          <Sel dm={dm} label="Shift" value={qcF.shift} onChange={e=>setQcF({...qcF,shift:e.target.value})}>
+            {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+          </Sel>
+          <Inp dm={dm} label="Date" type="date" value={qcF.date} onChange={e=>setQcF({...qcF,date:e.target.value})}/>
+        </div>
+        <div>
+          <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-2 ml-0.5">Quality Grade *</label>
+          <div className="grid grid-cols-4 gap-2">
+            {[{g:"A",color:"#10b981",label:"Pass",sub:"Grade A"},{g:"B",color:"#f59e0b",label:"Pass",sub:"Grade B"},{g:"C",color:"#f97316",label:"Marginal",sub:"Grade C"},{g:"F",color:"#ef4444",label:"Fail",sub:"Reject"}].map(({g,color,label,sub})=>(
+              <button key={g} onClick={()=>setQcF({...qcF,grade:g})}
+                style={{background:qcF.grade===g?color+"25":T(dm).inp,border:`2px solid ${qcF.grade===g?color:T(dm).inpB}`,borderRadius:14,padding:"12px 6px",textAlign:"center",transition:"all 0.15s"}}>
+                <p style={{color,fontWeight:900,fontSize:22,lineHeight:1}}>{g}</p>
+                <p style={{color:qcF.grade===g?color:T(dm).text,fontSize:11,fontWeight:700,marginTop:4}}>{label}</p>
+                <p style={{color:T(dm).sub,fontSize:9,marginTop:1}}>{sub}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+        <Inp dm={dm} label="Checked By" value={qcF.checker} onChange={e=>setQcF({...qcF,checker:e.target.value})} placeholder="Inspector name"/>
+        <Inp dm={dm} label="Notes / Observations" value={qcF.notes} onChange={e=>setQcF({...qcF,notes:e.target.value})} placeholder="e.g. Slightly overcooked edges, texture good…"/>
+        <Btn dm={dm} onClick={saveQC} className="w-full">Save QC Record</Btn>
+      </Sheet>
+
       <Confirm dm={dm} msg={conf?.msg} onYes={()=>{conf?.yes();setConf(null);}} onNo={()=>setConf(null)}/>
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </>
