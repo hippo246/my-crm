@@ -859,6 +859,13 @@ function Login({users,onLogin,dm,settings}){
 // ═══════════════════════════════════════════════════════════════
 //  ROOT
 // ═══════════════════════════════════════════════════════════════
+// goldPulse keyframe — injected once at module load, not on every render
+if(typeof document!=="undefined"&&!document.getElementById("goldPulseStyle")){
+  const _s=document.createElement("style");
+  _s.id="goldPulseStyle";
+  _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px #f59e0b30,0 4px 24px #f59e0b20}50%{box-shadow:0 0 0 6px #f59e0b40,0 8px 32px #f59e0b30}}";
+  document.head.appendChild(_s);
+}
 export default function Root(){
   const [dm,setDm]=useState(()=>ls("tas_dm",false));
   const [users,setUsers]=useStore("tas9_users",D_USERS);
@@ -1241,6 +1248,29 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [changePwSh,setChangePwSh]=useState(false);
   const [changePwF,setChangePwF]=useState({current:"",next:"",confirm:""});
   const [settingsSection,setSettingsSection]=useState("account");
+  const [lastBackupDate,setLastBackupDate]=useState(()=>ls("tas_last_backup",""));
+  // Admin Tools modals
+  const [adminToolSheet,setAdminToolSheet]=useState(null); // null | tool key string
+  const [adminToolData,setAdminToolData]=useState(null);   // computed result data for open tool
+  // Reschedule
+  const [rescheduleDate,setRescheduleDate]=useState("");
+  // Bulk agent reassign
+  const [bulkAgentFrom,setBulkAgentFrom]=useState("");
+  const [bulkAgentTo,setBulkAgentTo]=useState("");
+  const [bulkAgentDateFrom,setBulkAgentDateFrom]=useState(today());
+  const [bulkAgentDateTo,setBulkAgentDateTo]=useState(today());
+  // Overdue filter
+  const [overdueDays,setOverdueDays]=useState("7");
+  // Inactive filter
+  const [inactiveDays,setInactiveDays]=useState("30");
+  // Product sales date range
+  const [salesFrom,setSalesFrom]=useState("");
+  const [salesTo,setSalesTo]=useState("");
+  // Bulk delete cutoff
+  const [bulkDelMonths,setBulkDelMonths]=useState("3");
+  // Reset password
+  const [resetPwUser,setResetPwUser]=useState("");
+  const [resetPwVal,setResetPwVal]=useState("");
 
   // CUSTOMERS
   function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
@@ -1340,7 +1370,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function delU(u){if(u.id===sess.id){notify("Cannot delete your own account");return;}if(u.role==="admin"&&users.filter(x=>x.role==="admin"&&x.active).length<=1){notify("Cannot remove last admin");return;}ask(`Delete user "@${u.username}"?`,()=>{setUsers(p=>p.filter(x=>x.id!==u.id));addLog("Deleted user",`@${u.username}`);notify("Deleted");});}
 
   // EXPORT/IMPORT
-  function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");}
+  function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");setLastBackupDate(today());lsw("tas_last_backup",today());}
   function exportFullReport(){
     const co=settings?.companyName||"TAS Healthy World";
     const now=new Date().toLocaleString("en-IN");
@@ -1680,6 +1710,43 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               ))}
             </div>
           )}
+          {/* WHO'S ACTIVE RIGHT NOW — admin only */}
+          {isAdmin&&(()=>{
+            const now=Date.now();
+            const TWO_HOURS=2*60*60*1000;
+            const agentUsers2=users.filter(u=>u.role==="agent"&&u.active);
+            if(agentUsers2.length===0) return null;
+            const agentPulse=agentUsers2.map(u=>{
+              const lastPing=(gpsLogs||[]).filter(l=>l.agentId===u.id).sort((a,b)=>b.ts-a.ts)[0];
+              const isActive=lastPing&&(now-lastPing.ts)<TWO_HOURS;
+              const minsAgo=lastPing?Math.max(0,Math.round((now-lastPing.ts)/60000)):null;
+              return {u,isActive,minsAgo,lastPing};
+            });
+            const activeCount=agentPulse.filter(x=>x.isActive).length;
+            return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"12px 16px"}}>
+              <div className="flex items-center justify-between mb-2">
+                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">👥 Agents Live Now</p>
+                <span style={{background:activeCount>0?"#10b98120":"#6b728020",color:activeCount>0?"#10b981":"#6b7280",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{activeCount}/{agentPulse.length} active</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {agentPulse.map(({u,isActive,minsAgo,lastPing})=>{
+                  const initials=u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+                  return <div key={u.id} className="flex items-center gap-2 py-1.5 px-2.5 rounded-xl" style={{background:isActive?"#10b98110":"#6b728010",border:`1px solid ${isActive?"#10b98130":"#6b728020"}`}}>
+                    <div className="relative shrink-0">
+                      <div style={{width:28,height:28,borderRadius:"50%",background:isActive?"#10b98125":"#6b728025",color:isActive?"#10b981":"#6b7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>{initials}</div>
+                      <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:isActive?"#10b981":"#9ca3af",border:"1.5px solid "+t.card,boxShadow:isActive?"0 0 0 2px #10b98140":"none"}}/>
+                    </div>
+                    <div>
+                      <p style={{color:t.text,fontSize:11,fontWeight:700,lineHeight:1.2}}>{u.name.split(" ")[0]}</p>
+                      <p style={{color:isActive?"#10b981":"#9ca3af",fontSize:9,fontWeight:600}}>{isActive?(minsAgo<2?"just now":minsAgo<60?`${minsAgo}m ago`:`${Math.round(minsAgo/60)}h ago`):"offline"}</p>
+                    </div>
+                    {isActive&&lastPing&&<button onClick={()=>setTab("GPS")} style={{background:"#0ea5e910",color:"#0ea5e9",border:"none",borderRadius:6,fontSize:9,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>📍</button>}
+                  </div>;
+                })}
+              </div>
+            </div>;
+          })()}
+
           {/* TODAY SUMMARY HERO BANNER */}
           {(()=>{
             const todayStr=today();
@@ -1689,7 +1756,9 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             const todayRev=todayDel.reduce((s,d)=>s+lineTotal(d.orderLines),0);
             const todayRepl=todayD.filter(d=>d.replacement?.done).length;
             const delivRate=todayD.length>0?Math.round(todayDel.length/todayD.length*100):0;
-            return <div style={{background:dm?"linear-gradient(135deg,#1c1500,#1a1a22)":"linear-gradient(135deg,#fffbeb,#fef9ef)",border:dm?"1px solid #3a2e00":"1px solid #fde68a",borderRadius:20,padding:"18px 20px"}}>
+            const isFullDelivery=todayD.length>0&&delivRate===100;
+            return <div style={{background:isFullDelivery?(dm?"linear-gradient(135deg,#1c1200,#1a1a00)":"linear-gradient(135deg,#fef9c3,#fef3c7)"):dm?"linear-gradient(135deg,#1c1500,#1a1a22)":"linear-gradient(135deg,#fffbeb,#fef9ef)",border:isFullDelivery?"2px solid #f59e0b":dm?"1px solid #3a2e00":"1px solid #fde68a",borderRadius:20,padding:"18px 20px",transition:"all 0.5s ease",boxShadow:isFullDelivery?"0 0 0 3px #f59e0b30, 0 4px 24px #f59e0b20":"none",animation:isFullDelivery?"goldPulse 2s ease-in-out infinite":"none"}}>
+              {isFullDelivery&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:800,marginBottom:8,letterSpacing:"0.05em"}}>🏆 100% DELIVERED — PERFECT DAY!</p>}
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">📅 Today</p>
@@ -1718,6 +1787,603 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
               </div>}
             </div>;
+          })()}
+
+          {/* END-OF-DAY DIGEST + WHATSAPP ORDER SUMMARY — admin only */}
+          {isAdmin&&(()=>{
+            const todayStr=today();
+            const todayD2=deliveries.filter(d=>d.date===todayStr);
+            const todayDel2=todayD2.filter(d=>d.status==="Delivered");
+            const todayPend2=todayD2.filter(d=>d.status==="Pending");
+            const todayRev2=todayDel2.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const todayWaste2=(wastage||[]).filter(w=>w.date===todayStr);
+            const hour=new Date().getHours();
+            const isEOD=hour>=18; // show from 6 PM
+
+            const overdueD2=deliveries.filter(d=>d.status==="Pending"&&d.date<todayStr);
+
+            function copyDigest(){
+              const lines=[
+                `📊 *${settings?.appName||"TAS"} — Daily Summary*`,
+                `📅 ${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}`,
+                ``,
+                `✅ Delivered: ${todayDel2.length}/${todayD2.length} orders`,
+                todayPend2.length>0?`⏳ Pending: ${todayPend2.length} orders`:``,
+                canSeeFinancials?`💰 Revenue collected: ${inr(todayRev2)}`:``,
+                todayWaste2.length>0?`🗑️ Wastage entries: ${todayWaste2.length} (${todayWaste2.reduce((s,w)=>s+(w.qty||0),0)} units)`:``,
+                overdueD2.length>0?`🔴 Still overdue: ${overdueD2.length} orders`:``,
+                ``,
+                `_Sent from ${settings?.appName||"TAS"} CRM_`,
+              ].filter(l=>l!==``).join("\n");
+              navigator.clipboard?.writeText(lines).then(()=>notify("Summary copied! Paste in WhatsApp ✓")).catch(()=>notify("Copy failed — try long-pressing the text"));
+            }
+
+
+            const agentUsers3=users.filter(u=>u.role==="agent"&&u.active);
+            const pendingByAgent=agentUsers3.map(u=>({
+              u,
+              count:deliveries.filter(d=>d.status==="Pending"&&(d.agentId===u.id||d.agent===u.name)).length
+            })).sort((a,b)=>b.count-a.count);
+
+            function openTool(key){
+              setAdminToolData(null);
+              if(key==="overdueCustomers"){
+                const days=Math.max(1,+overdueDays||7);
+                const res=customers.filter(c=>c.pending>0).map(c=>{
+                  const lastD=deliveries.filter(d=>d.customerId===c.id&&d.status==="Pending").sort((a,b)=>a.date>b.date?1:-1)[0];
+                  return {...c,lastPendingDate:lastD?.date||"",daysOverdue:lastD?.date?Math.round((Date.now()-new Date(lastD.date).getTime())/86400000):null};
+                }).filter(c=>c.daysOverdue===null||c.daysOverdue>=days).sort((a,b)=>(b.daysOverdue||0)-(a.daysOverdue||0));
+                setAdminToolData(res);
+              }
+              if(key==="inactiveCustomers"){
+                const days=Math.max(1,+inactiveDays||30);
+                const res=customers.map(c=>{
+                  const lastD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date>a.date?1:-1)[0];
+                  return {...c,lastOrderDate:lastD?.date||"",daysSince:lastD?.date?Math.round((Date.now()-new Date(lastD.date).getTime())/86400000):null};
+                }).filter(c=>!c.lastOrderDate||(c.daysSince!==null&&c.daysSince>=days)).sort((a,b)=>(b.daysSince||9999)-(a.daysSince||9999));
+                setAdminToolData(res);
+              }
+              if(key==="duplicates"){
+                const seen={};
+                customers.forEach(c=>{
+                  const k=c.name.trim().toLowerCase();
+                  if(!seen[k]) seen[k]=[];
+                  seen[k].push(c);
+                });
+                const res=Object.values(seen).filter(g=>g.length>1);
+                setAdminToolData(res);
+              }
+              if(key==="productSales"){
+                const from=salesFrom||deliveries.reduce((m,d)=>d.date<m?d.date:m,today());
+                const to=salesTo||today();
+                const filtered=deliveries.filter(d=>d.status==="Delivered"&&d.date>=from&&d.date<=to);
+                const res=products.map(p=>{
+                  const total=filtered.reduce((s,d)=>{const l=safeO(d.orderLines)[p.id];return s+(l?.qty||0);},0);
+                  const revenue=filtered.reduce((s,d)=>{const l=safeO(d.orderLines)[p.id];return s+(l?.qty||0)*(l?.priceAmount||0);},0);
+                  return {id:p.id,name:p.name,unit:p.unit,total,revenue};
+                }).filter(r=>r.total>0).sort((a,b)=>b.revenue-a.revenue);
+                setAdminToolData(res);
+              }
+              if(key==="wastageByProduct"){
+                const wpMap={};
+                (wastage||[]).forEach(w=>{
+                  if(!wpMap[w.product]) wpMap[w.product]={name:w.product,qty:0,entries:0,cost:0};
+                  wpMap[w.product].qty+=(w.qty||0);
+                  wpMap[w.product].entries+=1;
+                  wpMap[w.product].cost+=(w.costImpact||0);
+                });
+                const res=Object.values(wpMap).sort((a,b)=>b.qty-a.qty);
+                setAdminToolData(res);
+              }
+              if(key==="weeklyDigest"){
+                const days7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d.toISOString().slice(0,10);});
+                const first=days7[0],last=days7[6];
+                const wDel=deliveries.filter(d=>d.date>=first&&d.date<=last);
+                const wDelivered=wDel.filter(d=>d.status==="Delivered");
+                const wRev=wDelivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                const wWaste=(wastage||[]).filter(w=>w.date>=first&&w.date<=last);
+                const wExp=(expenses||[]).filter(e=>e.date>=first&&e.date<=last).reduce((s,e)=>s+(+e.amount||0),0);
+                const lines=[
+                  `📊 *${settings?.appName||"TAS"} — Weekly Summary*`,
+                  `📅 ${first} → ${last}`,
+                  ``,
+                  `📦 Orders: ${wDel.length} | ✅ Delivered: ${wDelivered.length}`,
+                  wRev>0?`💰 Revenue: ${inr(wRev)}`:``,
+                  wExp>0?`💸 Expenses: ${inr(wExp)}`:``,
+                  wRev>0&&wExp>0?`📈 Net: ${inr(wRev-wExp)}`:``,
+                  wWaste.length>0?`🗑️ Wastage entries: ${wWaste.length}`:``,
+                  ``,
+                  `_${settings?.appName||"TAS"} CRM_`,
+                ].filter(l=>l!==``).join("\n");
+                setAdminToolData(lines);
+              }
+              if(key==="agentLeaderboard"){
+                const now=new Date();
+                const mStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
+                const mEnd=today();
+                const res=agentUsers3.map(u=>{
+                  const myD=deliveries.filter(d=>(d.agentId===u.id||d.agent===u.name)&&d.date>=mStart&&d.date<=mEnd);
+                  const delivered=myD.filter(d=>d.status==="Delivered");
+                  const pending=myD.filter(d=>d.status==="Pending").length;
+                  const revenue=delivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  return {u,total:myD.length,delivered:delivered.length,pending,revenue,rate:myD.length>0?Math.round(delivered.length/myD.length*100):0};
+                }).sort((a,b)=>b.delivered-a.delivered);
+                setAdminToolData(res);
+              }
+              if(key==="orphanDeliveries"){
+                const custIds=new Set(customers.map(c=>c.id));
+                const res=deliveries.filter(d=>d.customerId&&!custIds.has(d.customerId));
+                setAdminToolData(res);
+              }
+              if(key==="auditLogView"){
+                setAdminToolData([...(actLog||[])].slice(0,200));
+              }
+              setAdminToolSheet(key);
+            }
+
+            function doReschedule(){
+              if(!rescheduleDate){notify("Pick a date");return;}
+              const pending=deliveries.filter(d=>d.date===todayStr&&d.status==="Pending");
+              if(pending.length===0){notify("No pending orders today");return;}
+              setDeliv(p=>p.map(d=>pending.find(x=>x.id===d.id)?{...d,date:rescheduleDate}:d));
+              addLog("Rescheduled pending",`${pending.length} orders → ${rescheduleDate}`);
+              notify(`${pending.length} orders moved to ${rescheduleDate} ✓`);
+              setAdminToolSheet(null);
+            }
+
+            function doBulkAgentReassign(){
+              if(!bulkAgentTo){notify("Select target agent");return;}
+              const toUser=users.find(u=>u.id===bulkAgentTo);
+              if(!toUser){notify("Agent not found");return;}
+              let count=0;
+              setDeliv(p=>p.map(d=>{
+                if(d.date>=bulkAgentDateFrom&&d.date<=bulkAgentDateTo&&d.status==="Pending"&&(!bulkAgentFrom||d.agentId===bulkAgentFrom||d.agent===users.find(u=>u.id===bulkAgentFrom)?.name)){
+                  count++;
+                  return {...d,agentId:toUser.id,agent:toUser.name};
+                }
+                return d;
+              }));
+              addLog("Bulk agent reassign",`→ ${toUser.name} (${bulkAgentDateFrom} – ${bulkAgentDateTo})`);
+              notify(`Reassigned ${count} deliveries to ${toUser.name} ✓`);
+              setAdminToolSheet(null);
+            }
+
+            function doBulkDelete(){
+              const months=Math.max(1,+bulkDelMonths||3);
+              const cutoff=new Date(Date.now()-months*30*86400000).toISOString().slice(0,10);
+              const toDelete=deliveries.filter(d=>d.status==="Delivered"&&d.date<cutoff);
+              if(toDelete.length===0){notify("Nothing to delete");return;}
+              ask(`Delete ${toDelete.length} delivered orders older than ${months} months?`,()=>{
+                const ids=new Set(toDelete.map(d=>d.id));
+                setDeliv(p=>p.filter(d=>!ids.has(d.id)));
+                addLog("Bulk deleted old orders",`${toDelete.length} records before ${cutoff}`);
+                notify(`${toDelete.length} old orders deleted ✓`);
+                setAdminToolSheet(null);
+              });
+            }
+
+            function doResetPassword(){
+              if(!resetPwUser){notify("Select a user");return;}
+              if(!resetPwVal||resetPwVal.length<6){notify("Password must be at least 6 characters");return;}
+              setUsers(p=>p.map(u=>u.id===resetPwUser?{...u,password:hashPw(resetPwVal)}:u));
+              addLog("Reset password",`User: ${users.find(u=>u.id===resetPwUser)?.username||"?"}`);
+              notify("Password reset ✓");
+              setResetPwVal("");
+              setAdminToolSheet(null);
+            }
+
+            function doExportContacts(){
+              exportCSV(customers,"customer_contacts",[
+                {label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},
+                {label:"Active",val:r=>r.active?"Yes":"No"},{label:"Join Date",key:"joinDate"},
+                {label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Notes",key:"notes"},
+              ]);
+              addLog("Exported contacts",`${customers.length} customers`);
+              notify("Contacts exported ✓");
+            }
+
+            function doPrintRunSheet(){
+              const pendingToday=deliveries.filter(d=>d.date===todayStr&&d.status==="Pending");
+              if(pendingToday.length===0){notify("No pending deliveries today");return;}
+              const co=settings?.companyName||"TAS Healthy World";
+              const rows=pendingToday.map((d,i)=>{
+                const items=lineRows(d.orderLines||{},products).filter(r=>r.qty>0).map(r=>`${r.qty}× ${r.name}`).join(", ")||"—";
+                const agent=d.agent||"Unassigned";
+                return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-weight:700">${i+1}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-weight:700">${d.customer}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${d.address||"—"}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${items}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${agent}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">☐</td></tr>`;
+              }).join("");
+              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet ${todayStr}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;font-weight:900;color:#92400e}h2{font-size:12px;font-weight:700;color:#78716c;margin-top:4px;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#f5f5f4;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#a8a29e;border-bottom:2px solid #e5e5e5}.footer{margin-top:24px;text-align:center;font-size:10px;color:#a8a29e}@media print{@page{margin:1cm}body{padding:0}}</style></head><body><h1>🫓 ${co} — Delivery Run Sheet</h1><h2>${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · ${pendingToday.length} deliveries</h2><table><tr><th>#</th><th>Customer</th><th>Address</th><th>Items</th><th>Agent</th><th>Done ✓</th></tr>${rows}</table><div class="footer">Printed ${new Date().toLocaleString("en-IN")} · ${co}</div><script>window.addEventListener('load',function(){window.print();});</script></body></html>`;
+              const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+              const url=URL.createObjectURL(blob);
+              const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
+              document.body.appendChild(a);a.click();
+              setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+              addLog("Printed run sheet",`${todayStr} — ${pendingToday.length} stops`);
+              notify("Run sheet opened in new tab ✓");
+            }
+
+            const toolBtn=(icon,label,key,color="#6366f1")=>(
+              <button onClick={()=>openTool(key)}
+                style={{background:color+"10",border:`1px solid ${color}40`,color,borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:15}}>{icon}</span>{label}
+              </button>
+            );
+
+            const toolGroups=[
+              {label:"📦 Deliveries",tools:[
+                {icon:"🔁",label:"Reschedule Pending",key:"reschedule",color:"#f59e0b"},
+                {icon:"👤",label:"Bulk Reassign Agent",key:"bulkReassign",color:"#0ea5e9"},
+                {icon:"🖨️",label:"Print Run Sheet",key:"printRunSheet",color:"#10b981"},
+                {icon:"📊",label:isEOD?"Copy Day Summary":"Day Summary (after 6 PM)",key:isEOD?"daySummary":null,color:"#6366f1"},
+              ]},
+              {label:"👥 Customers",tools:[
+                {icon:"🔴",label:"Overdue Customers",key:"overdueCustomers",color:"#ef4444"},
+                {icon:"😴",label:"Inactive Customers",key:"inactiveCustomers",color:"#f97316"},
+                {icon:"🪞",label:"Spot Duplicates",key:"duplicates",color:"#8b5cf6"},
+                {icon:"📤",label:"Export Contacts",key:"exportContacts",color:"#10b981"},
+              ]},
+              {label:"📊 Reports",tools:[
+                {icon:"📅",label:"Weekly Digest",key:"weeklyDigest",color:"#6366f1"},
+                {icon:"🏆",label:"Agent Leaderboard",key:"agentLeaderboard",color:"#f59e0b"},
+                {icon:"📦",label:"Product Sales",key:"productSales",color:"#0ea5e9"},
+                {icon:"🗑️",label:"Wastage by Product",key:"wastageByProduct",color:"#ef4444"},
+              ]},
+              {label:"🗃️ Maintenance",tools:[
+                {icon:"💾",label:"Quick Backup",key:"quickBackup",color:"#10b981"},
+                {icon:"🧹",label:"Orphan Deliveries",key:"orphanDeliveries",color:"#f97316"},
+                {icon:"📜",label:"Audit Log",key:"auditLogView",color:"#6366f1"},
+                {icon:"🗑️",label:"Bulk Delete Old Orders",key:"bulkDelete",color:"#ef4444"},
+              ]},
+              {label:"⚙️ Agent Tools",tools:[
+                {icon:"🔑",label:"Reset Password",key:"resetPassword",color:"#8b5cf6"},
+                {icon:"🔛",label:"Toggle Agent Active",key:"toggleAgent",color:"#0ea5e9"},
+              ]},
+            ];
+
+            return <>
+              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden"}}>
+                {/* Header — always visible, tap to expand/collapse */}
+                <button
+                  onClick={()=>setAdminToolSheet(adminToolSheet==="__open"?null:"__open")}
+                  style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",WebkitTapHighlightColor:"transparent"}}
+                >
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:32,height:32,borderRadius:10,background:"#f59e0b20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🛠️</div>
+                    <div>
+                      <p style={{color:t.text,fontWeight:800,fontSize:13,lineHeight:1.2}}>Admin Tools</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:1}}>{toolGroups.reduce((s,g)=>s+g.tools.filter(x=>x.key).length,0)} tools across {toolGroups.length} categories</p>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {pendingByAgent[0]?.count>0&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>🏃 {pendingByAgent[0].u.name} ({pendingByAgent[0].count})</span>}
+                    <div style={{width:24,height:24,borderRadius:"50%",background:t.inp,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:t.sub,fontWeight:700,transition:"transform 0.2s",transform:adminToolSheet==="__open"?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
+                  </div>
+                </button>
+
+                {/* Dropdown body */}
+                {adminToolSheet==="__open"&&<>
+                  <div style={{height:1,background:t.border}}/>
+                  <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+                    {toolGroups.map((group,gi)=>(
+                      <div key={gi}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,paddingLeft:2}}>{group.label}</p>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:6}}>
+                          {group.tools.map((tool,ti)=>(
+                            <button key={ti}
+                              onClick={()=>{
+                                if(!tool.key) return;
+                                if(tool.key==="daySummary"){copyDigest();return;}
+                                if(tool.key==="exportContacts"){doExportContacts();return;}
+                                if(tool.key==="printRunSheet"){doPrintRunSheet();return;}
+                                if(tool.key==="quickBackup"){exportAll();addLog("Quick backup","From admin tools");notify("Backup downloaded ✓");return;}
+                                openTool(tool.key);
+                              }}
+                              disabled={!tool.key}
+                              style={{
+                                background:tool.key?tool.color+"12":t.inp,
+                                border:`1px solid ${tool.key?tool.color+"35":t.border}`,
+                                color:tool.key?tool.color:t.sub,
+                                borderRadius:10,
+                                padding:"9px 10px",
+                                fontSize:11,
+                                fontWeight:700,
+                                cursor:tool.key?"pointer":"default",
+                                display:"flex",
+                                alignItems:"center",
+                                gap:6,
+                                textAlign:"left",
+                                lineHeight:1.3,
+                                WebkitTapHighlightColor:"transparent",
+                                opacity:tool.key?1:0.5,
+                                transition:"opacity 0.15s",
+                              }}
+                            >
+                              <span style={{fontSize:14,flexShrink:0}}>{tool.icon}</span>
+                              <span>{tool.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>}
+              </div>
+
+              {/* ── ADMIN TOOL SHEETS ── */}
+
+              {/* Reschedule pending */}
+              <Sheet open={adminToolSheet==="reschedule"} title="🔁 Reschedule Today's Pending" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Move all of today's pending deliveries ({deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} orders) to a new date.</p>
+                <Inp dm={dm} label="New Date" type="date" value={rescheduleDate} onChange={e=>setRescheduleDate(e.target.value)} min={todayStr}/>
+                <Btn dm={dm} v="amber" onClick={doReschedule}>Reschedule {deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} Orders</Btn>
+              </Sheet>
+
+              {/* Bulk reassign agent */}
+              <Sheet open={adminToolSheet==="bulkReassign"} title="👤 Bulk Reassign Agent" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Reassign all pending deliveries in a date range to a different agent.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Inp dm={dm} label="From Date" type="date" value={bulkAgentDateFrom} onChange={e=>setBulkAgentDateFrom(e.target.value)}/>
+                  <Inp dm={dm} label="To Date" type="date" value={bulkAgentDateTo} onChange={e=>setBulkAgentDateTo(e.target.value)}/>
+                </div>
+                <Sel dm={dm} label="From Agent (optional — leave blank for all)" value={bulkAgentFrom} onChange={e=>setBulkAgentFrom(e.target.value)}>
+                  <option value="">Any / Unassigned</option>
+                  {agentUsers3.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                </Sel>
+                <Sel dm={dm} label="Reassign To" value={bulkAgentTo} onChange={e=>setBulkAgentTo(e.target.value)}>
+                  <option value="">— select agent —</option>
+                  {agentUsers3.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                </Sel>
+                <Btn dm={dm} v="sky" onClick={doBulkAgentReassign}>Reassign Deliveries</Btn>
+              </Sheet>
+
+              {/* Print run sheet */}
+              <Sheet open={adminToolSheet==="printRunSheet"} title="🖨️ Print Run Sheet" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Generates a printable PDF run sheet for today's {deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} pending deliveries with a checkbox column.</p>
+                <Btn dm={dm} v="success" onClick={()=>{doPrintRunSheet();setAdminToolSheet(null);}}>Open Print Preview</Btn>
+              </Sheet>
+
+              {/* Overdue customers */}
+              <Sheet open={adminToolSheet==="overdueCustomers"} title="🔴 Overdue Customers" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <div className="flex gap-2 items-end">
+                  <Inp dm={dm} label="Overdue by at least (days)" type="number" min="1" value={overdueDays} onChange={e=>setOverdueDays(e.target.value)} className="flex-1"/>
+                  <Btn dm={dm} v="danger" onClick={()=>openTool("overdueCustomers")}>Search</Btn>
+                </div>
+                {adminToolData&&(adminToolData.length===0
+                  ?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No overdue customers found ✓</p>
+                  :<div className="flex flex-col gap-2">
+                    {adminToolData.map(c=>(
+                      <div key={c.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
+                            <p style={{color:t.sub,fontSize:11}}>{c.phone||"No phone"}</p>
+                          </div>
+                          <div className="text-right">
+                            <p style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</p>
+                            <p style={{color:t.sub,fontSize:10}}>{c.daysOverdue!==null?`${c.daysOverdue}d overdue`:"no date"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <Btn dm={dm} v="outline" onClick={()=>exportCSV(adminToolData,"overdue_customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Pending",key:"pending"},{label:"Days Overdue",key:"daysOverdue"}])}>Export CSV</Btn>
+                  </div>
+                )}
+              </Sheet>
+
+              {/* Inactive customers */}
+              <Sheet open={adminToolSheet==="inactiveCustomers"} title="😴 Inactive Customers" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <div className="flex gap-2 items-end">
+                  <Sel dm={dm} label="Inactive for" value={inactiveDays} onChange={e=>{setInactiveDays(e.target.value);}} className="flex-1">
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                  </Sel>
+                  <Btn dm={dm} v="amber" onClick={()=>openTool("inactiveCustomers")}>Search</Btn>
+                </div>
+                {adminToolData&&(adminToolData.length===0
+                  ?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No inactive customers found ✓</p>
+                  :<div className="flex flex-col gap-2">
+                    {adminToolData.map(c=>(
+                      <div key={c.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                        <div>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{c.lastOrderDate?`Last order: ${c.lastOrderDate}`:"No orders ever"}</p>
+                        </div>
+                        <p style={{color:"#f97316",fontWeight:700,fontSize:12}}>{c.daysSince!==null?`${c.daysSince}d ago`:"—"}</p>
+                      </div>
+                    ))}
+                    <Btn dm={dm} v="outline" onClick={()=>exportCSV(adminToolData,"inactive_customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Last Order",key:"lastOrderDate"},{label:"Days Since",key:"daysSince"}])}>Export CSV</Btn>
+                  </div>
+                )}
+              </Sheet>
+
+              {/* Duplicates */}
+              <Sheet open={adminToolSheet==="duplicates"} title="🪞 Duplicate Customer Names" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                {!adminToolData?<p style={{color:t.sub,fontSize:12}}>Loading…</p>
+                  :adminToolData.length===0
+                    ?<p style={{color:"#10b981",fontSize:13,textAlign:"center"}}>No duplicate names found ✓</p>
+                    :<div className="flex flex-col gap-3">
+                      {adminToolData.map((group,gi)=>(
+                        <div key={gi} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
+                          <p style={{color:"#f97316",fontWeight:700,fontSize:11,marginBottom:6}}>⚠️ {group.length} entries with same name</p>
+                          {group.map(c=>(
+                            <div key={c.id} className="flex justify-between items-center py-1">
+                              <div>
+                                <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
+                                <p style={{color:t.sub,fontSize:11}}>{c.phone||"No phone"} · {c.address||"No address"}</p>
+                              </div>
+                              <p style={{color:t.sub,fontSize:10}}>ID: {c.id.slice(-6)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                }
+              </Sheet>
+
+              {/* Export contacts */}
+              <Sheet open={adminToolSheet==="exportContacts"} title="📤 Export Customer Contacts" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Exports all {customers.length} customers as a CSV with name, phone, address, join date, and balance.</p>
+                <Btn dm={dm} v="success" onClick={()=>{doExportContacts();setAdminToolSheet(null);}}>Download CSV</Btn>
+              </Sheet>
+
+              {/* Weekly digest */}
+              <Sheet open={adminToolSheet==="weeklyDigest"} title="📅 Weekly Digest" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                {adminToolData&&typeof adminToolData==="string"&&<>
+                  <pre style={{background:t.inp,borderRadius:10,padding:12,fontSize:11,color:t.text,whiteSpace:"pre-wrap",lineHeight:1.7}}>{adminToolData}</pre>
+                  <Btn dm={dm} v="primary" onClick={()=>navigator.clipboard?.writeText(adminToolData).then(()=>notify("Copied ✓")).catch(()=>notify("Copy failed"))}>Copy to Clipboard</Btn>
+                </>}
+              </Sheet>
+
+              {/* Agent leaderboard */}
+              <Sheet open={adminToolSheet==="agentLeaderboard"} title="🏆 Agent Leaderboard — This Month" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                {adminToolData&&<div className="flex flex-col gap-2">
+                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No delivery data this month</p>
+                    :adminToolData.map((row,i)=>(
+                    <div key={row.u.id} style={{background:i===0?"#f59e0b10":t.inp,border:i===0?"1px solid #f59e0b30":"none",borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <span style={{fontSize:18}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":"👤"}</span>
+                        <div>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{row.u.name}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{row.delivered}/{row.total} delivered · {row.rate}%</p>
+                        </div>
+                      </div>
+                      <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>{inr(row.revenue)}</p>
+                    </div>
+                  ))}
+                </div>}
+              </Sheet>
+
+              {/* Product sales */}
+              <Sheet open={adminToolSheet==="productSales"} title="📦 Product Sales Breakdown" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <div className="grid grid-cols-2 gap-3">
+                  <Inp dm={dm} label="From" type="date" value={salesFrom} onChange={e=>setSalesFrom(e.target.value)}/>
+                  <Inp dm={dm} label="To" type="date" value={salesTo} onChange={e=>setSalesTo(e.target.value)}/>
+                </div>
+                <Btn dm={dm} v="sky" onClick={()=>openTool("productSales")}>Calculate</Btn>
+                {adminToolData&&<div className="flex flex-col gap-2">
+                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No delivered orders in range</p>
+                    :adminToolData.map(r=>(
+                    <div key={r.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                      <div>
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{r.name}</p>
+                        <p style={{color:t.sub,fontSize:11}}>{r.total} {r.unit} sold</p>
+                      </div>
+                      <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>{inr(r.revenue)}</p>
+                    </div>
+                  ))}
+                </div>}
+              </Sheet>
+
+              {/* Wastage by product */}
+              <Sheet open={adminToolSheet==="wastageByProduct"} title="🗑️ Wastage by Product" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                {adminToolData&&<div className="flex flex-col gap-2">
+                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No wastage logged yet</p>
+                    :adminToolData.map((r,i)=>(
+                    <div key={i} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                      <div>
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{r.name}</p>
+                        <p style={{color:t.sub,fontSize:11}}>{r.entries} entries</p>
+                      </div>
+                      <div className="text-right">
+                        <p style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{r.qty} units</p>
+                        {r.cost>0&&<p style={{color:t.sub,fontSize:10}}>{inr(r.cost)} lost</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>}
+              </Sheet>
+
+              {/* Quick backup */}
+              <Sheet open={adminToolSheet==="quickBackup"} title="💾 Quick Backup" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Downloads a full JSON backup of all your data — customers, deliveries, products, expenses, wastage, and logs.</p>
+                {lastBackupDate&&<p style={{color:"#10b981",fontSize:12}}>Last backup: {lastBackupDate}</p>}
+                <Btn dm={dm} v="success" onClick={()=>{exportAll();setAdminToolSheet(null);}}>Download Backup Now</Btn>
+              </Sheet>
+
+              {/* Orphan deliveries */}
+              <Sheet open={adminToolSheet==="orphanDeliveries"} title="🧹 Orphan Deliveries" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:t.sub,fontSize:12}}>Deliveries linked to customers that no longer exist in the system.</p>
+                {adminToolData&&(adminToolData.length===0
+                  ?<p style={{color:"#10b981",fontSize:13,textAlign:"center"}}>No orphaned records found ✓</p>
+                  :<div className="flex flex-col gap-2">
+                    {adminToolData.map(d=>(
+                      <div key={d.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                        <div>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{d.customer}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{d.date} · {d.status}</p>
+                        </div>
+                        <Btn dm={dm} v="danger" size="sm" onClick={()=>{ask(`Delete orphan delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted orphan delivery",d.customer);notify("Deleted");setAdminToolData(p=>p.filter(x=>x.id!==d.id));});}}>Delete</Btn>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Sheet>
+
+              {/* Audit log viewer */}
+              <Sheet open={adminToolSheet==="auditLogView"} title="📜 Audit Log" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                {adminToolData&&<div className="flex flex-col gap-1.5" style={{maxHeight:400,overflowY:"auto"}}>
+                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No log entries yet</p>
+                    :adminToolData.map(e=>(
+                    <div key={e.id} style={{background:t.inp,borderRadius:8,padding:"8px 10px"}}>
+                      <div className="flex justify-between items-start">
+                        <p style={{color:t.text,fontWeight:700,fontSize:12}}>{e.action}</p>
+                        <p style={{color:t.sub,fontSize:10}}>{e.user}</p>
+                      </div>
+                      <p style={{color:t.sub,fontSize:11}}>{e.detail}</p>
+                      <p style={{color:t.sub,fontSize:10}}>{e.ts}</p>
+                    </div>
+                  ))}
+                </div>}
+              </Sheet>
+
+              {/* Bulk delete old orders */}
+              <Sheet open={adminToolSheet==="bulkDelete"} title="🗑️ Bulk Delete Old Orders" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <p style={{color:"#ef4444",fontSize:12,fontWeight:600}}>⚠️ This permanently deletes old delivered orders. Back up first!</p>
+                <Sel dm={dm} label="Delete delivered orders older than" value={bulkDelMonths} onChange={e=>setBulkDelMonths(e.target.value)}>
+                  <option value="3">3 months</option>
+                  <option value="6">6 months</option>
+                  <option value="12">12 months</option>
+                </Sel>
+                <p style={{color:t.sub,fontSize:12}}>
+                  {(()=>{
+                    const months=Math.max(1,+bulkDelMonths||3);
+                    const cutoff=new Date(Date.now()-months*30*86400000).toISOString().slice(0,10);
+                    const count=deliveries.filter(d=>d.status==="Delivered"&&d.date<cutoff).length;
+                    return `${count} delivered orders will be deleted (before ${cutoff})`;
+                  })()}
+                </p>
+                <Btn dm={dm} v="danger" onClick={doBulkDelete}>Delete Old Orders</Btn>
+              </Sheet>
+
+              {/* Reset password */}
+              <Sheet open={adminToolSheet==="resetPassword"} title="🔑 Reset User Password" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <Sel dm={dm} label="Select User" value={resetPwUser} onChange={e=>setResetPwUser(e.target.value)}>
+                  <option value="">— select user —</option>
+                  {users.filter(u=>u.id!==sess.id).map(u=><option key={u.id} value={u.id}>{u.name} (@{u.username}) · {u.role}</option>)}
+                </Sel>
+                <Inp dm={dm} label="New Password (min 6 chars)" type="password" value={resetPwVal} onChange={e=>setResetPwVal(e.target.value)} placeholder="Enter new password"/>
+                <Btn dm={dm} v="purple" onClick={doResetPassword}>Reset Password</Btn>
+              </Sheet>
+
+              {/* Toggle agent active */}
+              <Sheet open={adminToolSheet==="toggleAgent"} title="🔛 Toggle Agent Active" onClose={()=>setAdminToolSheet(null)} dm={dm}>
+                <div className="flex flex-col gap-2">
+                  {users.filter(u=>u.role==="agent").map(u=>(
+                    <div key={u.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
+                      <div>
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{u.name}</p>
+                        <p style={{color:t.sub,fontSize:11}}>@{u.username}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span style={{color:u.active?"#10b981":"#9ca3af",fontSize:11,fontWeight:700}}>{u.active?"Active":"Inactive"}</span>
+                        <Tog dm={dm} on={u.active} onChange={()=>{setUsers(p=>p.map(x=>x.id===u.id?{...x,active:!x.active}:x));addLog(`${u.active?"Deactivated":"Activated"} agent`,u.name);notify(`${u.name} ${u.active?"deactivated":"activated"} ✓`);}}/>
+                      </div>
+                    </div>
+                  ))}
+                  {users.filter(u=>u.role==="agent").length===0&&<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No agents found</p>}
+                </div>
+              </Sheet>
+            </>;
           })()}
 
           {/* STAT CARDS */}
@@ -1846,6 +2512,37 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
               ))}
             </Card>;
+          })()}
+
+          {/* OVERDUE DELIVERY FOLLOW-UP — admin only */}
+          {isAdmin&&(()=>{
+            const overdueD=deliveries.filter(d=>d.status==="Pending"&&d.date<today()).sort((a,b)=>a.date.localeCompare(b.date));
+            if(overdueD.length===0) return null;
+            return <div style={{background:dm?"#1a0808":"#fff8f8",border:"1.5px solid #ef444440",borderRadius:20,padding:"14px 18px"}}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-0.5">🔴 Overdue Deliveries</p>
+                  <p style={{color:t.text}} className="font-bold text-sm">{overdueD.length} order{overdueD.length!==1?"s":""} past due date</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {overdueD.slice(0,5).map(d=>{
+                  const cust=customers.find(c=>c.id===d.customerId);
+                  const daysAgo=Math.round((new Date(today())-new Date(d.date))/(86400000));
+                  return <div key={d.id} style={{background:dm?"rgba(239,68,68,0.07)":"rgba(239,68,68,0.05)",border:"1px solid #ef444425",borderRadius:12,padding:"10px 12px"}} className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p style={{color:t.text}} className="text-sm font-bold truncate">{d.customer}</p>
+                      <p style={{color:"#ef4444"}} className="text-[11px] font-semibold">{daysAgo}d overdue · {d.date}</p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {cust?.phone&&<a href={`tel:${cust.phone}`} style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}>📞 Call</a>}
+                      {can("deliv_markDone")&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered",deliveryDate:today()}:x));addLog("Marked overdue delivered",d.customer);notify(`${d.customer} marked delivered ✓`);captureGPS("marked_delivered",d.customer);addNotif("Delivery Completed",`${d.customer} (overdue) marked Delivered`,"success");}} style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Done</button>}
+                    </div>
+                  </div>;
+                })}
+                {overdueD.length>5&&<p style={{color:t.sub}} className="text-[11px] text-center mt-1">+{overdueD.length-5} more — <button onClick={()=>setTab("Deliveries")} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:11}}>view all →</button></p>}
+              </div>
+            </div>;
           })()}
 
           {/* NOTICE BOARD */}
@@ -2096,10 +2793,26 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     })}
                   </div>
                 ))}
-                <div className="flex gap-3 mt-2 px-1">
-                  {[["Pending","#f59e0b"],["In Transit","#0ea5e9"],["Delivered","#10b981"]].map(([s,c])=>(
-                    <div key={s} className="flex items-center gap-1"><div style={{background:c,width:8,height:8,borderRadius:2}}/><span style={{color:t.sub}} className="text-[10px]">{s}</span></div>
-                  ))}
+                <div className="flex items-center justify-between mt-2 px-1 flex-wrap gap-2">
+                  <div className="flex gap-3">
+                    {[["Pending","#f59e0b"],["In Transit","#0ea5e9"],["Delivered","#10b981"]].map(([s,c])=>(
+                      <div key={s} className="flex items-center gap-1"><div style={{background:c,width:8,height:8,borderRadius:2}}/><span style={{color:t.sub}} className="text-[10px]">{s}</span></div>
+                    ))}
+                  </div>
+                  {isAdmin&&can("deliv_markDone")&&calOffset===0&&(()=>{
+                    // Bulk mark all pending for today — only shown when viewing the current month
+                    const highlightDate=today();
+                    const pendingToday2=deliveries.filter(d=>d.date===highlightDate&&d.status==="Pending");
+                    if(pendingToday2.length===0) return null;
+                    return <button onClick={()=>{
+                      setDeliv(p=>p.map(d=>d.date===highlightDate&&d.status==="Pending"?{...d,status:"Delivered",deliveryDate:today()}:d));
+                      addLog("Bulk delivered",`All pending on ${highlightDate} (${pendingToday2.length})`);
+                      notify(`${pendingToday2.length} deliveries marked done ✓`);
+                      captureGPS("marked_delivered",`Bulk day (${highlightDate})`);
+                    }} style={{background:"#10b98120",color:"#10b981",border:"1px solid #10b98140",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      ✓ Mark all today done ({pendingToday2.length})
+                    </button>;
+                  })()}
                 </div>
               </div>
             </Card>;
@@ -2587,21 +3300,23 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
                     {["Month","Deliveries","Revenue","Supply Cost","Op Expenses","Waste Loss","Total Cost","Profit/Loss","Margin"].map(h=><th key={h} style={{color:t.sub}} className="px-3 py-2.5 text-left font-bold uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {mData.map((m,i)=>(
-                      <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?"transparent":dm?"#ffffff04":"#00000004"}}>
+                    {mData.map((m,i)=>{
+                      const prev=mData[i-1];
+                      function arrow(curr,p){if(!p||p===0)return null;const up=curr>p;const pct=Math.round(Math.abs(curr-p)/Math.max(p,1)*100);return <span style={{color:up?"#10b981":"#ef4444",fontSize:9,marginLeft:3,fontWeight:700}}>{up?"▲":"▼"}{pct}%</span>;}
+                      return <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?"transparent":dm?"#ffffff04":"#00000004"}}>
                         <td style={{color:t.text}} className="px-3 py-2.5 font-bold whitespace-nowrap">{m.monthFull}</td>
-                        <td style={{color:t.sub}} className="px-3 py-2.5">{m.deliveriesCount}</td>
-                        <td className="px-3 py-2.5 text-emerald-500 font-semibold">{inr(m.revenue)}</td>
+                        <td style={{color:t.sub}} className="px-3 py-2.5">{m.deliveriesCount}{prev&&arrow(m.deliveriesCount,prev.deliveriesCount)}</td>
+                        <td className="px-3 py-2.5 text-emerald-500 font-semibold">{inr(m.revenue)}{prev&&arrow(m.revenue,prev.revenue)}</td>
                         <td className="px-3 py-2.5 text-purple-500">{inr(m.supplyCost)}</td>
                         <td className="px-3 py-2.5 text-red-400">{inr(m.expenses)}</td>
                         <td className="px-3 py-2.5 text-orange-500">{inr(m.wasteCost)}</td>
-                        <td className="px-3 py-2.5 text-red-500 font-semibold">{inr(m.totalCost)}</td>
-                        <td className={`px-3 py-2.5 font-bold ${m.profit>=0?"text-emerald-500":"text-red-500"}`}>{inr(m.profit)}</td>
+                        <td className="px-3 py-2.5 text-red-500 font-semibold">{inr(m.totalCost)}{prev&&arrow(m.totalCost,prev.totalCost)}</td>
+                        <td className={`px-3 py-2.5 font-bold ${m.profit>=0?"text-emerald-500":"text-red-500"}`}>{inr(m.profit)}{prev&&arrow(m.profit,prev.profit)}</td>
                         <td className="px-3 py-2.5">
                           <span style={{background:m.margin>=30?"#10b98120":m.margin>=10?"#f59e0b20":"#ef444420",color:m.margin>=30?"#10b981":m.margin>=10?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 6px",fontWeight:700,fontSize:10}}>{m.margin}%</span>
                         </td>
-                      </tr>
-                    ))}
+                      </tr>;
+                    })}
                     <tr style={{borderTop:`2px solid ${t.border}`,background:dm?"#1a1a1a":"#fafaf8"}}>
                       <td style={{color:t.text}} className="px-3 py-3 font-black text-[11px]">TOTAL</td>
                       <td style={{color:t.sub}} className="px-3 py-3 font-bold">{deliveries.filter(d=>d.status==="Delivered").length}</td>
@@ -4099,6 +4814,21 @@ ${rows.map(w=>`<tr><td>${w.date||""}</td><td>${w.shift||""}</td><td>${w.product}
           {settingsSection==="data"&&<>
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">Backup & Restore</p>
+              {(()=>{
+                const daysSince=lastBackupDate?Math.round((Date.now()-new Date(lastBackupDate).getTime())/86400000):null;
+                const noBackup=!lastBackupDate;
+                const stale=daysSince!==null&&daysSince>=7;
+                if(noBackup||stale) return <div style={{background:noBackup?"#ef444415":"#f59e0b15",border:`1px solid ${noBackup?"#ef444430":"#f59e0b30"}`,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>{noBackup?"⚠️":"🕐"}</span>
+                  <div>
+                    <p style={{color:noBackup?"#ef4444":"#f59e0b",fontWeight:700,fontSize:12}}>{noBackup?"No backup recorded yet":"Last backup was "+daysSince+" days ago"}</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:2}}>Export a backup below to protect your data.</p>
+                  </div>
+                </div>;
+                return <div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:10,padding:"8px 14px"}}>
+                  <p style={{color:"#10b981",fontWeight:700,fontSize:12}}>✓ Last backup: {lastBackupDate} ({daysSince===0?"today":daysSince+"d ago"})</p>
+                </div>;
+              })()}
               <Btn dm={dm} v="outline" className="w-full" onClick={exportAll}>⬇️ Export Full Backup (JSON)</Btn>
               <Btn v="purple" className="w-full" onClick={exportFullReport}>📊 Export Full Report (PDF — All Data)</Btn>
               <label style={{border:`1px solid ${t.border}`,color:t.text}} className="w-full text-sm font-semibold rounded-xl px-4 py-2.5 text-center cursor-pointer hover:opacity-80 transition-all">
