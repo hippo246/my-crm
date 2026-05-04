@@ -259,6 +259,7 @@ const D_SETTINGS = {
   staffLoginMode:"individual",
   staffNames:[],
   lowStockThreshold: 5,
+  bulkOrderEnabled: true,
   churnDays: 14,
   qcMode: "detailed",
   notifTargets: {
@@ -288,7 +289,7 @@ const D_PROD_TARGETS = [];
 // ═══════════════════════════════════════════════════════════════
 //  EXPORTS
 // ═══════════════════════════════════════════════════════════════
-function exportPDF(record, products, type, settings) {
+function exportPDF(record, products, type, settings, deliveries) {
   const rows   = lineRows(record.orderLines||record.orders||{}, products);
   const total  = lineTotal(record.orderLines||record.orders||{});
   const name   = record.name || record.customer || "—";
@@ -297,9 +298,96 @@ function exportPDF(record, products, type, settings) {
   const gst    = settings?.companyGST     || "";
   const coPhone= settings?.companyPhone   || "";
   const invoiceNo=`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice — ${name}</title>
+
+  // ── Customer delivery history (only for customer type) ──
+  let historyHtml = "";
+  if(type==="customer" && Array.isArray(deliveries)) {
+    const cDelivs = [...deliveries.filter(d=>d.customerId===record.id)].sort((a,b)=>b.date.localeCompare(a.date));
+    const cDone   = cDelivs.filter(d=>d.status==="Delivered");
+    const cPend   = cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+    const cCanc   = cDelivs.filter(d=>d.status==="Cancelled");
+    const cRepl   = cDelivs.filter(d=>d.replacement?.done);
+    const totalRev= cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const totalReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+    const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
+    const lastD   = cDelivs[0];
+    const lastDays= lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
+    const joinDays= record.joinDate?Math.max(1,Math.floor((new Date()-new Date(record.joinDate))/86400000)):90;
+    const ordersPerMonth= cDelivs.length>0?(cDelivs.length/(joinDays/30)).toFixed(1):0;
+
+    historyHtml = `
+    <div class="section-title">📊 Customer Summary</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val">${cDelivs.length}</div><div class="stat-lbl">Total Orders</div></div>
+      <div class="stat-box green-box"><div class="stat-val" style="color:#059669">${cDone.length}</div><div class="stat-lbl">Delivered</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#f59e0b">${cPend.length}</div><div class="stat-lbl">Pending / Transit</div></div>
+      <div class="stat-box red-box"><div class="stat-val" style="color:#dc2626">${cCanc.length}</div><div class="stat-lbl">Cancelled / Returned</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#f97316">${cRepl.length}</div><div class="stat-lbl">Replacements</div></div>
+      <div class="stat-box"><div class="stat-val">${delivRate}%</div><div class="stat-lbl">Delivery Rate</div></div>
+      <div class="stat-box"><div class="stat-val">₹${totalRev.toLocaleString("en-IN")}</div><div class="stat-lbl">Total Revenue</div></div>
+      <div class="stat-box"><div class="stat-val">${ordersPerMonth}/mo</div><div class="stat-lbl">Order Frequency</div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:24px">💳 Payment Overview</div>
+    <div class="stat-grid">
+      <div class="stat-box green-box"><div class="stat-val" style="color:#059669">₹${(record.paid||0).toLocaleString("en-IN")}</div><div class="stat-lbl">Amount Paid</div></div>
+      <div class="stat-box red-box"><div class="stat-val" style="color:#dc2626">₹${(record.pending||0).toLocaleString("en-IN")}</div><div class="stat-lbl">Amount Pending</div></div>
+      ${(record.partialPay||0)>0?`<div class="stat-box"><div class="stat-val" style="color:#d97706">₹${(record.partialPay||0).toLocaleString("en-IN")}</div><div class="stat-lbl">Partial On Hold</div></div>`:""}
+      ${totalReplAmt>0?`<div class="stat-box"><div class="stat-val" style="color:#f97316">−₹${totalReplAmt.toLocaleString("en-IN")}</div><div class="stat-lbl">Replacement Deducted</div></div>`:""}
+      <div class="stat-box"><div class="stat-val">${lastDays===null?"Never":lastDays===0?"Today":lastDays===1?"Yesterday":lastDays+"d ago"}</div><div class="stat-lbl">Last Order</div></div>
+    </div>
+
+    ${cDelivs.length>0?`
+    <div class="section-title" style="margin-top:24px">📦 Delivery History (${cDelivs.length} orders)</div>
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Status</th><th>Items</th><th>Order Total</th><th>Replacement</th><th>Repl. Amount</th><th>Notes</th>
+      </tr></thead>
+      <tbody>
+        ${cDelivs.map((d,i)=>{
+          const dTotal=lineTotal(d.orderLines);
+          const dLineEntries=Object.entries(d.orderLines||{}).filter(([,l])=>l.qty>0);
+          const itemsStr=dLineEntries.map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ");
+          const statusColor=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":d.status==="Cancelled"?"#dc2626":"#d97706";
+          return `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+            <td style="white-space:nowrap">${d.date||"—"}</td>
+            <td><span style="background:${statusColor}18;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">${d.status||"Pending"}</span></td>
+            <td style="font-size:11px;color:#475569">${itemsStr||"—"}</td>
+            <td class="r" style="font-weight:700">₹${dTotal.toLocaleString("en-IN")}</td>
+            <td style="font-size:11px">${d.replacement?.done?`<span style="color:#f97316;font-weight:600">🔄 ${d.replacement.item||"Done"}${d.replacement.qty?" ("+d.replacement.qty+")":""}</span>`:"—"}</td>
+            <td class="r" style="color:#f97316;font-weight:700">${d.replacement?.done&&d.replacement?.amount?"−₹"+Number(d.replacement.amount).toLocaleString("en-IN"):"—"}</td>
+            <td style="font-size:11px;color:#94a3b8">${d.notes||"—"}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`:""
+    }
+
+    ${cRepl.length>0?`
+    <div class="section-title" style="margin-top:28px">🔄 Replacement Log (${cRepl.length})</div>
+    <table>
+      <thead><tr><th>Date</th><th>Item Replaced</th><th>Qty</th><th>Reason</th><th>Amount Deducted</th></tr></thead>
+      <tbody>
+        ${cRepl.map((d,i)=>`<tr style="background:${i%2===0?"#fff":"#fef9f0"}">
+          <td>${d.date||"—"}</td>
+          <td>${d.replacement?.item||"—"}</td>
+          <td>${d.replacement?.qty||"—"}</td>
+          <td style="font-size:11px;color:#78716c">${d.replacement?.reason||"—"}</td>
+          <td class="r" style="color:#f97316;font-weight:700">${d.replacement?.amount?"−₹"+Number(d.replacement.amount).toLocaleString("en-IN"):"—"}</td>
+        </tr>`).join("")}
+        <tr style="background:#fff7ed;font-weight:800">
+          <td colspan="4">Total Deducted</td>
+          <td class="r" style="color:#ea580c">−₹${totalReplAmt.toLocaleString("en-IN")}</td>
+        </tr>
+      </tbody>
+    </table>`:""
+    }
+    `;
+  }
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${type==="customer"?"Customer Report":"Invoice"} — ${name}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:680px;margin:0 auto}
+body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:860px;margin:0 auto}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #e7e5e4}
 .brand{font-size:19px;font-weight:900;color:#92400e}.bsub{font-size:11px;color:#78716c;margin-top:3px}
 .ititle{font-size:26px;font-weight:900;text-align:right}.imeta{font-size:11px;color:#78716c;text-align:right;margin-top:3px}
@@ -307,48 +395,49 @@ body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:680px;mar
 .bname{font-size:15px;font-weight:700}.bsub2{font-size:11px;color:#78716c;margin-top:2px}
 .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;margin-top:5px}
 .bg{background:#d1fae5;color:#065f46}.by{background:#fef3c7;color:#92400e}.bb{background:#dbeafe;color:#1e40af}
-table{width:100%;border-collapse:collapse;margin-top:6px}
-th{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#a8a29e;padding:7px 0;border-bottom:2px solid #e7e5e4;text-align:left}
-th:last-child,td:last-child{text-align:right}
-td{padding:9px 0;border-bottom:1px solid #f5f5f4;font-size:12px}
+.section-title{font-size:13px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.06em;margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:6px}
+.stat-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
+.green-box{background:#f0fdf4;border-color:#bbf7d0}.red-box{background:#fef2f2;border-color:#fecaca}
+.stat-val{font-size:18px;font-weight:900;line-height:1;color:#0f172a}
+.stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#94a3b8;margin-top:5px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+th{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;padding:8px 10px;border-bottom:2px solid #e2e8f0;text-align:left;background:#f1f5f9}
+td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+.r{text-align:right}.c{text-align:center}
 .trow td{font-weight:800;font-size:14px;border:none;border-top:2px solid #1c1917;padding-top:11px}
-.sumbox{display:flex;gap:20px;margin-top:20px;padding:14px;background:#f5f5f4;border-radius:8px}
+.sumbox{display:flex;gap:20px;margin-top:20px;padding:14px;background:#f5f5f4;border-radius:8px;flex-wrap:wrap}
 .sv{font-size:17px;font-weight:900;margin-top:2px}.sl{font-size:10px;color:#78716c}
 .footer{margin-top:36px;text-align:center;font-size:10px;color:#a8a29e;padding-top:18px;border-top:1px solid #e7e5e4}
-@media print{@page{margin:1cm}body{padding:0}}
+@media print{@page{size:A4;margin:1cm}body{padding:0}.no-print{display:none!important}}.print-bar{position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);gap:12px}.print-bar a{background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.print-bar a.dl{background:#059669}
 </style></head><body>
 <div class="hdr">
   <div><div class="brand">🫓 ${co}</div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
-  <div><div class="ititle">INVOICE</div>
+  <div><div class="ititle">${type==="customer"?"CUSTOMER REPORT":"INVOICE"}</div>
   <div class="imeta">${invoiceNo}</div>
   <div class="imeta">Date: ${record.date||today()}</div>
   <div class="imeta">Ref: #${(record.id||"").slice(-8)}</div>
   ${record.deliveryDate?`<div class="imeta">Deliver by: ${record.deliveryDate}</div>`:""}
   </div>
 </div>
-<div class="slabel">Bill To</div>
+<div class="slabel">Customer</div>
 <div class="bname">${name}</div>
 ${record.phone?`<div class="bsub2">📞 ${record.phone}</div>`:""}
 ${record.address?`<div class="bsub2">📍 ${record.address}</div>`:""}
-${record.joinDate?`<div class="bsub2">Customer since: ${record.joinDate}</div>`:""}
-${record.status?`<span class="badge ${record.status==="Delivered"?"bg":record.status==="In Transit"?"bb":"by"}">${record.status}</span>`:""}
-<div class="slabel">Items</div>
-<table><tr><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr>
-${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit}</td><td>${r.qty}</td><td>${inr(r.priceAmount)}</td><td>${inr(r.qty*r.priceAmount)}</td></tr>`).join("")}
-<tr class="trow"><td colspan="4">Grand Total</td><td>${inr(total)}</td></tr></table>
-${type==="customer"?`<div class="sumbox">
-<div><div class="sl">Amount Paid</div><div class="sv" style="color:#059669">${inr(record.paid||0)}</div></div>
-<div><div class="sl">Amount Pending</div><div class="sv" style="color:${(record.pending||0)>0?"#dc2626":"#059669"}">${inr(record.pending||0)}</div></div>
-<div><div class="sl">Payment Status</div><div class="sv" style="color:${(record.pending||0)>0?"#dc2626":"#059669"};font-size:13px">${(record.pending||0)>0?"UNPAID":"✓ PAID"}</div></div>
-</div>`:type==="delivery"?`<div class="sumbox">
-<div><div class="sl">Order Total</div><div class="sv">${inr(total)}</div></div>
-<div><div class="sl">Status</div><div class="sv" style="color:${record.status==="Delivered"?"#059669":record.status==="In Transit"?"#2563eb":"#d97706"}">${record.status||"Pending"}</div></div>
-${record.deliveryDate?`<div><div class="sl">Deliver By</div><div class="sv">${record.deliveryDate}</div></div>`:""}
-</div>`:""}
-<div class="footer">Thank you for your business · ${co} · Generated ${new Date().toLocaleString("en-IN")}</div>
+${record.joinDate?`<div class="bsub2">📅 Customer since: ${record.joinDate}</div>`:""}
+${record.notes?`<div class="bsub2" style="margin-top:4px;font-style:italic;color:#a8a29e">"${record.notes}"</div>`:""}
+
+${historyHtml}
+
+${rows.length>0?`<div class="section-title" style="margin-top:24px">🛒 Regular Order Template</div>
+<table><tr><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th class="r">Amount</th></tr>
+${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit||"—"}</td><td>${r.qty}</td><td>₹${r.priceAmount.toLocaleString("en-IN")}</td><td class="r">₹${(r.qty*r.priceAmount).toLocaleString("en-IN")}</td></tr>`).join("")}
+<tr class="trow"><td colspan="4">Template Total</td><td class="r">₹${total.toLocaleString("en-IN")}</td></tr></table>`:""}
+
+<div class="footer">Exported on ${new Date().toLocaleString("en-IN")} · ${co} · Confidential</div>
+<div class="print-bar no-print"><span>📄 ${type==="customer"?"Customer Report":"Invoice"} — ${name}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;">🖨 Print / Save PDF</a><a class="dl" href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='${(name+'_'+(type==="customer"?"report":"invoice")+'_'+(record.date||today())).replace(/[^a-zA-Z0-9_-]/g,'_')}.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;">⬇ Download</a></div></div>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
-  // Use blob URL — works without pop-up permission, opens in new tab reliably
   const blob = new Blob([html], {type:"text/html;charset=utf-8"});
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
@@ -390,6 +479,7 @@ function exportCSV(data, fname, cols) {
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"})); a.download=`${fname}_${today()}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
 
+// eslint-disable-next-line no-unused-vars
 function exportWord(record, products, type, settings) {
   const rows = lineRows(record.orderLines||{}, products);
   const total= lineTotal(record.orderLines||{});
@@ -523,12 +613,12 @@ tbody tr:nth-child(even) td{background:#f8fafc}
 .badge-y{background:#fef9c3;color:#92400e}
 .badge-b{background:#dbeafe;color:#1e40af}
 .footer{padding:24px 48px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;margin-top:32px}
-@media print{@page{size:A4 landscape;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cover{padding:28px 36px}}
+@media print{@page{size:A4 landscape;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cover{padding:28px 36px}.no-print{display:none!important}}
 </style></head><body>
 <div class="cover">
   <div class="co-name">🫓 ${co}</div>
   <div class="report-title">${tabName}<br>Report</div>
-  <div class="report-meta">Generated ${now} &nbsp;·&nbsp; ${data.length} records</div>
+  <div class="report-meta">Exported on ${now} &nbsp;·&nbsp; ${data.length} records</div>
 </div>
 <div class="content">
   ${extraHtml}
@@ -537,6 +627,7 @@ tbody tr:nth-child(even) td{background:#f8fafc}
     <tbody>${rows}</tbody>
   </table>
 </div>
+<div class="print-bar no-print" style="position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.4);gap:12px"><span style="font-weight:700">📊 ${tabName} Report — ${co}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;" style="background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">🖨 Print / Save PDF</a><a href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='${tabName.replace(/\s+/g,'_')}_export.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;" style="background:#059669;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">⬇ Download</a></div></div>
 <div class="footer">
   <span>${co} &mdash; Confidential</span>
   <span>${tabName} Export &nbsp;·&nbsp; ${today()}</span>
@@ -573,6 +664,20 @@ function exportTabExcel(tabName, data, columns, settings) {
     });
     return `<Row>${cells.join("")}</Row>`;
   }).join("\n");
+  // Build totals row for numeric columns
+  const totalsRow=`<Row ss:StyleID="s6">
+    ${columns.map((c,ci)=>{
+      if(c.num!==false){
+        const colTotal=data.reduce((s,row)=>{
+          const raw=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+          const v=String(raw==null?"":raw);
+          return s+(isNum(v)?numVal(v):0);
+        },0);
+        if(colTotal!==0){return `<Cell ss:StyleID="s6"><Data ss:Type="Number">${colTotal}</Data></Cell>`;}
+      }
+      return `<Cell ss:StyleID="s6"><Data ss:Type="String">${ci===0?esc("TOTAL ("+data.length+" records)"):"—"}</Data></Cell>`;
+    }).join("")}
+  </Row>`;
 
   const xml=`<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -590,6 +695,7 @@ function exportTabExcel(tabName, data, columns, settings) {
   <Style ss:ID="s3"><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
   <Style ss:ID="s4"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
   <Style ss:ID="s5"><Font ss:Italic="1" ss:Color="#94A3B8" ss:Size="9"/></Style>
+  <Style ss:ID="s6"><Font ss:Bold="1" ss:Color="#0F172A"/><Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A5F"/></Borders><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
 </Styles>
 <Worksheet ss:Name="${esc(tabName)}">
 <Table>
@@ -597,10 +703,11 @@ function exportTabExcel(tabName, data, columns, settings) {
     <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">🫓 ${esc(co)} — ${esc(tabName)} Report</Data></Cell>
   </Row>
   <Row ss:StyleID="s5">
-    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Generated: ${esc(now)} · ${data.length} records</Data></Cell>
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Exported on: ${esc(now)} · ${data.length} records</Data></Cell>
   </Row>
   ${headerRow}
   ${dataRows}
+  ${totalsRow}
 </Table>
 <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
   <FreezePanes/><FrozenNoSplit/><SplitHorizontal>3</SplitHorizontal><TopRowBottomPane>3</TopRowBottomPane>
@@ -1710,7 +1817,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
-  const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,notes:"",active:true,joinDate:today()});
+  const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
   const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""}});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:""});
@@ -1729,6 +1836,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
   const [delivCalendar,setDelivCalendar]=useState(false);
   const [calOffset,setCalOffset]=useState(0);
+  const [calExpandedDay,setCalExpandedDay]=useState(null);
   const [lastSync,setLastSync]=useState(null);
   useEffect(()=>{const fn=ts=>{setLastSync(ts);};_syncListeners.add(fn);return()=>_syncListeners.delete(fn);},[]);
   const [ptSh,setPtSh]=useState(null);
@@ -1755,10 +1863,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [adminToolData,setAdminToolData]=useState(null);   // computed result data for open tool
   // Reschedule
   const [rescheduleDate,setRescheduleDate]=useState("");
-  // CLV Dashboard
+  // CLV Dashboard — Standard and CLV views removed; always use Old View
   const [clvSort,setClvSort]=useState("clv");
-  const [clvFilter,setClvFilter]=useStore("tas_pref_clvFilter_"+sess.id,"og"); // "og"=original cards, "standard"=ranked list, "clv"=CLV detail
-  const setClvFilterP = setClvFilter;
+  const clvFilter = "og"; // locked to old view per Phase 1 revamp
+  const setClvFilterP = ()=>{}; // no-op
   // Delivery status filter state moved above fDeliv useMemo
   // Overdue Payment Alerts
   const [overdueAlertDays,setOverdueAlertDays]=useState(7);
@@ -1797,7 +1905,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [resetPwVal,setResetPwVal]=useState("");
 
   // CUSTOMERS
-  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
+  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
   function togActive(c){setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
   function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
@@ -1971,21 +2079,34 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     const totalWasteQty=(wastage||[]).reduce((s,w)=>s+(w.qty||0),0);
     const totalWasteCost=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
     const delivWithRepl=deliveries.filter(d=>d.replacement?.done);
+    const totalOrderVal=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const totalPaidAll=deliveries.reduce((s,d)=>s+(d.paid||0),0);
+    const totalRemAll=totalOrderVal-totalReplAmt-totalPaidAll;
+    // Build per-customer delivery groups
+    const custDelivMap={};
+    deliveries.forEach(d=>{
+      if(!custDelivMap[d.customer])custDelivMap[d.customer]={name:d.customer,delivs:[]};
+      custDelivMap[d.customer].delivs.push(d);
+    });
+    const custGroups=Object.values(custDelivMap).sort((a,b)=>a.name.localeCompare(b.name));
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Full Report — ${co}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:900px;margin:0 auto}
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:960px;margin:0 auto}
 h1{font-size:22px;font-weight:900;color:#92400e;margin-bottom:4px}
 .sub{font-size:11px;color:#78716c;margin-bottom:28px}
 h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a8a29e;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #e7e5e4}
+h3{font-size:12px;font-weight:700;color:#1c1917;margin:18px 0 6px;padding:6px 10px;background:#f5f5f4;border-left:3px solid #f59e0b;border-radius:4px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
 .stat{background:#f5f5f4;border-radius:10px;padding:14px}.stat .val{font-size:20px;font-weight:900;color:#1c1917}.stat .lbl{font-size:10px;color:#78716c;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
-table{width:100%;border-collapse:collapse;margin-top:4px}th{font-size:9px;text-transform:uppercase;color:#a8a29e;padding:6px 0;border-bottom:2px solid #e7e5e4;text-align:left}td{padding:7px 0;border-bottom:1px solid #f5f5f4;font-size:11px}
-.green{color:#059669}.red{color:#dc2626}.amber{color:#d97706}.orange{color:#ea580c}
+table{width:100%;border-collapse:collapse;margin-top:4px}th{font-size:9px;text-transform:uppercase;color:#a8a29e;padding:6px 4px;border-bottom:2px solid #e7e5e4;text-align:left}td{padding:6px 4px;border-bottom:1px solid #f5f5f4;font-size:11px}
+.green{color:#059669}.red{color:#dc2626}.amber{color:#d97706}.orange{color:#ea580c}.blue{color:#0369a1}
 .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700}
 .bg{background:#d1fae5;color:#065f46}.by{background:#fef3c7;color:#92400e}.bb{background:#dbeafe;color:#1e40af}.bo{background:#ffedd5;color:#9a3412}
+.cust-totals{display:flex;gap:16px;flex-wrap:wrap;padding:6px 0 8px;font-size:11px}
 .footer{margin-top:36px;text-align:center;font-size:10px;color:#a8a29e;padding-top:16px;border-top:1px solid #e7e5e4}
 @media print{@page{margin:1.5cm}}</style></head><body>
 <h1>🫓 ${co} — Full Operations Report</h1>
-<div class="sub">Generated ${now} · Period: All time</div>
+<div class="sub">Exported on ${now} · Period: All time</div>
 
 <h2>Financial Summary</h2>
 <div class="grid">
@@ -2002,10 +2123,45 @@ table{width:100%;border-collapse:collapse;margin-top:4px}th{font-size:9px;text-t
 ${customers.map(c=>`<tr><td><b>${c.name}</b></td><td>${c.phone||"—"}</td><td>${c.address||"—"}</td><td class="green">₹${(c.paid||0).toLocaleString("en-IN")}</td><td class="${(c.pending||0)>0?"red":"green"}">₹${(c.pending||0).toLocaleString("en-IN")}</td><td><span class="badge ${(c.pending||0)>0?"by":"bg"}">${(c.pending||0)>0?"UNPAID":"PAID"}</span></td><td>${c.joinDate||"—"}</td></tr>`).join("")}
 </table>
 
-<h2>Deliveries (${deliveries.length} total · ${deliveries.filter(d=>d.status==="Delivered").length} delivered · ${deliveries.filter(d=>d.status==="Pending").length} pending)</h2>
-<table><tr><th>Customer</th><th>Date</th><th>Status</th><th>Amount</th><th>Replacement</th><th>By</th></tr>
-${deliveries.map(d=>`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${lineTotal(d.orderLines).toLocaleString("en-IN")}</td><td>${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"Done"}${d.replacement.amount?` −₹${d.replacement.amount}`:""}</span>`:"—"}</td><td>${d.createdBy||"—"}</td></tr>`).join("")}
+<h2>Deliveries Overview (${deliveries.length} total · ${deliveries.filter(d=>d.status==="Delivered").length} delivered · ${deliveries.filter(d=>d.status==="Pending").length} pending)</h2>
+<div class="grid6" style="grid-template-columns:repeat(3,1fr)">
+  <div class="stat"><div class="val">₹${totalOrderVal.toLocaleString("en-IN")}</div><div class="lbl">Total Order Value</div></div>
+  <div class="stat"><div class="val orange">₹${totalReplAmt.toLocaleString("en-IN")}</div><div class="lbl">Total Replacements Deducted</div></div>
+  <div class="stat"><div class="val green">₹${(totalOrderVal-totalReplAmt).toLocaleString("en-IN")}</div><div class="lbl">Net Billed Amount</div></div>
+  <div class="stat"><div class="val blue">₹${totalPaidAll.toLocaleString("en-IN")}</div><div class="lbl">Total Paid</div></div>
+  <div class="stat"><div class="val ${totalRemAll>0?"red":"green"}">₹${totalRemAll.toLocaleString("en-IN")}</div><div class="lbl">Total Remaining</div></div>
+  <div class="stat"><div class="val amber">${delivWithRepl.length}</div><div class="lbl">Deliveries With Replacements</div></div>
+</div>
+<table><tr><th>Customer</th><th>Date</th><th>Status</th><th>Total Order</th><th>Repl Deducted</th><th>Net Amt</th><th>Paid</th><th>Remaining</th><th>By</th></tr>
+${deliveries.map(d=>{const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const paid=d.paid||0;const rem=net-paid;return`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td><td>${d.createdBy||"—"}</td></tr>`;}).join("")}
 </table>
+
+<h2>Deliveries by Customer</h2>
+${custGroups.map(cg=>{
+  const cTotOrd=cg.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+  const cTotRepl=cg.delivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+  const cNet=cTotOrd-cTotRepl;
+  const cPaid=cg.delivs.reduce((s,d)=>s+(d.paid||0),0);
+  const cRem=cNet-cPaid;
+  return `<h3>${cg.name} — ${cg.delivs.length} deliveries</h3>
+<div class="cust-totals">
+  <span>Total Order: <b>₹${cTotOrd.toLocaleString("en-IN")}</b></span>
+  ${cTotRepl>0?`<span class="orange">Repl Deducted: <b>₹${cTotRepl.toLocaleString("en-IN")}</b></span>`:""}
+  <span class="green">Paid: <b>₹${cPaid.toLocaleString("en-IN")}</b></span>
+  <span class="${cRem>0?"red":"green"}">Remaining: <b>₹${cRem.toLocaleString("en-IN")}</b></span>
+</div>
+<table><tr><th>Date</th><th>Status</th><th>Items</th><th>Total Order</th><th>Repl</th><th>Net</th><th>Paid</th><th>Remaining</th></tr>
+${cg.delivs.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
+  const tot=lineTotal(d.orderLines);
+  const repl=+d.replacement?.amount||0;
+  const net=tot-repl;
+  const paid=d.paid||0;
+  const rem=net-paid;
+  const items=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty}×${products.find(p=>p.id===Object.keys(safeO(d.orderLines)).find(k=>safeO(d.orderLines)[k]===l))?.name||"?"}`).join(", ") || Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty} items`).join(", ") || "—";
+  return`<tr><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td style="font-size:10px">${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"replaced"}</span> `:""}${items}</td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td></tr>`;
+}).join("")}
+</table>`;
+}).join("")}
 
 ${delivWithRepl.length>0?`<h2>Replacements Summary (${delivWithRepl.length} replacements · ₹${totalReplAmt.toLocaleString("en-IN")} deducted)</h2>
 <table><tr><th>Customer</th><th>Date</th><th>Item Replaced</th><th>Qty</th><th>Amount Deducted</th><th>Reason</th></tr>
@@ -2027,7 +2183,7 @@ ${(wastage&&wastage.length>0)?`<h2>Wastage (${wastage.length} records · ${total
 ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><td>${w.unit}</td><td class="red">${w.cost?`₹${w.cost}`:"—"}</td><td>${w.shift||"—"}</td><td>${w.date}</td><td>${w.loggedBy||"—"}</td></tr>`).join("")}
 </table>`:""}
 
-<div class="footer">${co} · Full Operations Report · Generated ${now} · TAS CRM</div>
+<div class="footer">${co} · Full Operations Report · Exported on ${now} · TAS CRM</div>
 <script>window.addEventListener("load",function(){window.print();});</script>
 </body></html>`;
     const rblob=new Blob([html],{type:"text/html;charset=utf-8"});
@@ -2189,7 +2345,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-full sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex flex-col gap-3 crm-tab-content" key={tab}>
+      <div className="w-full max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-8 xl:px-10 py-3 sm:py-5 flex flex-col gap-3 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -3053,7 +3209,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <p className="text-sm font-black text-red-500">{inr(c.pending)}</p>
-                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">+ Pay</button>}
+                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>}
                     </div>
                   </div>
                   <div style={{background:t.border,height:3,borderRadius:3,overflow:"hidden"}}><div style={{width:`${collPct}%`,background:"#10b981",height:"100%",borderRadius:3}}/></div>
@@ -3222,7 +3378,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     </div>
                     <div className="flex items-center gap-2">
                       <span style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</span>
-                      <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500 text-white">+ Pay</button>
+                      <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>
                     </div>
                   </div>
                 ))}
@@ -3380,108 +3536,357 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <div className="flex gap-2 flex-wrap items-center">
               <Pill dm={dm} c="amber">{activeC.length} active</Pill>
               <Pill dm={dm} c="stone">{customers.filter(c=>!c.active).length} inactive</Pill>
-              {/* Standard / CLV toggle — also accessible here */}
-              <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2}}>
-                {[["og","📋 Old View"],["standard","☰ Standard"],["clv","💰 CLV"]].map(([val,lbl])=>(
-                  <button key={val} onClick={()=>setClvFilterP(val)}
-                    style={clvFilter===val
-                      ?{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,transition:"all 0.15s"}
-                      :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:600,transition:"all 0.15s"}
-                    }>{lbl}</button>
-                ))}
-              </div>
+              {/* Old View only — Standard and CLV removed */}
             </div>
             <div className="flex gap-2 flex-wrap">
-              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Customers",customers,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid (₹)",key:"paid",num:true},{label:"Pending (₹)",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},{label:"Since",key:"joinDate"}],settings,`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px"><div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${activeC.length}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Active Customers</div></div><div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#059669">${inr(customers.reduce((s,c)=>s+(c.paid||0),0))}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Collected</div></div><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#b91c1c">${inr(customers.reduce((s,c)=>s+(c.pending||0),0))}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Outstanding</div></div></div>`)}>📄 PDF</Btn>}
-              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Customers",customers,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}],settings)}>📊 XLS</Btn>}
-              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Join Date",key:"joinDate"},{label:"Active",val:r=>r.active?"Yes":"No"},{label:"Order Total",val:r=>lineTotal(r.orderLines)},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                const enriched=customers.map(c=>{
+                  const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                  const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                  const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                  const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                  const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
+                  const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
+                  const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
+                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
+                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_lastDays:lastDays,_cDelivs:cDelivs};
+                });
+                const totalColl=customers.reduce((s,c)=>s+(c.paid||0),0);
+                const totalOut=customers.reduce((s,c)=>s+(c.pending||0),0);
+                const totalReplAll=enriched.reduce((s,c)=>s+c._replAmt,0);
+                // Build per-customer delivery breakdown HTML
+                const custBreakdownHtml=enriched.map(c=>{
+                  if(!c._cDelivs||c._cDelivs.length===0)return "";
+                  const sorted=[...c._cDelivs].sort((a,b)=>b.date.localeCompare(a.date));
+                  return `<div style="margin-top:28px;page-break-inside:avoid">
+  <div style="background:#f1f5f9;border-left:4px solid #f59e0b;padding:8px 14px;border-radius:4px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+    <span style="font-weight:800;font-size:13px">${c.name}</span>
+    <span style="font-size:11px;color:#64748b">${c._orders} orders &nbsp;·&nbsp; Paid: ₹${(c.paid||0).toLocaleString("en-IN")} &nbsp;·&nbsp; Due: <span style="color:${c.pending>0?"#dc2626":"#059669"};font-weight:700">₹${(c.pending||0).toLocaleString("en-IN")}</span></span>
+  </div>
+  <table><thead><tr>
+    <th>Date</th><th>Status</th><th>Items</th><th class="r">Order Total</th><th class="r">Repl Deducted</th><th class="r">Net Amount</th><th class="r">Paid</th><th class="r">Remaining</th>
+  </tr></thead><tbody>
+  ${sorted.map((d,i)=>{
+    const tot=lineTotal(d.orderLines);
+    const repl=+d.replacement?.amount||0;
+    const net=tot-repl;
+    const dpaid=d.paid||0;
+    const rem=net-dpaid;
+    const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ")||"—";
+    const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
+    return`<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+      <td style="white-space:nowrap">${d.date}</td>
+      <td><span style="background:${sc}18;color:${sc};padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700">${d.status}</span></td>
+      <td style="font-size:11px;color:#475569">${items}${d.replacement?.done?` <span style="color:#f97316;font-weight:600">[🔄 ${d.replacement.item||"repl"}]</span>`:""}</td>
+      <td class="r" style="font-weight:700">₹${tot.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:#f97316">${repl>0?"−₹"+repl.toLocaleString("en-IN"):"—"}</td>
+      <td class="r" style="font-weight:700">₹${net.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:#059669">₹${dpaid.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:${rem>0?"#dc2626":"#059669"};font-weight:700">₹${rem.toLocaleString("en-IN")}</td>
+    </tr>`;
+  }).join("")}
+  </tbody></table></div>`;
+                }).filter(Boolean).join("");
+                exportTabPDF("Customers",enriched,[
+                  {label:"Name",key:"name"},
+                  {label:"Phone",key:"phone"},
+                  {label:"Address",key:"address"},
+                  {label:"Orders",key:"_orders",num:true},
+                  {label:"Delivered",key:"_delivered",num:true},
+                  {label:"Pending",key:"_pending",num:true},
+                  {label:"Returns",key:"_returns",num:true},
+                  {label:"Replacements",key:"_replacements",num:true},
+                  {label:"Repl. Deducted (₹)",key:"_replAmt",num:true},
+                  {label:"Revenue (₹)",key:"_revenue",num:true},
+                  {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                  {label:"Paid (₹)",key:"paid",num:true},
+                  {label:"Pending (₹)",key:"pending",num:true},
+                  {label:"Last Order",key:"_lastDate"},
+                  {label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},
+                  {label:"Since",key:"joinDate"}
+                ],settings,`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+  <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${activeC.length}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Active Customers</div></div>
+  <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalColl.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Collected</div></div>
+  <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#b91c1c">₹${totalOut.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Outstanding</div></div>
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#ea580c">₹${totalReplAll.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Replacements</div></div>
+</div>
+<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin:28px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Customer Summary Table</div>
+${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin:36px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Per-Customer Delivery Breakdown</div>${custBreakdownHtml}`:""}
+`);
+              }}>📄 PDF</Btn>}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                const enriched=customers.map(c=>{
+                  const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                  const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                  const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                  const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                  const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
+                  const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
+                  const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
+                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||""};
+                });
+                exportTabExcel("Customers",enriched,[
+                  {label:"Name",key:"name"},
+                  {label:"Phone",key:"phone"},
+                  {label:"Address",key:"address"},
+                  {label:"Join Date",key:"joinDate"},
+                  {label:"Active",val:r=>r.active?"Yes":"No"},
+                  {label:"# Orders",key:"_orders",num:true},
+                  {label:"# Delivered",key:"_delivered",num:true},
+                  {label:"# Pending/Transit",key:"_pending",num:true},
+                  {label:"# Returns",key:"_returns",num:true},
+                  {label:"# Replacements",key:"_replacements",num:true},
+                  {label:"Repl. Deducted (₹)",key:"_replAmt",num:true},
+                  {label:"Revenue (₹)",key:"_revenue",num:true},
+                  {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                  {label:"Partial Paid (₹)",val:r=>r.partialPay||0,num:true},
+                  {label:"Paid (₹)",key:"paid",num:true},
+                  {label:"Pending (₹)",key:"pending",num:true},
+                  {label:"Net Total (₹)",key:"_netTotal",num:true},
+                  {label:"Last Order Date",key:"_lastDate"},
+                  {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
+                  {label:"Notes",key:"notes"}
+                ],settings);
+              }}>📊 XLS</Btn>}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
+                const enriched=customers.map(c=>{
+                  const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                  const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                  const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                  const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                  const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
+                  const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
+                  const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
+                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||""};
+                });
+                exportCSV(enriched,"customers",[
+                  {label:"Name",key:"name"},
+                  {label:"Phone",key:"phone"},
+                  {label:"Address",key:"address"},
+                  {label:"Join Date",key:"joinDate"},
+                  {label:"Active",val:r=>r.active?"Yes":"No"},
+                  {label:"# Orders",key:"_orders"},
+                  {label:"# Delivered",key:"_delivered"},
+                  {label:"# Pending/Transit",key:"_pending"},
+                  {label:"# Returns",key:"_returns"},
+                  {label:"# Replacements",key:"_replacements"},
+                  {label:"Repl. Deducted (₹)",key:"_replAmt"},
+                  {label:"Revenue (₹)",key:"_revenue"},
+                  {label:"Avg Order (₹)",key:"_avgOrd"},
+                  {label:"Partial Paid (₹)",val:r=>r.partialPay||0},
+                  {label:"Paid (₹)",key:"paid"},
+                  {label:"Pending (₹)",key:"pending"},
+                  {label:"Net Total (₹)",key:"_netTotal"},
+                  {label:"Last Order Date",key:"_lastDate"},
+                  {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
+                  {label:"Notes",key:"notes"}
+                ]);
+              }}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ Customer</Btn>
             </div>
           </div>
           <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…"/>
           {clvFilter==="og"&&<>
           {fCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Mobile: 1-col, tablet: 2-col, desktop: 3-4 col */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,320px),1fr))",gap:16}}>
           {fCust.map(c=>{
             const rows=lineRows(c.orderLines,products);
             const tot=lineTotal(c.orderLines);
             const cDelivs=deliveries.filter(d=>d.customerId===c.id);
             const cDone=cDelivs.filter(d=>d.status==="Delivered");
             const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-            const payPct=((c.paid||0)+(c.pending||0))>0?Math.round((c.paid||0)/((c.paid||0)+(c.pending||0))*100):100;
+            const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+            const cReplacements=cDelivs.filter(d=>d.replacement?.done).length;
+            const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+            const partialPaid=c.partialPay||0;
+            const netTot=Math.max(0,tot-cReplAmt);
+            const totalBilled=(c.paid||0)+(c.pending||0);
+            const payPct=totalBilled>0?Math.round((c.paid||0)/totalBilled*100):100;
+            const lastDiffDays=lastDeliv?Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24)):null;
+            const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
+            const lastCol=lastDiffDays===null?"#6b7280":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
+            const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
             return (
-              <Card key={c.id} dm={dm}><div className="p-4">
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3 gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div style={{background:c.active?"#f59e0b22":"#6b728022",color:c.active?"#f59e0b":t.sub}} className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-base shrink-0">{c.name.charAt(0).toUpperCase()}</div>
-                    <div className="min-w-0">
-                      <p style={{color:t.text}} className="font-bold truncate">{c.name}</p>
-                      {c.phone&&<p style={{color:t.sub}} className="text-xs">📞 {c.phone}</p>}
-                      {c.address&&<p style={{color:t.sub}} className="text-[11px] truncate">📍 {c.address}</p>}
+              <div key={c.id} onClick={()=>setCView(c)} style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:20,overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:dm?"none":"0 2px 12px rgba(0,0,0,0.06)",transition:"box-shadow 0.15s, border-color 0.15s",cursor:"pointer"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.currentTarget.style.boxShadow=dm?"0 0 0 2px #3b82f620":"0 4px 20px rgba(30,58,95,0.15)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.boxShadow=dm?"none":"0 2px 12px rgba(0,0,0,0.06)";}}>
+
+                {/* ── TOP STRIPE: status colour bar ── */}
+                <div style={{height:4,background:c.active?(c.pending>0?"linear-gradient(90deg,#10b981,#f59e0b)":"#10b981"):"#6b7280"}}/>
+
+                <div style={{padding:"18px 20px",flex:1,display:"flex",flexDirection:"column",gap:0}}>
+
+                  {/* ── HEADER ROW ── */}
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12,gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
+                      <div style={{width:44,height:44,borderRadius:14,background:c.active?"#f59e0b22":"#6b728022",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{minWidth:0}}>
+                        <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1.2,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</p>
+                        {c.phone&&<p style={{color:t.sub,fontSize:12}}>📞 {c.phone}</p>}
+                        {c.address&&<p style={{color:t.sub,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}}>📍 {c.address}</p>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                      <span style={{background:c.active?"#dcfce7":"#f3f4f6",color:c.active?"#15803d":"#6b7280",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99,letterSpacing:"0.05em"}}>{c.active?"● ACTIVE":"○ INACTIVE"}</span>
+                      <span style={{color:lastCol,fontSize:11,fontWeight:600}}>🕐 {lastLabel}</span>
                     </div>
                   </div>
-                  <Pill dm={dm} c={c.active?"green":"stone"}>{c.active?"Active":"Inactive"}</Pill>
-                </div>
 
-                {/* Quick stats */}
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <div style={{background:t.inp}} className="rounded-xl p-2 text-center">
-                    <p style={{color:t.text}} className="font-black text-sm">{cDelivs.length}</p>
-                    <p style={{color:t.sub}} className="text-[10px]">Orders</p>
+                  {/* ── DELIVERY HISTORY STATS ── */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12}}>
+                    {[
+                      {label:"Orders",val:cDelivs.length,color:t.text},
+                      {label:"Delivered",val:cDone.length,color:"#10b981"},
+                      {label:"Returns",val:cReturns,color:cReturns>0?"#ef4444":t.sub},
+                      {label:"Replaced",val:cReplacements,color:cReplacements>0?"#f97316":t.sub},
+                    ].map(({label,val,color})=>(
+                      <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
+                        <p style={{color,fontWeight:900,fontSize:16,lineHeight:1}}>{val}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{background:t.inp}} className="rounded-xl p-2 text-center">
-                    <p style={{color:t.text}} className="font-black text-sm">{cDone.length}</p>
-                    <p style={{color:t.sub}} className="text-[10px]">Delivered</p>
-                  </div>
-                  <div style={{background:t.inp}} className="rounded-xl p-2 text-center">
-                    {(()=>{
-                      if(!lastDeliv)return<><p style={{color:t.sub}} className="font-bold text-xs">—</p><p style={{color:t.sub}} className="text-[10px]">Last Order</p></>;
-                      const diffDays=Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24));
-                      const label=diffDays===0?"Today":diffDays===1?"Yesterday":`${diffDays}d ago`;
-                      const col=diffDays>14?"#ef4444":diffDays>7?"#f59e0b":"#10b981";
-                      return<><p style={{color:col}} className="font-black text-xs">{label}</p><p style={{color:t.sub}} className="text-[10px]">Last Order</p></>;
-                    })()}
-                  </div>
-                </div>
 
-                {/* Payment status */}
-                {canSeeFinancials&&<div className="mb-3">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-emerald-500 font-semibold">Paid {inr(c.paid||0)}</span>
-                    <span className={c.pending>0?"text-red-500 font-semibold":"text-emerald-500 font-semibold"}>{c.pending>0?`Due ${inr(c.pending)}`:"✓ Fully Paid"}</span>
-                  </div>
-                  <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
-                    <div style={{width:`${payPct}%`,background:"#10b981",height:"100%",borderRadius:5}}/>
-                  </div>
-                </div>}
-
-                {/* Regular order */}
-                {rows.length>0&&<div style={{background:t.inp,border:`1px solid ${t.inpB}`}} className="rounded-xl px-3 py-2.5 mb-3">
-                  <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1.5">Regular Order</p>
-                  {rows.map(r=>(
-                    <div key={r.id} className="flex justify-between text-xs py-0.5">
-                      <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
-                      {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
+                  {/* ── DELIVERY RATE BAR ── */}
+                  {cDelivs.length>0&&<div style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:t.sub,marginBottom:4}}>
+                      <span style={{fontWeight:600}}>Delivery rate</span>
+                      <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
                     </div>
-                  ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
-                </div>}
+                    <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}>
+                      <div style={{width:`${delivRate}%`,height:"100%",borderRadius:4,background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",transition:"width 0.4s"}}/>
+                    </div>
+                  </div>}
 
-                {c.notes&&<p style={{color:t.sub}} className="text-xs italic mb-3">"{c.notes}"</p>}
-                {c.joinDate&&<p style={{color:t.sub}} className="text-[11px] mb-3">📅 Customer since {c.joinDate}</p>}
+                  {/* ── PAYMENT STATUS ── */}
+                  {canSeeFinancials&&<div style={{background:t.inp,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Payment</span>
+                      <span style={{fontSize:11,fontWeight:700,color:c.pending>0?"#ef4444":"#10b981"}}>{c.pending>0?`Due ${inr(c.pending)}`:"✓ Fully Paid"}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+                      <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(c.paid||0)}</span>
+                      {totalBilled>0&&<span style={{color:t.sub}}>{payPct}% settled</span>}
+                    </div>
+                    <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
+                      <div style={{width:`${payPct}%`,background:c.pending>0?"#f59e0b":"#10b981",height:"100%",borderRadius:5,transition:"width 0.4s"}}/>
+                    </div>
+                    {partialPaid>0&&<p style={{color:"#f59e0b",fontSize:11,marginTop:6,fontWeight:600}}>💛 Partial on hold: {inr(partialPaid)}</p>}
+                    {cReplAmt>0&&<p style={{color:"#f97316",fontSize:11,marginTop:4,fontWeight:600}}>🔄 Replacement deductions: −{inr(cReplAmt)}</p>}
+                  </div>}
 
-                {/* Actions */}
-                <div className="flex gap-2 mt-1 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
-                  <button onClick={()=>setCView(c)} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Profile</button>
-                  {can("cust_edit")&&<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>}
-                  <button onClick={()=>exportPDF(c,products,"customer",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
-                  {can("cust_markPaid")&&<button onClick={()=>{setPaySh(c);setPayAmt("");}} style={{background:"#059669",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>+ Pay</button>}
-                  {can("cust_deactivate")&&<button onClick={()=>togActive(c)} style={{background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf840",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>{c.active?"Deactivate":"Activate"}</button>}
-                  {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",display:"inline-flex",alignItems:"center",gap:6,textDecoration:"none",flexShrink:0}}>📍 Map</a>}
-                  {can("cust_delete")&&<button onClick={()=>delC(c)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
+                  {/* ── REGULAR ORDER ── */}
+                  {rows.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Regular Order</p>
+                    {rows.map(r=>(
+                      <div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingBottom:4,marginBottom:4,borderBottom:`1px solid ${t.border}`}}>
+                        <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
+                        {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
+                      </div>
+                    ))}
+                    {canSeePrices&&tot>0&&<>
+                      {cReplAmt>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#f97316",marginTop:4}}><span>Replacement deduction</span><span>−{inr(cReplAmt)}</span></div>}
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,marginTop:6,paddingTop:6,borderTop:`2px solid ${t.border}`}}>
+                        <span style={{color:t.sub}}>Net Total</span>
+                        <span style={{color:"#f59e0b"}}>{inr(cReplAmt>0?netTot:tot)}</span>
+                      </div>
+                    </>}
+                  </div>}
+
+                  {c.notes&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",marginBottom:10}}>"{c.notes}"</p>}
+                  {c.joinDate&&<p style={{color:t.sub,fontSize:11,marginBottom:12}}>📅 Customer since {c.joinDate}</p>}
+
+                  {/* ── PARTIAL PAYMENT WIDGET ── */}
+                  {canSeeFinancials&&can("cust_markPaid")&&<div style={{background:dm?"rgba(245,158,11,0.07)":"#fffbeb",border:`1px solid ${dm?"rgba(245,158,11,0.25)":"#fde68a"}`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+                    <p style={{color:"#d97706",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:7}}>💰 Log Partial Payment</p>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input
+                        type="number" inputMode="numeric" placeholder="₹ Amount"
+                        defaultValue={c.partialPay||""}
+                        onBlur={e=>{const v=+e.target.value;if(v>=0){setCust(p=>p.map(x=>x.id===c.id?{...x,partialPay:v}:x));addLog("Partial payment set",`${c.name} — ${inr(v)}`);} }}
+                        style={{flex:1,background:t.card,border:`1.5px solid ${dm?"rgba(245,158,11,0.3)":"#fde68a"}`,color:t.text,borderRadius:8,padding:"7px 10px",fontSize:13,outline:"none"}}
+                      />
+                      <button onClick={()=>{const v=c.partialPay||0;if(v>0){setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+v,pending:Math.max(0,(x.pending||0)-v),partialPay:0}:x));addLog("Partial payment applied",`${c.name} — ${inr(v)}`);notify(`${inr(v)} applied to ${c.name} ✓`);}}}
+                        style={{background:"#059669",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                        Apply
+                      </button>
+                    </div>
+                  </div>}
+
+                  {/* ── ACTION BUTTONS: row 1 = tools, row 2 = actions ── */}
+                  <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:7,marginTop:"auto",paddingTop:8}}>
+                    {/* Row 1: Edit · PDF · XLS */}
+                    <div style={{display:"flex",gap:7}}>
+                      {can("cust_edit")
+                        ?<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}}
+                          style={{flex:1,background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,height:36,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          ✏️ Edit
+                        </button>
+                        :<div style={{flex:1}}/>}
+                      <button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)}
+                        style={{flex:1,background:"#7c3aed",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                        📄 PDF
+                      </button>
+                      {can("cust_export")
+                        ?<button onClick={()=>{
+                            const cD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date));
+                            const enrichedRows=cD.map(d=>{
+                              const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");
+                              return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};
+                            });
+                            exportTabExcel(c.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enrichedRows,[
+                              {label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},
+                              {label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},
+                              {label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}
+                            ],settings);
+                          }}
+                          style={{flex:1,background:"#059669",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          📊 XLS
+                        </button>
+                        :<div style={{flex:1}}/>}
+                    </div>
+                    {/* Row 2: Collect · Pause/Activate · Map · Delete */}
+                    <div style={{display:"flex",gap:7}}>
+                      {can("cust_markPaid")
+                        ?<button onClick={()=>{setPaySh(c);setPayAmt("");}}
+                          style={{flex:1,background:"#f59e0b",color:"#000",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          💰 Collect
+                        </button>
+                        :<div style={{flex:1}}/>}
+                      {can("cust_deactivate")
+                        ?<button onClick={()=>togActive(c)}
+                          style={{flex:1,background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf830",height:36,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          {c.active?"⏸ Pause":"▶ Activate"}
+                        </button>
+                        :<div style={{flex:1}}/>}
+                      {c.address
+                        ?<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+                          style={{flex:1,background:"#0ea5e9",color:"#fff",height:36,borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",textDecoration:"none",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          📍 Map
+                        </a>
+                        :<div style={{flex:1}}/>}
+                      {can("cust_delete")
+                        ?<button onClick={()=>delC(c)}
+                          style={{flex:1,background:"#dc2626",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
+                          🗑 Delete
+                        </button>
+                        :<div style={{flex:1}}/>}
+                    </div>
+                  </div>
                 </div>
-              </div></Card>
+              </div>
             );
           })}
           </div>
@@ -3511,11 +3916,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
             <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1.5px solid ${bulkSelect?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{bulkSelect?"✕ Cancel":"☑ Bulk select"}</button>
             <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
-            {can("deliv_add")&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
+            {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:22px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Amount Paid (₹)",val:r=>r.paid||0},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.paid||0,num:true},{label:"Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.paid||0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Amount Paid",val:r=>r.paid||0,num:true},{label:"Amount Remaining",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
           </div>
           {/* BULK ACTION BAR */}
           {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
@@ -3548,59 +3953,206 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             const monthStr=`${y}-${String(m+1).padStart(2,"0")}`;
             const mName=calDate.toLocaleString("en-IN",{month:"long",year:"numeric"});
             const statusColor=s=>s==="Delivered"?"#10b981":s==="In Transit"?"#0ea5e9":"#f59e0b";
+            // Month-level stats
+            const mDelivs=deliveries.filter(d=>d.date&&d.date.startsWith(monthStr));
+            const mPending=mDelivs.filter(d=>d.status==="Pending").length;
+            const mTransit=mDelivs.filter(d=>d.status==="In Transit").length;
+            const mDone=mDelivs.filter(d=>d.status==="Delivered").length;
+            const mRevenue=mDelivs.filter(d=>d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const mPaid=mDelivs.reduce((s,d)=>s+(d.paid||0),0);
+            const todayStr=today();
             return <Card dm={dm} className="overflow-hidden">
-              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">📅 {mName}</p>
-                <div className="flex gap-1">
-                  <button onClick={()=>setCalOffset(o=>o-1)} style={{background:t.inp,color:t.text}} className="text-xs font-bold px-2.5 py-1 rounded-lg">‹</button>
-                  {calOffset!==0&&<button onClick={()=>setCalOffset(0)} style={{background:t.inp,color:t.sub}} className="text-[10px] font-semibold px-2 py-1 rounded-lg">Today</button>}
-                  <button onClick={()=>setCalOffset(o=>o+1)} style={{background:t.inp,color:t.text}} className="text-xs font-bold px-2.5 py-1 rounded-lg">›</button>
+              {/* Header */}
+              <div style={{background:dm?"#0f1923":"#1e3a5f",padding:"14px 16px 12px"}}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:"#fff",fontWeight:900,fontSize:17,lineHeight:1}}>{mName}</p>
+                    <p style={{color:"rgba(255,255,255,0.55)",fontSize:11,marginTop:3}}>{mDelivs.length} deliveries this month</p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={()=>setCalOffset(o=>o-1)} style={{background:"rgba(255,255,255,0.12)",color:"#fff",border:"none",borderRadius:8,width:32,height:32,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent"}}>‹</button>
+                    {calOffset!==0&&<button onClick={()=>setCalOffset(0)} style={{background:"rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.8)",border:"none",borderRadius:8,padding:"0 10px",fontSize:11,fontWeight:600,cursor:"pointer",height:32,WebkitTapHighlightColor:"transparent"}}>Today</button>}
+                    <button onClick={()=>setCalOffset(o=>o+1)} style={{background:"rgba(255,255,255,0.12)",color:"#fff",border:"none",borderRadius:8,width:32,height:32,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent"}}>›</button>
+                  </div>
+                </div>
+                {/* Month stats row */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                  {[
+                    {label:"Pending",val:mPending,color:"#f59e0b"},
+                    {label:"In Transit",val:mTransit,color:"#0ea5e9"},
+                    {label:"Delivered",val:mDone,color:"#10b981"},
+                    ...(canSeePrices?[{label:"Revenue",val:inr(mRevenue),color:"#a78bfa"}]:[{label:"Paid",val:inr(mPaid),color:"#a78bfa"}]),
+                  ].map(({label,val,color})=>(
+                    <div key={label} style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
+                      <p style={{color,fontWeight:800,fontSize:14,lineHeight:1}}>{val}</p>
+                      <p style={{color:"rgba(255,255,255,0.5)",fontSize:9,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="px-2 pb-3">
-                <div className="grid grid-cols-7 gap-0.5 mb-1">
-                  {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div key={d} style={{color:t.sub}} className="text-center text-[10px] font-semibold py-1">{d}</div>)}
+              {/* Day-of-week headers */}
+              <div style={{padding:"0 8px"}}>
+                <div className="grid grid-cols-7" style={{borderBottom:`1px solid ${t.border}`,marginBottom:4,marginTop:8}}>
+                  {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>(
+                    <div key={d} style={{color:t.sub,textAlign:"center",fontSize:10,fontWeight:700,padding:"4px 0",textTransform:"uppercase",letterSpacing:"0.06em"}}>{d}</div>
+                  ))}
                 </div>
-                {weeks.map((week,wi)=>(
-                  <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
-                    {week.map((day,di)=>{
-                      if(!day)return <div key={di}/>;
-                      const dateStr=`${monthStr}-${String(day).padStart(2,"0")}`;
-                      const dayDelivs=deliveries.filter(d=>d.date===dateStr&&(!srch||d.customer.toLowerCase().includes(srch.toLowerCase())||d.status.toLowerCase().includes(srch.toLowerCase())));
-                      const isToday=dateStr===today();
-                      return <div key={di} style={{background:isToday?dm?"#2a1a00":"#fef3c7":t.card,border:`1px solid ${isToday?"#f59e0b":t.border}`,minHeight:52}} className="rounded-lg p-1 relative">
-                        <p style={{color:isToday?"#f59e0b":t.sub}} className={`text-[10px] font-bold mb-0.5 ${isToday?"":"opacity-70"}`}>{day}</p>
-                        <div className="flex flex-col gap-0.5">
-                          {dayDelivs.slice(0,3).map(d=>(
-                            <div key={d.id} onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:statusColor(d.status),color:"#fff"}} className="rounded text-[9px] font-semibold px-1 py-0.5 truncate cursor-pointer leading-tight">{d.customer.split(" ")[0]}</div>
-                          ))}
-                          {dayDelivs.length>3&&<div style={{color:t.sub}} className="text-[9px] text-center">+{dayDelivs.length-3}</div>}
-                        </div>
-                      </div>;
-                    })}
-                  </div>
-                ))}
-                <div className="flex items-center justify-between mt-2 px-1 flex-wrap gap-2">
-                  <div className="flex gap-3">
-                    {[["Pending","#f59e0b"],["In Transit","#0ea5e9"],["Delivered","#10b981"]].map(([s,c])=>(
-                      <div key={s} className="flex items-center gap-1"><div style={{background:c,width:8,height:8,borderRadius:2}}/><span style={{color:t.sub}} className="text-[10px]">{s}</span></div>
-                    ))}
-                  </div>
-                  {isAdmin&&can("deliv_markDone")&&calOffset===0&&(()=>{
-                    // Bulk mark all pending for today — only shown when viewing the current month
-                    const highlightDate=today();
-                    const pendingToday2=deliveries.filter(d=>d.date===highlightDate&&d.status==="Pending");
-                    if(pendingToday2.length===0) return null;
-                    return <button onClick={()=>{
-                      setDeliv(p=>p.map(d=>d.date===highlightDate&&d.status==="Pending"?{...d,status:"Delivered",deliveryDate:today()}:d));
-                      addLog("Bulk delivered",`All pending on ${highlightDate} (${pendingToday2.length})`);
-                      notify(`${pendingToday2.length} deliveries marked done ✓`);
-                      captureGPS("marked_delivered",`Bulk day (${highlightDate})`);
-                    }} style={{background:"#10b98120",color:"#10b981",border:"1px solid #10b98140",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                      ✓ Mark all today done ({pendingToday2.length})
-                    </button>;
-                  })()}
+                {/* Calendar grid */}
+                <div style={{display:"flex",flexDirection:"column",gap:3,paddingBottom:10}}>
+                  {weeks.map((week,wi)=>(
+                    <div key={wi} className="grid grid-cols-7" style={{gap:3}}>
+                      {week.map((day,di)=>{
+                        if(!day)return <div key={di} style={{minHeight:62}}/>;
+                        const dateStr=`${monthStr}-${String(day).padStart(2,"0")}`;
+                        const dayDelivs=deliveries.filter(d=>d.date===dateStr&&(!srch||d.customer.toLowerCase().includes(srch.toLowerCase())||d.status.toLowerCase().includes(srch.toLowerCase())));
+                        const isToday=dateStr===todayStr;
+                        const isExpanded=calExpandedDay===dateStr;
+                        const isPast=dateStr<todayStr;
+                        const pendCount=dayDelivs.filter(d=>d.status==="Pending").length;
+                        const transitCount=dayDelivs.filter(d=>d.status==="In Transit").length;
+                        const doneCount=dayDelivs.filter(d=>d.status==="Delivered").length;
+                        return <div key={di}
+                          style={{
+                            background:isToday?(dm?"#1c2a3a":"#eff6ff"):isExpanded?(dm?"#1e1040":"#f5f3ff"):t.card,
+                            border:`1.5px solid ${isToday?"#3b82f6":isExpanded?"#7c3aed":dayDelivs.length>0?(dm?"#30363d":"#e2e8f0"):t.border}`,
+                            borderRadius:10,
+                            minHeight:62,
+                            cursor:dayDelivs.length>0?"pointer":"default",
+                            transition:"border-color 0.12s,background 0.12s,transform 0.1s",
+                            WebkitTapHighlightColor:"transparent",
+                            touchAction:"manipulation",
+                            position:"relative",
+                            overflow:"hidden",
+                          }}
+                          className={dayDelivs.length>0?"active:scale-[0.96]":""}
+                          onClick={()=>dayDelivs.length>0&&setCalExpandedDay(isExpanded?null:dateStr)}>
+                          {/* Today accent bar */}
+                          {isToday&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"#3b82f6",borderRadius:"8px 8px 0 0"}}/>}
+                          <div style={{padding:"6px 5px 4px"}}>
+                            <p style={{
+                              color:isToday?"#3b82f6":isPast&&dayDelivs.length===0?t.sub:t.text,
+                              fontSize:isToday?13:12,
+                              fontWeight:isToday?900:600,
+                              lineHeight:1,
+                              marginBottom:3,
+                              opacity:isPast&&dayDelivs.length===0?0.4:1,
+                            }}>{day}</p>
+                            {/* Status dots row */}
+                            {dayDelivs.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2}}>
+                              {pendCount>0&&<div style={{background:"#f59e0b",borderRadius:4,padding:"1.5px 5px",display:"flex",alignItems:"center",gap:3}}>
+                                <span style={{color:"#fff",fontSize:9,fontWeight:700,lineHeight:1}}>{pendCount}</span>
+                                <span style={{color:"rgba(255,255,255,0.8)",fontSize:8,lineHeight:1}}>pending</span>
+                              </div>}
+                              {transitCount>0&&<div style={{background:"#0ea5e9",borderRadius:4,padding:"1.5px 5px",display:"flex",alignItems:"center",gap:3}}>
+                                <span style={{color:"#fff",fontSize:9,fontWeight:700,lineHeight:1}}>{transitCount}</span>
+                                <span style={{color:"rgba(255,255,255,0.8)",fontSize:8,lineHeight:1}}>transit</span>
+                              </div>}
+                              {doneCount>0&&<div style={{background:"#10b981",borderRadius:4,padding:"1.5px 5px",display:"flex",alignItems:"center",gap:3}}>
+                                <span style={{color:"#fff",fontSize:9,fontWeight:700,lineHeight:1}}>{doneCount}</span>
+                                <span style={{color:"rgba(255,255,255,0.8)",fontSize:8,lineHeight:1}}>done</span>
+                              </div>}
+                              {dayDelivs.length>3&&<div style={{color:t.sub,fontSize:8,fontWeight:700,textAlign:"center",marginTop:1}}>+{dayDelivs.length-3} more</div>}
+                            </div>}
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  ))}
                 </div>
+                {/* EXPANDED DAY PANEL */}
+                {calExpandedDay&&(()=>{
+                  const expandedDelivs=deliveries.filter(d=>d.date===calExpandedDay&&(!srch||d.customer.toLowerCase().includes(srch.toLowerCase())||d.status.toLowerCase().includes(srch.toLowerCase())));
+                  if(expandedDelivs.length===0)return null;
+                  const dayTotAmt=expandedDelivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const dayTotPaid=expandedDelivs.reduce((s,d)=>s+(d.paid||0),0);
+                  const dayTotReplAmt=expandedDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const dayLabel=new Date(calExpandedDay+"T00:00:00").toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"});
+                  return <div style={{background:dm?"#1a0a2e":"#f5f3ff",border:"1.5px solid #7c3aed40",borderRadius:14,padding:"12px 14px",marginBottom:10}}>
+                    <div className="flex items-center justify-between mb-3" style={{gap:8}}>
+                      <div>
+                        <p style={{color:"#7c3aed",fontWeight:900,fontSize:14,lineHeight:1.2}}>{dayLabel}</p>
+                        <p style={{color:t.sub,fontSize:11,marginTop:2}}>{expandedDelivs.length} {expandedDelivs.length===1?"delivery":"deliveries"}</p>
+                      </div>
+                      <button onClick={()=>setCalExpandedDay(null)} style={{color:t.sub,background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:32,WebkitTapHighlightColor:"transparent",flexShrink:0}}>✕ Close</button>
+                    </div>
+                    {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,marginBottom:12}}>
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
+                        <p style={{color:"#10b981",fontWeight:800,fontSize:14}}>{inr(dayTotAmt)}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Orders</p>
+                      </div>
+                      {dayTotReplAmt>0&&<div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
+                        <p style={{color:"#f97316",fontWeight:800,fontSize:14}}>−{inr(dayTotReplAmt)}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Replacements</p>
+                      </div>}
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
+                        <p style={{color:"#0ea5e9",fontWeight:800,fontSize:14}}>{inr(dayTotPaid)}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Collected</p>
+                      </div>
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
+                        <p style={{color:(dayTotAmt-dayTotReplAmt-dayTotPaid)>0?"#f59e0b":"#10b981",fontWeight:800,fontSize:14}}>{inr(Math.max(0,dayTotAmt-dayTotReplAmt-dayTotPaid))}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Outstanding</p>
+                      </div>
+                    </div>}
+                    <div className="flex flex-col gap-3">
+                      {expandedDelivs.map(d=>{
+                        const rows=lineRows(d.orderLines,products);
+                        const tot=lineTotal(d.orderLines);
+                        const replAmt=+d.replacement?.amount||0;
+                        const netAmt=tot-replAmt;
+                        const paid=d.paid||0;
+                        const remaining=netAmt-paid;
+                        const sc=statusColor(d.status);
+                        return <div key={d.id} style={{background:dm?"#ffffff08":t.card,border:`1px solid ${sc}40`,borderRadius:12,padding:"10px 12px",borderLeft:`3px solid ${sc}`}}>
+                          <div className="flex items-start justify-between mb-2" style={{gap:8}}>
+                            <div style={{minWidth:0}}>
+                              <p style={{color:t.text,fontWeight:800,fontSize:14,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.customer}</p>
+                              {d.address&&<p style={{color:t.sub,fontSize:10,marginTop:1}}>📍 {d.address}</p>}
+                              {d.notes&&<p style={{color:t.sub,fontSize:10,marginTop:1,fontStyle:"italic"}}>"{d.notes}"</p>}
+                            </div>
+                            <span style={{background:sc+"20",color:sc,borderRadius:8,padding:"3px 9px",fontSize:10,fontWeight:800,flexShrink:0,whiteSpace:"nowrap",border:`1px solid ${sc}40`}}>{d.status}</span>
+                          </div>
+                          {rows.length>0&&<div style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginBottom:8}}>
+                            {rows.map(r=>(
+                              <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0",fontSize:12}}>
+                                <span style={{color:t.sub,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginRight:8}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
+                                {canSeePrices&&<span style={{color:t.text,fontWeight:700,flexShrink:0}}>{inr(r.qty*r.priceAmount)}</span>}
+                              </div>
+                            ))}
+                          </div>}
+                          {d.replacement?.done&&<div style={{background:"#f9731615",border:"1px solid #f9731630",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
+                            <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 {d.replacement.item||"Replacement"}{d.replacement.qty?` × ${d.replacement.qty}`:""}${replAmt>0?` · −${inr(replAmt)}`:""}</p>
+                            {d.replacement.reason&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>{d.replacement.reason}</p>}
+                          </div>}
+                          {canSeePrices&&<div style={{display:"flex",gap:6,flexWrap:"wrap",fontSize:11,marginBottom:8}}>
+                            <span style={{background:t.inp,borderRadius:6,padding:"3px 8px",color:t.text}}>Order: <b>{inr(tot)}</b></span>
+                            {replAmt>0&&<span style={{background:"#f9731615",borderRadius:6,padding:"3px 8px",color:"#f97316"}}>Net: <b>{inr(netAmt)}</b></span>}
+                            <span style={{background:"#10b98115",borderRadius:6,padding:"3px 8px",color:"#10b981"}}>Paid: <b>{inr(paid)}</b></span>
+                            <span style={{background:remaining>0?"#f59e0b15":"#10b98115",borderRadius:6,padding:"3px 8px",color:remaining>0?"#f59e0b":"#10b981"}}>Due: <b>{inr(remaining)}</b></span>
+                          </div>}
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button onClick={e=>{e.stopPropagation();setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
+                            {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
+                            {can("deliv_markDone")&&d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>}
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                    {/* Bulk mark today done */}
+                    {isAdmin&&can("deliv_markDone")&&calExpandedDay===todayStr&&(()=>{
+                      const pendingToday2=expandedDelivs.filter(d=>d.status==="Pending");
+                      if(pendingToday2.length===0) return null;
+                      return <button onClick={()=>{
+                        setDeliv(p=>p.map(d=>d.date===todayStr&&d.status==="Pending"?{...d,status:"Delivered",deliveryDate:todayStr}:d));
+                        addLog("Bulk delivered",`All pending on ${todayStr} (${pendingToday2.length})`);
+                        notify(`${pendingToday2.length} deliveries marked done ✓`);
+                        captureGPS("marked_delivered",`Bulk day (${todayStr})`);
+                      }} style={{background:"#10b98120",color:"#10b981",border:"1px solid #10b98140",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",marginTop:10,WebkitTapHighlightColor:"transparent"}}>
+                        ✓ Mark all {pendingToday2.length} pending as Delivered
+                      </button>;
+                    })()}
+                  </div>;
+                })()}
               </div>
             </Card>;
           })()}
@@ -5252,7 +5804,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <style>body{font-family:system-ui,sans-serif;padding:32px;color:#111}h1{font-size:20px;font-weight:800;margin:0}h2{font-size:13px;color:#6b7280;font-weight:500;margin:4px 0 24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;padding:8px 10px;font-size:11px;font-weight:700;text-align:left;color:#374151;border-bottom:2px solid #e5e7eb}@media print{a{color:#0ea5e9}}</style>
             </head><body>
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-              <div><h1>📍 GPS Location Report</h1><h2>${settings?.appName||"TAS Healthy World"} · ${settings?.companySubtitle||""} · Generated ${ts()}</h2></div>
+              <div><h1>📍 GPS Location Report</h1><h2>${settings?.appName||"TAS Healthy World"} · ${settings?.companySubtitle||""} · Exported on ${ts()}</h2></div>
               <div style="text-align:right;font-size:12px;color:#6b7280"><b>Period:</b> ${dateLabel}<br/><b>Agent:</b> ${agentLabel}<br/><b>Total entries:</b> ${logsWithGps.length}</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
@@ -5861,6 +6413,17 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 );
               })}
             </div></Card>
+            {/* Bulk Order Feature Toggle */}
+            <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+              <p style={{color:t.text}} className="text-sm font-bold">Delivery Features</p>
+              <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                <div>
+                  <p style={{color:t.text}} className="text-sm font-semibold">📋 Bulk Order Entry</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Allow agents/factory to create orders for multiple customers at once from the Deliveries tab.</p>
+                </div>
+                <Tog dm={dm} on={settings?.bulkOrderEnabled!==false} onChange={()=>setSettings(s=>({...s,bulkOrderEnabled:s?.bulkOrderEnabled===false?true:false}))}/>
+              </div>
+            </div></Card>
           </>}
 
           {/* ── ACCESS CONTROL ── */}
@@ -6119,6 +6682,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         {canSeeFinancials&&<div className="grid grid-cols-2 gap-3">
           <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
           <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
+          <Inp dm={dm} label="Partial Payment (₹)" type="number" inputMode="numeric" value={cF.partialPay||""} onChange={e=>setCf({...cF,partialPay:e.target.value})} placeholder="Partial amount received (not yet fully settled)"/>
         </div>}
         <Inp dm={dm} label="Notes" value={cF.notes} onChange={e=>setCf({...cF,notes:e.target.value})} placeholder="Special instructions…"/>
         <Sel dm={dm} label="Status" value={cF.active?"active":"inactive"} onChange={e=>setCf({...cF,active:e.target.value==="active"})}>
@@ -6130,43 +6694,189 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       {/* Customer View */}
       <Sheet dm={dm} open={!!cView} onClose={()=>setCView(null)} title="Customer Profile">
         {cView&&(()=>{
-          const rows=lineRows(cView.orderLines,products);const tot=lineTotal(cView.orderLines);
+          const cv=cView;
+          const rows=lineRows(cv.orderLines,products);
+          const tot=lineTotal(cv.orderLines);
+          const cDelivs=[...deliveries.filter(d=>d.customerId===cv.id)].sort((a,b)=>b.date.localeCompare(a.date));
+          const cDone=cDelivs.filter(d=>d.status==="Delivered");
+          const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+          const cCancelled=cDelivs.filter(d=>d.status==="Cancelled");
+          const cRepls=cDelivs.filter(d=>d.replacement?.done);
+          const totalReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+          const totalRevenue=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
+          const lastD=cDelivs[0];
+          const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
+          const lastLabel=lastDays===null?"Never":lastDays===0?"Today":lastDays===1?"Yesterday":`${lastDays}d ago`;
+          const netTot=Math.max(0,tot-totalReplAmt);
+          const totalBilled=(cv.paid||0)+(cv.pending||0);
+          const payPct=totalBilled>0?Math.round((cv.paid||0)/totalBilled*100):100;
           return (<>
-            <div className="flex items-center gap-3">
-              <div style={{background:t.inp}} className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black text-amber-500">{cView.name[0]}</div>
-              <div><p style={{color:t.text}} className="font-bold">{cView.name}</p><p style={{color:t.sub}} className="text-xs">{cView.phone}</p></div>
+            {/* ── HEADER ── */}
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:4}}>
+              <div style={{width:52,height:52,borderRadius:16,background:"#f59e0b22",color:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:22,flexShrink:0}}>{cv.name.charAt(0).toUpperCase()}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{color:t.text,fontWeight:800,fontSize:17,lineHeight:1.2}}>{cv.name}</p>
+                <p style={{color:t.sub,fontSize:12,marginTop:2}}>{cv.phone||"No phone"}</p>
+                <span style={{background:cv.active?"#dcfce7":"#f3f4f6",color:cv.active?"#15803d":"#6b7280",fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:99,display:"inline-block",marginTop:4}}>{cv.active?"● ACTIVE":"○ INACTIVE"}</span>
+              </div>
             </div>
+
+            {/* ── CONTACT & INFO ── */}
             <Hr dm={dm}/>
-            {[["Address",cView.address||"—"],["Phone",cView.phone||"—"],["Since",cView.joinDate||"—"],["Notes",cView.notes||"—"]].map(([k,v])=>(
-              <div key={k} className="flex justify-between text-sm py-1"><span style={{color:t.sub}}>{k}</span><span style={{color:t.text}} className="font-semibold text-right max-w-[65%]">{v}</span></div>
-            ))}
-            <Hr dm={dm}/>
-            <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Regular Order</p>
-            {rows.length===0?<p style={{color:t.sub}} className="text-xs">No items</p>:rows.map(r=>(
-              <div key={r.id} className="flex justify-between text-sm py-0.5">
-                <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
-                {canSeePrices&&<span style={{color:t.text}} className="font-bold">{inr(r.qty*r.priceAmount)}</span>}
+            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Contact & Info</p>
+            {[["📍 Address",cv.address||"—"],["📞 Phone",cv.phone||"—"],["📅 Customer Since",cv.joinDate||"—"],["💬 Notes",cv.notes||"—"]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${t.border}`}}>
+                <span style={{color:t.sub,fontSize:12,flexShrink:0,marginRight:12}}>{k}</span>
+                <span style={{color:t.text,fontWeight:600,fontSize:12,textAlign:"right",wordBreak:"break-word",maxWidth:"60%"}}>{v}</span>
               </div>
             ))}
-            {canSeePrices&&tot>0&&<div style={{background:t.inp}} className="rounded-xl p-3 flex justify-between text-sm font-bold"><span style={{color:t.sub}}>Order value</span><span className="text-amber-500">{inr(tot)}</span></div>}
-            {canSeeFinancials&&<div className="flex gap-2">
-              <div style={{background:"#10b98120"}} className="flex-1 rounded-xl p-3 text-center"><p className="font-bold text-emerald-500">{inr(cView.paid)}</p><p style={{color:t.sub}} className="text-[10px]">Paid</p></div>
-              <div style={{background:cView.pending>0?"#ef444420":"#10b98120"}} className="flex-1 rounded-xl p-3 text-center"><p className={cx("font-bold",cView.pending>0?"text-red-500":"text-emerald-500")}>{inr(cView.pending)}</p><p style={{color:t.sub}} className="text-[10px]">Due</p></div>
-              <div style={{background:cView.pending>0?"#ef444420":"#10b98120"}} className="flex-1 rounded-xl p-3 text-center"><p className={cx("text-xs font-black",cView.pending>0?"text-red-500":"text-emerald-500")}>{cView.pending>0?"UNPAID":"✓ PAID"}</p><p style={{color:t.sub}} className="text-[10px]">Status</p></div>
-            </div>}
+
+            {/* ── STATS OVERVIEW ── */}
             <Hr dm={dm}/>
-            <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Delivery History</p>
-            {deliveries.filter(d=>d.customerId===cView.id).length===0?<p style={{color:t.sub}} className="text-xs">No deliveries yet.</p>
-              :deliveries.filter(d=>d.customerId===cView.id).map(d=>(
-              <div key={d.id} className="flex justify-between text-xs py-1.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                <span style={{color:t.sub}}>{d.date}{canSeePrices?` · ${inr(lineTotal(d.orderLines))}`:" · "+Object.values(safeO(d.orderLines)).reduce((s,l)=>s+(l.qty||0),0)+" items"}</span>
-                <Pill dm={dm} c={d.status==="Delivered"?"green":d.status==="In Transit"?"blue":"amber"}>{d.status}</Pill>
+            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📊 Overview</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+              {[
+                {label:"Total Orders",val:cDelivs.length,color:t.text},
+                {label:"Delivered",val:cDone.length,color:"#10b981"},
+                {label:"Pending",val:cPending.length,color:"#f59e0b"},
+                {label:"Cancelled",val:cCancelled.length,color:"#ef4444"},
+                {label:"Replacements",val:cRepls.length,color:"#f97316"},
+                {label:"Delivery Rate",val:`${delivRate}%`,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"},
+              ].map(({label,val,color})=>(
+                <div key={label} style={{background:t.inp,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
+                  <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{val}</p>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em",marginTop:4}}>{label}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:4}}>
+              <span>Delivery rate</span>
+              <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
+            </div>
+            <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden",marginBottom:2}}>
+              <div style={{width:`${delivRate}%`,height:"100%",background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",borderRadius:5}}/>
+            </div>
+            <p style={{color:t.sub,fontSize:11,marginTop:4}}>🕐 Last order: <span style={{fontWeight:700,color:t.text}}>{lastLabel}</span></p>
+
+            {/* ── PAYMENT STATUS ── */}
+            {canSeeFinancials&&<>
+              <Hr dm={dm}/>
+              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>💳 Payment Status</p>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                <div style={{flex:1,background:"#10b98115",borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
+                  <p style={{color:"#10b981",fontWeight:900,fontSize:15}}>{inr(cv.paid||0)}</p>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Paid</p>
+                </div>
+                <div style={{flex:1,background:cv.pending>0?"#ef444415":"#10b98115",borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
+                  <p style={{color:cv.pending>0?"#ef4444":"#10b981",fontWeight:900,fontSize:15}}>{inr(cv.pending||0)}</p>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Outstanding</p>
+                </div>
+                {canSeePrices&&totalRevenue>0&&<div style={{flex:1,background:t.inp,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
+                  <p style={{color:"#f59e0b",fontWeight:900,fontSize:15}}>{inr(totalRevenue)}</p>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Total Revenue</p>
+                </div>}
               </div>
-            ))}
-            <div className="flex gap-2">
-              {cView.address&&<a href={mapU(cView.address,cView.lat,cView.lng)} target="_blank" rel="noopener noreferrer" className="flex-1"><Btn dm={dm} v="outline" className="w-full">📍 Maps</Btn></a>}
-              <Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportPDF(cView,products,"customer",settings)}>PDF</Btn>
-              <Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportWord(cView,products,"customer",settings)}>Word</Btn>
+              {totalBilled>0&&<>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:4}}>
+                  <span>Payment progress</span><span style={{fontWeight:700,color:cv.pending>0?"#f59e0b":"#10b981"}}>{payPct}% settled</span>
+                </div>
+                <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden",marginBottom:6}}>
+                  <div style={{width:`${payPct}%`,height:"100%",background:cv.pending>0?"#f59e0b":"#10b981",borderRadius:5}}/>
+                </div>
+              </>}
+              {(cv.partialPay||0)>0&&<p style={{color:"#d97706",fontSize:12,fontWeight:600,marginTop:4}}>💛 Partial on hold: {inr(cv.partialPay)}</p>}
+              {totalReplAmt>0&&<p style={{color:"#f97316",fontSize:12,fontWeight:600,marginTop:4}}>🔄 Replacement deductions: −{inr(totalReplAmt)}</p>}
+            </>}
+
+            {/* ── REGULAR ORDER TEMPLATE ── */}
+            {rows.length>0&&<>
+              <Hr dm={dm}/>
+              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>🛒 Regular Order Template</p>
+              {rows.map(r=>(
+                <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.sub,fontSize:13}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
+                  {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:13}}>{inr(r.qty*r.priceAmount)}</span>}
+                </div>
+              ))}
+              {canSeePrices&&tot>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",marginTop:2}}>
+                <span style={{color:t.sub,fontSize:13,fontWeight:700}}>Template Total</span>
+                <span style={{color:"#f59e0b",fontWeight:800,fontSize:14}}>{inr(netTot)}</span>
+              </div>}
+            </>}
+
+            {/* ── FULL DELIVERY HISTORY ── */}
+            <Hr dm={dm}/>
+            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📦 Delivery History ({cDelivs.length})</p>
+            {cDelivs.length===0
+              ?<p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"16px 0"}}>No deliveries yet.</p>
+              :cDelivs.map((d,i)=>{
+                const dItems=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}× ${p?p.name:(l.name||pid)}`;}).join(", ");
+                const dTot=lineTotal(d.orderLines);
+                const statusColor=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                return <div key={d.id} style={{background:t.inp,borderRadius:12,padding:"10px 12px",marginBottom:8,border:`1px solid ${t.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:dItems?6:0}}>
+                    <div>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{d.date}</p>
+                      {d.deliveryDate&&d.deliveryDate!==d.date&&<p style={{color:t.sub,fontSize:11}}>Delivered: {d.deliveryDate}</p>}
+                      {d.createdBy&&<p style={{color:t.sub,fontSize:10}}>By: {d.createdBy}</p>}
+                    </div>
+                    <span style={{background:statusColor+"20",color:statusColor,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99}}>{d.status}</span>
+                  </div>
+                  {dItems&&<p style={{color:t.sub,fontSize:12,marginBottom:4}}>📦 {dItems}</p>}
+                  {canSeePrices&&dTot>0&&<p style={{color:"#f59e0b",fontWeight:700,fontSize:12}}>Total: {inr(dTot)}</p>}
+                  {d.replacement?.done&&<div style={{background:"#f9731615",borderRadius:8,padding:"6px 8px",marginTop:6,border:"1px solid #f9731630"}}>
+                    <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 Replacement: {d.replacement.item||"—"}{d.replacement.qty?` (${d.replacement.qty})`:""}</p>
+                    {d.replacement.reason&&<p style={{color:t.sub,fontSize:11}}>Reason: {d.replacement.reason}</p>}
+                    {d.replacement.amount&&canSeePrices&&<p style={{color:"#f97316",fontSize:11,fontWeight:600}}>Deducted: −{inr(d.replacement.amount)}</p>}
+                  </div>}
+                  {d.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic",marginTop:4}}>"{d.notes}"</p>}
+                </div>;
+              })
+            }
+
+            {/* ── REPLACEMENT LOG ── */}
+            {cRepls.length>0&&<>
+              <Hr dm={dm}/>
+              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>🔄 Replacement Log ({cRepls.length})</p>
+              {cRepls.map(d=>(
+                <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
+                  <div>
+                    <p style={{color:t.text,fontSize:12,fontWeight:600}}>{d.date} — {d.replacement?.item||"—"}{d.replacement?.qty?` (${d.replacement.qty})`:""}</p>
+                    {d.replacement?.reason&&<p style={{color:t.sub,fontSize:11}}>{d.replacement.reason}</p>}
+                  </div>
+                  {canSeePrices&&d.replacement?.amount&&<span style={{color:"#f97316",fontWeight:700,fontSize:12}}>−{inr(d.replacement.amount)}</span>}
+                </div>
+              ))}
+              {canSeePrices&&totalReplAmt>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",marginTop:2}}>
+                <span style={{color:t.sub,fontWeight:700,fontSize:12}}>Total Deducted</span>
+                <span style={{color:"#f97316",fontWeight:800,fontSize:13}}>−{inr(totalReplAmt)}</span>
+              </div>}
+            </>}
+
+            {/* ── ACTION BUTTONS ── */}
+            <Hr dm={dm}/>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {cv.address&&<a href={mapU(cv.address,cv.lat,cv.lng)} target="_blank" rel="noopener noreferrer" style={{flex:"1 1 auto",minWidth:80}}>
+                <Btn dm={dm} v="outline" className="w-full">📍 Maps</Btn>
+              </a>}
+              <div style={{flex:"1 1 auto",minWidth:80}}>
+                <Btn dm={dm} v="purple" className="w-full" onClick={()=>exportPDF(cv,products,"customer",settings,deliveries)}>📄 PDF</Btn>
+              </div>
+              <div style={{flex:"1 1 auto",minWidth:80}}>
+                <Btn dm={dm} v="sky" className="w-full" onClick={()=>{
+                  const cD=deliveries.filter(d=>d.customerId===cv.id).sort((a,b)=>b.date.localeCompare(a.date));
+                  const enriched=cD.map(d=>{
+                    const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");
+                    return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};
+                  });
+                  exportTabExcel(cv.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enriched,[
+                    {label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},
+                    {label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount Deducted (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},
+                    {label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}
+                  ],settings);
+                }}>📊 XLS</Btn>
+              </div>
             </div>
           </>);
         })()}
