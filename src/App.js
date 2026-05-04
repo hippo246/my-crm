@@ -1520,14 +1520,15 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const canSeePrices    = isAdmin || can("cust_seePrices")  || can("deliv_seePrices");
   const canSeeFinancials= isAdmin || can("cust_seeFinance");
 
-  const [customers, setCust] =useStore("tas9_cust", D_CUST);
-  const [deliveries,setDeliv]=useStore("tas9_deliv",D_DELIV);
-  const [supplies,  setSup]  =useStore("tas9_sup",  D_SUP);
-  const [expenses,  setExp]  =useStore("tas9_exp",  D_EXP);
-  const [products,  setProd] =useStore("tas9_prod", D_PRODS);
-  const [actLog,    setAct]  =useStore("tas9_act",  []);
-  const [wastage,   setWaste] =useStore("tas9_waste", D_WASTE);
-  const [prodTargets, setProdTargets]=useStore("tas9_prodtargets", D_PROD_TARGETS);
+  const [customers, setCust,  custLoaded]    =useStore("tas9_cust", D_CUST);
+  const [deliveries,setDeliv, delivLoaded]   =useStore("tas9_deliv",D_DELIV);
+  const [supplies,  setSup,   supLoaded]     =useStore("tas9_sup",  D_SUP);
+  const [expenses,  setExp,   expLoaded]     =useStore("tas9_exp",  D_EXP);
+  const [products,  setProd,  prodLoaded]    =useStore("tas9_prod", D_PRODS);
+  const [actLog,    setAct,   actLoaded]     =useStore("tas9_act",  []);
+  const [wastage,   setWaste, wastageLoaded] =useStore("tas9_waste", D_WASTE);
+  const [prodTargets, setProdTargets, ptLoaded]=useStore("tas9_prodtargets", D_PROD_TARGETS);
+  const dataLoaded = custLoaded && delivLoaded && supLoaded && expLoaded && prodLoaded && wastageLoaded && actLoaded && ptLoaded;
   // Agent live locations — kept in memory only, NOT stored in Firebase/cloud
   // Uses Ably free-tier WebSockets for cross-device real-time relay
   const [notifs, setNotifs]=useStore("tas9_notifs",[]);
@@ -1572,7 +1573,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Also supports displayOverride from staff picker mode
   const subStaff=sess.subStaff||[];
   const [activeStaff,setActiveStaff]=useState(()=>sess.displayOverride||( subStaff.length>0?subStaff[0]:sess.name));
-  const displayName=sess.displayOverride||( subStaff.length>0?activeStaff:sess.name);
+  const displayName=useMemo(()=>sess.displayOverride||( subStaff.length>0?activeStaff:sess.name),[sess.displayOverride,sess.name,subStaff.length,activeStaff]);
 
   function addLog(action,detail){
     const e={id:uid(),user:displayName,role:sess.role,action,detail,ts:ts()};
@@ -2047,6 +2048,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
   // Tab icons for nav
   const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅","GPS":"📍","Settings":"⚙️"};
+
+  if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   // ═══════════════════════════════════════════════════════════════
   return (
@@ -5633,7 +5636,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 <div className="flex gap-2 flex-wrap">
                   <Btn dm={dm} v="ghost" size="sm" onClick={()=>{setUf({...u,password:""});setUsh(u);}}>✏️ Edit Profile</Btn>
                   {isMe&&<Btn dm={dm} v="ghost" size="sm" onClick={()=>{setChangePwF({current:"",next:"",confirm:""});setChangePwSh(true);}}>🔑 Change Password</Btn>}
-                  {!isMe&&<Btn v="danger" size="sm" onClick={()=>delU(u)}>Remove</Btn>}
+                  {!isMe&&<Btn dm={dm} v="danger" size="sm" onClick={()=>delU(u)}>Remove</Btn>}
                 </div>
               </div></Card>;
             })}
@@ -5978,7 +5981,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>;
               })()}
               <Btn dm={dm} v="outline" className="w-full" onClick={exportAll}>⬇️ Export Full Backup (JSON)</Btn>
-              <Btn v="purple" className="w-full" onClick={exportFullReport}>📊 Export Full Report (PDF — All Data)</Btn>
+              <Btn dm={dm} v="purple" className="w-full" onClick={exportFullReport}>📊 Export Full Report (PDF — All Data)</Btn>
               <label style={{border:`1px solid ${t.border}`,color:t.text}} className="w-full text-sm font-semibold rounded-xl px-4 py-2.5 text-center cursor-pointer hover:opacity-80 transition-all">
                 ⬆️ Import Backup (JSON)<input type="file" accept=".json" className="hidden" onChange={importAll}/>
               </label>
@@ -6035,7 +6038,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <Card dm={dm}><div className="p-4">
               <p style={{color:"#ef4444"}} className="text-sm font-bold mb-1">⚠️ Danger Zone</p>
               <p style={{color:t.sub}} className="text-[11px] mb-3">This will wipe all data and reset to factory defaults. Cannot be undone.</p>
-              <Btn v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{setCust(D_CUST);setDeliv(D_DELIV);setSup(D_SUP);setExp(D_EXP);setProd(D_PRODS);setWaste(D_WASTE);const r=[{id:uid(),user:sess.name,role:sess.role,action:"FULL RESET",detail:"All data reset to defaults",ts:ts()}];setAct(r);notify("Reset complete");})}>Reset All Data to Defaults</Btn>
+              <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{setCust(D_CUST);setDeliv(D_DELIV);setSup(D_SUP);setExp(D_EXP);setProd(D_PRODS);setWaste(D_WASTE);const r=[{id:uid(),user:sess.name,role:sess.role,action:"FULL RESET",detail:"All data reset to defaults",ts:ts()}];setAct(r);notify("Reset complete");})}>Reset All Data to Defaults</Btn>
             </div></Card>
           </>}
           </>;
@@ -6101,11 +6104,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       {/* Customer Sheet */}
       <Sheet dm={dm} open={!!cSh} onClose={()=>setCsh(null)} title={cSh==="add"?"New Customer":"Edit Customer"}>
         <Inp dm={dm} label="Name *" value={cF.name} onChange={e=>setCf({...cF,name:e.target.value})} placeholder="Business or customer name"/>
-        <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number"/>
+        <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number" inputMode="tel" autoComplete="tel"/>
         <Inp dm={dm} label="Address" value={cF.address} onChange={e=>setCf({...cF,address:e.target.value})} placeholder="Full delivery address"/>
         <div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="GPS Lat" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989"/>
-          <Inp dm={dm} label="GPS Lng" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278"/>
+          <Inp dm={dm} label="GPS Lat" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989" inputMode="decimal"/>
+          <Inp dm={dm} label="GPS Lng" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278" inputMode="decimal"/>
         </div>
         <Inp dm={dm} label="Customer Since" type="date" value={cF.joinDate} onChange={e=>setCf({...cF,joinDate:e.target.value})}/>
         <p style={{color:t.sub}} className="text-[11px]">💡 Long-press location in Google Maps → copy coordinates.</p>
@@ -6114,8 +6117,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         <OrderEditor dm={dm} products={products} orderLines={cF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setCf(f=>({...f,orderLines:ol}))}/>
         <Hr dm={dm}/>
         {canSeeFinancials&&<div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="Amount Paid (₹)" type="number" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
-          <Inp dm={dm} label="Amount Pending (₹)" type="number" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
+          <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
+          <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
         </div>}
         <Inp dm={dm} label="Notes" value={cF.notes} onChange={e=>setCf({...cF,notes:e.target.value})} placeholder="Special instructions…"/>
         <Sel dm={dm} label="Status" value={cF.active?"active":"inactive"} onChange={e=>setCf({...cF,active:e.target.value==="active"})}>
@@ -6162,8 +6165,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             ))}
             <div className="flex gap-2">
               {cView.address&&<a href={mapU(cView.address,cView.lat,cView.lng)} target="_blank" rel="noopener noreferrer" className="flex-1"><Btn dm={dm} v="outline" className="w-full">📍 Maps</Btn></a>}
-              <Btn v="purple" className="flex-1" onClick={()=>exportPDF(cView,products,"customer",settings)}>PDF</Btn>
-              <Btn v="sky" className="flex-1" onClick={()=>exportWord(cView,products,"customer",settings)}>Word</Btn>
+              <Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportPDF(cView,products,"customer",settings)}>PDF</Btn>
+              <Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportWord(cView,products,"customer",settings)}>Word</Btn>
             </div>
           </>);
         })()}
@@ -6458,7 +6461,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           <div className="flex gap-3"><span className="text-sm text-emerald-500 font-bold">Paid: {inr(paySh.paid)}</span><span className="text-sm text-red-500 font-bold">Due: {inr(paySh.pending)}</span></div>
           <div className="flex gap-2 flex-wrap">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">₹{q.toLocaleString("en-IN")}</button>)}</div>
           <Inp dm={dm} label="Amount (₹)" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="Enter amount"/>
-          <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
+          <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn dm={dm} v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
         </>}
       </Sheet>
 
@@ -6613,10 +6616,10 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   return <div key={p.id} className="flex items-center justify-between gap-2">
                     <span style={{color:t.sub,fontSize:12,flex:1}} className="truncate">{p.name}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:Math.max(0,(safeO(x.orderLines)[p.id]?.qty||0)-1),priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices[0]||0)}}}:x))}
+                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:Math.max(0,(safeO(x.orderLines)[p.id]?.qty||0)-1),priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices?.[0]||0)}}}:x))}
                         style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
                       <span style={{color:t.text,fontWeight:700,fontSize:13,minWidth:20,textAlign:"center"}}>{qty}</span>
-                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:(safeO(x.orderLines)[p.id]?.qty||0)+1,priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices[0]||0)}}}:x))}
+                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:(safeO(x.orderLines)[p.id]?.qty||0)+1,priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices?.[0]||0)}}}:x))}
                         style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
                     </div>
                   </div>;
