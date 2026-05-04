@@ -123,7 +123,7 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","QC","GPS","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","GPS","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
   factory: ["Dashboard","Customers","Deliveries","Supplies","Wastage","Production"],
@@ -260,6 +260,10 @@ const D_SETTINGS = {
   staffNames:[],
   lowStockThreshold: 5,
   bulkOrderEnabled: true,
+  agentInvoiceEnabled: true,
+  agentInvoiceShowPrices: true,
+  agentCollectEnabled: true,
+  agentCollectRequireNote: false,
   churnDays: 14,
   qcMode: "detailed",
   notifTargets: {
@@ -445,6 +449,168 @@ ${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit||"—"}</td><td>${r.qty}</td><
   document.body.appendChild(a); a.click();
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  exportAgentReceipt — A clean, professional delivery receipt for agents.
+//  Shows full order, replacements with deductions, partial payment collected,
+//  balance due, and a paper-trail footer. Admin-controlled via settings.
+// ─────────────────────────────────────────────────────────────────────────────
+function exportAgentReceipt(d, products, settings) {
+  const showPrices = settings?.agentInvoiceShowPrices !== false;
+  const co     = settings?.companyName     || "TAS Healthy World";
+  const cosub  = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
+  const gst    = settings?.companyGST      || "";
+  const coPhone= settings?.companyPhone    || "";
+  const rows   = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
+  const orderTotal = lineTotal(d.orderLines||{});
+  const replAmt    = +(d.replacement?.amount)||0;
+  const netAmt     = orderTotal - replAmt;
+  const collected  = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
+  const balanceDue = Math.max(0, netAmt - collected);
+  const receiptNo  = `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
+  const now        = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const statusColor= d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Delivery Receipt — ${d.customer}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;color:#1c1917;background:#fff;padding:0;max-width:420px;margin:0 auto}
+.wrap{padding:24px 20px}
+.brand-bar{background:#1e3a5f;color:#fff;padding:14px 20px;text-align:center}
+.brand-name{font-size:17px;font-weight:900;letter-spacing:0.02em}
+.brand-sub{font-size:10px;opacity:0.75;margin-top:2px}
+.receipt-title{text-align:center;padding:14px 20px 0;border-bottom:2px dashed #e5e5e5;padding-bottom:14px;margin-bottom:0}
+.receipt-no{font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+.receipt-date{font-size:10px;color:#9ca3af;margin-top:2px}
+.section{padding:12px 20px;border-bottom:1px solid #f3f4f6}
+.section-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px}
+.cust-name{font-size:16px;font-weight:800;color:#111827}
+.cust-detail{font-size:11px;color:#6b7280;margin-top:3px;line-height:1.5}
+.status-badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;margin-top:6px}
+.line-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f9fafb;font-size:12px}
+.line-name{color:#374151;flex:1}
+.line-qty{color:#6b7280;width:32px;text-align:center;font-weight:600}
+.line-price{color:#6b7280;width:60px;text-align:right;font-size:11px}
+.line-amt{color:#111827;width:64px;text-align:right;font-weight:700}
+.total-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13px}
+.repl-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;margin:0 20px 0}
+.repl-title{font-size:11px;font-weight:800;color:#92400e;margin-bottom:6px}
+.repl-detail{font-size:11px;color:#78716c;line-height:1.6}
+.pay-section{padding:12px 20px}
+.pay-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.balance-box{background:#111827;color:#fff;margin:0 20px;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.balance-label{font-size:11px;opacity:0.7;font-weight:700;text-transform:uppercase;letter-spacing:0.06em}
+.balance-amt{font-size:22px;font-weight:900}
+.balance-paid{background:#059669}
+.collected-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin:8px 20px;display:flex;justify-content:space-between;align-items:center}
+.trail{background:#f8fafc;margin:0 20px;border-radius:8px;padding:10px 12px;font-size:9px;color:#9ca3af;line-height:1.8;border:1px solid #e2e8f0}
+.trail b{color:#6b7280}
+.footer{text-align:center;padding:14px 20px 20px;font-size:10px;color:#9ca3af;line-height:1.7}
+.print-bar{position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,0.3);gap:10px}
+.print-bar a{background:#3b82f6;color:#fff;padding:5px 14px;border-radius:7px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap}
+@media print{@page{size:80mm auto;margin:0}.print-bar{display:none!important}body{padding:0;max-width:100%}}
+</style></head><body>
+<div class="brand-bar">
+  <div class="brand-name">${co}</div>
+  <div class="brand-sub">${cosub}${coPhone?` · ${coPhone}`:""}${gst?` · GST: ${gst}`:""}</div>
+</div>
+
+<div class="receipt-title">
+  <div class="receipt-no">Delivery Receipt · ${receiptNo}</div>
+  <div class="receipt-date">Issued: ${now}</div>
+</div>
+
+<!-- Customer -->
+<div class="section">
+  <div class="section-label">Deliver To</div>
+  <div class="cust-name">${d.customer||"—"}</div>
+  ${d.address?`<div class="cust-detail">📍 ${d.address}</div>`:""}
+  ${d.notes?`<div class="cust-detail" style="font-style:italic;color:#9ca3af">"${d.notes}"</div>`:""}
+  <div><span class="status-badge" style="background:${statusColor}18;color:${statusColor};border:1px solid ${statusColor}40">${d.status||"Pending"}</span></div>
+  <div class="cust-detail" style="margin-top:6px">Order date: <b>${d.date||"—"}</b>${d.deliveryDate&&d.deliveryDate!==d.date?` · Deliver by: <b>${d.deliveryDate}</b>`:""}</div>
+  <div class="cust-detail">Handled by: <b>${d.agent||d.createdBy||"—"}</b> · Ref: #${(d.id||"").slice(-8)}</div>
+</div>
+
+<!-- Items -->
+<div class="section">
+  <div class="section-label">Items Ordered</div>
+  ${rows.length===0?'<div style="font-size:12px;color:#9ca3af">No items</div>':rows.map(r=>`
+  <div class="line-row">
+    <span class="line-name">${r.name}</span>
+    <span class="line-qty">${r.qty}×</span>
+    ${showPrices?`<span class="line-price">₹${r.priceAmount.toLocaleString("en-IN")}</span><span class="line-amt">₹${(r.qty*r.priceAmount).toLocaleString("en-IN")}</span>`:`<span class="line-price"></span><span class="line-amt" style="color:#9ca3af">${r.qty} ${r.unit||"pcs"}</span>`}
+  </div>`).join("")}
+  ${showPrices&&orderTotal>0?`<div class="total-row" style="border-top:2px solid #111827;margin-top:6px;font-weight:700"><span style="color:#374151">Order Total</span><span style="color:#111827">₹${orderTotal.toLocaleString("en-IN")}</span></div>`:""}
+</div>
+
+<!-- Replacement (if any) -->
+${d.replacement?.done?`
+<div style="padding:10px 20px 0">
+<div class="repl-box">
+  <div class="repl-title">🔄 Replacement Made</div>
+  <div class="repl-detail">
+    ${d.replacement.item?`<b>Item:</b> ${d.replacement.item}<br>`:""}
+    ${d.replacement.qty?`<b>Quantity:</b> ${d.replacement.qty}<br>`:""}
+    ${d.replacement.reason?`<b>Reason:</b> ${d.replacement.reason}<br>`:""}
+    ${showPrices&&replAmt>0?`<b style="color:#ea580c">Amount deducted: −₹${replAmt.toLocaleString("en-IN")}</b>`:""}
+  </div>
+</div>
+</div>`:""}
+
+<!-- Payment Summary -->
+${showPrices?`
+<div class="pay-section">
+  <div class="section-label">Payment Summary</div>
+  ${orderTotal>0?`<div class="pay-row"><span style="color:#6b7280">Order Total</span><span style="font-weight:600">₹${orderTotal.toLocaleString("en-IN")}</span></div>`:""}
+  ${replAmt>0?`<div class="pay-row"><span style="color:#ea580c">Replacement Deduction</span><span style="color:#ea580c;font-weight:700">−₹${replAmt.toLocaleString("en-IN")}</span></div>`:""}
+  ${replAmt>0?`<div class="pay-row" style="border-top:1px solid #e5e7eb;padding-top:6px;font-weight:700"><span>Net Payable</span><span>₹${netAmt.toLocaleString("en-IN")}</span></div>`:""}
+</div>
+${collected>0?`<div class="collected-box"><div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#059669">✓ Amount Collected</div><div style="font-size:9px;color:#6b7280;margin-top:1px">Received at time of delivery</div></div><div style="font-size:18px;font-weight:900;color:#059669">₹${collected.toLocaleString("en-IN")}</div></div>`:""}
+<div style="padding:8px 20px 12px">
+<div class="balance-box ${balanceDue===0?"balance-paid":""}">
+  <div>
+    <div class="balance-label">${balanceDue===0?"✓ Fully Paid":"Balance Due"}</div>
+    ${balanceDue===0?'<div style="font-size:10px;opacity:0.7;margin-top:2px">No amount outstanding</div>':""}
+  </div>
+  <div class="balance-amt">₹${balanceDue.toLocaleString("en-IN")}</div>
+</div>
+</div>`:""}
+
+<!-- Paper Trail -->
+<div style="padding:8px 20px 0">
+<div class="trail">
+  <b>Paper Trail</b><br>
+  Receipt No: ${receiptNo}<br>
+  Delivery ID: ${(d.id||"").slice(-12)}<br>
+  Delivery Date: ${d.date||"—"}<br>
+  Status: ${d.status||"—"}<br>
+  Created by: ${d.createdBy||"—"}<br>
+  ${d.agent?`Assigned Agent: ${d.agent}<br>`:""}
+  Issued at: ${now}<br>
+  ${d.replacement?.done?`Replacement logged: YES — ${d.replacement.item||"—"}<br>`:""}
+  ${collected>0?`Payment collected: ₹${collected.toLocaleString("en-IN")}<br>`:""}
+</div>
+</div>
+
+<div class="footer">
+  ${co} · ${cosub}<br>
+  This is a computer-generated delivery receipt and serves as an official record.<br>
+  For queries contact: ${coPhone||"your account manager"}
+</div>
+
+<div class="print-bar"><span>🧾 Delivery Receipt — ${d.customer}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;">🖨 Print</a></div></div>
+<script>window.addEventListener("load",function(){window.print();});</script>
+</body></html>`;
+
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
 
 function shareWhatsApp(record, products, type, settings) {
   const rows   = lineRows(record.orderLines||record.orders||{}, products);
@@ -1764,7 +1930,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     return()=>clearInterval(interval);
   },[]);
   const activeC=customers.filter(c=>c.active);
-  const totalRev=customers.reduce((a,c)=>a+(c.paid||0),0);
+  const totalReplDeductions=deliveries.reduce((a,d)=>a+(+d.replacement?.amount||0),0);
+  const totalRev=customers.reduce((a,c)=>a+(c.paid||0),0)-totalReplDeductions;
   const totalDue=customers.reduce((a,c)=>a+(c.pending||0),0);
   const totalExpOp=expenses.reduce((a,e)=>a+(e.amount||0),0);
   const totalSupC=supplies.reduce((a,s)=>a+(s.cost||0),0);
@@ -1812,13 +1979,15 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const fDeliv=useMemo(()=>deliveries.filter(d=>{
     const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q);
     const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
-    return matchSearch&&matchStatus;
-  }),[deliveries,q,delivStatusFilter]);
+    // Agents only see their own deliveries (assigned or created by them)
+    const matchAgent=sess.role!=="agent"||(d.agentId===sess.id||d.agent===sess.name||d.createdBy===sess.name||d.agent===displayName||d.createdBy===displayName);
+    return matchSearch&&matchStatus&&matchAgent;
+  }),[deliveries,q,delivStatusFilter,sess.role,sess.id,sess.name,displayName]);
   const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
-  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""}});
+  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""},partialPayment:{enabled:false,amount:""}});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:""});
   const blkP=()=>({id:"",name:"",unit:"pcs",prices:[5,6]});
@@ -1840,11 +2009,13 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [lastSync,setLastSync]=useState(null);
   useEffect(()=>{const fn=ts=>{setLastSync(ts);};_syncListeners.add(fn);return()=>_syncListeners.delete(fn);},[]);
   const [ptSh,setPtSh]=useState(null);
-  const [ptF,setPtF]=useState(()=>({date:today(),shift:"Morning",product:"",target:0,actual:0,notes:""}));
+  const [ptF,setPtF]=useState(()=>({date:today(),shift:"",product:"",actual:0,notes:"",batchId:"",batchLabel:"Batch 1",qcGrade:"A",qcNotes:""}));
   const [ptDateFilter,setPtDateFilter]=useState("today");
   const [nbSh,setNbSh]=useState(false);
   const [nbF,setNbF]=useState({title:"",body:"",pinned:false});
   const [hvSh,setHvSh]=useState(false);
+  const [prodSubTab,setProdSubTab]=useState("batches");
+  const [openRecipe,setOpenRecipe]=useState(null);
   const [hvF,setHvF]=useState({shift:"Morning",date:today(),note:"",nextShift:"",issues:"",loggedBy:""});
   const [bulkSelect,setBulkSelect]=useState(false);
   const [bulkSelected,setBulkSelected]=useState(new Set());
@@ -1871,6 +2042,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Overdue Payment Alerts
   const [overdueAlertDays,setOverdueAlertDays]=useState(7);
   // Bulk Order Entry
+  const [collectSh,setCollectSh]=useState(null); // delivery object for collect modal
+  const [collectNote,setCollectNote]=useState("");
+  const [collectAmt,setCollectAmt]=useState("");
+  const [lastReceiptData,setLastReceiptData]=useState(null); // inline receipt shown after collection
   const [bulkOrderSh,setBulkOrderSh]=useState(false);
   const [bulkOrderDate,setBulkOrderDate]=useState(today());
   const [bulkOrderStatus,setBulkOrderStatus]=useState("Pending");
@@ -1895,7 +2070,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [plCustomTo,setPlCustomTo]=useState(today());
   // Production search + auto-deduct toggle
   const [ptSearch,setPtSearch]=useState("");
-  const [ptAutoDeduct,setPtAutoDeduct]=useState(false);
+  const ptAutoDeduct=settings?.autoDeductEnabled!==false;
   const [ptCustomFrom,setPtCustomFrom]=useState("");
   const [ptCustomTo,setPtCustomTo]=useState(today());
   // Bulk delete cutoff
@@ -1920,8 +2095,14 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       setCust(p=>p.map(c=>c.id===dF.customerId?{...c,pending:Math.max(0,c.pending-replAmt)}:c));
       addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
     }
-    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid()}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");captureGPS("delivery_saved",dF.customer);}
-    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
+    // Handle partial payment on delivery creation/edit
+    const partialAmt = dF.partialPayment?.enabled ? (+dF.partialPayment?.amount||0) : 0;
+    if(partialAmt>0 && dF.customerId){
+      setCust(p=>p.map(c=>c.id===dF.customerId?{...c,paid:(c.paid||0)+partialAmt,pending:Math.max(0,(c.pending||0)-partialAmt)}:c));
+      addLog("Partial payment on delivery",`${dF.customer} — ${inr(partialAmt)} collected`);
+    }
+    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid(),partialPayment:{...dF.partialPayment,amount:partialAmt}}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");captureGPS("delivery_saved",dF.customer);}
+    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id,partialPayment:{...dF.partialPayment,amount:partialAmt}}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
     setDsh(null);
   }
   function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
@@ -1937,8 +2118,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   }
   function saveBulkOrders(){
     const toAdd=bulkOrderRows.filter(r=>r.include&&r.customer&&Object.values(safeO(r.orderLines)).some(l=>(l.qty||0)>0));
-    if(!toAdd.length){notify("Select at least one customer");return;}
-    const newDelivs=toAdd.map(r=>({...r,id:uid(),date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts()}));
+    if(!toAdd.length){notify("Select at least one customer with items");return;}
+    // eslint-disable-next-line no-unused-vars
+    const newDelivs=toAdd.map(({include,...r})=>({...r,id:uid(),date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}}));
     setDeliv(p=>[...p,...newDelivs]);
     addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate}`);
     notify(`${newDelivs.length} orders created ✓`);
@@ -2027,21 +2209,28 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     if(!ptF.product.trim()){notify("Product required");return;}
     const productName=ptF.product==="__custom__"?(ptF.customProduct||"").trim():ptF.product;
     if(!productName){notify("Product name required");return;}
-    const rec={...ptF,product:productName,target:+ptF.target||0,actual:+ptF.actual||0};
+    const rec={...ptF,product:productName,actual:+ptF.actual||0,
+      batchId:ptF.batchId||uid(),
+      batchLabel:ptF.batchLabel||"Batch 1",
+      qcGrade:ptF.qcGrade||"A",
+      qcNotes:ptF.qcNotes||"",
+      shift:ptF.shift||"",
+    };
+    // Remove legacy target field
+    delete rec.target;
     if(ptSh==="add"){
       const deduction=runAutoDeduct(productName,rec.actual,null);
       const saved={...rec,id:uid(),createdAt:ts(),deduction:deduction||null};
       setProdTargets(p=>[saved,...p]);
-      addLog("Production logged",`${rec.product} — ${rec.shift} ${rec.date} — ${rec.actual}/${rec.target} units`);
+      addLog("Production logged",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units${rec.shift?" ("+rec.shift+")":""}`);
       captureGPS("production_logged",rec.product);
-      if(!ptAutoDeduct) notify("Production saved ✓");
+      if(!ptAutoDeduct) notify("Batch saved ✓");
     } else {
       const prev=prodTargets.find(x=>x.id===ptSh.id);
       const deduction=runAutoDeduct(productName,rec.actual,prev?.actual);
-      // Merge deduction: keep old if nothing new happened
       const mergedDeduction=deduction||(prev?.deduction||null);
       setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
-      addLog("Production updated",`${rec.product} — ${rec.actual}/${rec.target} units`);
+      addLog("Production updated",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units`);
       captureGPS("production_logged",rec.product);
       if(!ptAutoDeduct) notify("Updated ✓");
     }
@@ -2203,7 +2392,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const supUnits=settings?.supplyUnits||["kg","g","L","mL","pcs","bags","boxes","dozen"];
 
   // Tab icons for nav
-  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅","GPS":"📍","Settings":"⚙️"};
+  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","GPS":"📍","Settings":"⚙️"};
 
   if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
@@ -2361,8 +2550,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               {key:"logWastage",   icon:"🗑️",label:"Log Wastage",    color:"#f97316", action:()=>{setWF(blkW());setWSh("add");setTab("Wastage");}},
               {key:"addExpense",   icon:"💸",label:"Add Expense",    color:"#ef4444", action:()=>{setEf(blkE());setEsh("add");setTab("Expenses");}},
               {key:"logSupply",    icon:"📦",label:"Log Supply",     color:"#8b5cf6", action:()=>{setSf(blkS());setSsh("add");setTab("Supplies");}},
-              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0],product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");setTab("Production");}},
-              {key:"qcCheck",      icon:"✅",label:"QC Check",       color:"#14b8a6", action:()=>{setQcF({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");setTab("QC");}},
+              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{const nextNum=(prodTargets.filter(x=>x.date===today()).length)+1;setPtF({date:today(),shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:""});setPtSh("add");setTab("Production");}},
+              {key:"qcCheck",      icon:"✅",label:"QC Check",       color:"#14b8a6", action:()=>{setQcF({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");setTab("Production");}},
             ];
             const activeKeys=settings?.quickActions||["newDelivery","markDone","logWastage","addExpense"];
             const visibleQA=ALL_QA.filter(q=>activeKeys.includes(q.key));
@@ -4190,8 +4379,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>
                   ))}
                   {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
+                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1 pt-1 flex justify-between text-xs"><span style={{color:"#10b981"}}>Collected</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+d.partialPayment.amount)}</span></div>}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
+                {d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:10,padding:"6px 10px",marginBottom:8}} className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-500">💰 Partial collected</span>{canSeePrices&&<span className="text-xs font-bold text-emerald-500">{inr(+d.partialPayment.amount)}</span>}</div>}
                 {d.replacement?.done&&(
                   <div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
                     <p className="text-[11px] font-semibold text-orange-500 mb-0.5">🔄 Replacement Made</p>
@@ -4203,8 +4394,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,display:"inline-flex",alignItems:"center",gap:6,WebkitTapHighlightColor:"transparent",textDecoration:"none",flexShrink:0}}>📍 Nav</a>}
                   <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
                   <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
+                  {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
                   <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>WA</button>
                   {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
+                  {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
                   {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
                 </div>
               </div></Card>
@@ -4498,10 +4691,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const mData=months.map(m=>({
             month:m.slice(5)+"/"+m.slice(2,4),
             monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),
-            revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
+            revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),
             supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),
             expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),
             wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),
+            replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),
             deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length,
           })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0}));
 
@@ -4510,7 +4704,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const filtS=supplies.filter(s=>s.date>=dateFrom&&s.date<=dateTo);
           const filtE=expenses.filter(e=>e.date>=dateFrom&&e.date<=dateTo);
           const filtW=(wastage||[]).filter(w=>w.date>=dateFrom&&w.date<=dateTo);
-          const totRev=filtD.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const totRev=filtD.reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);
+          const totReplDeducted=filtD.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
           const totSupC=filtS.reduce((s,x)=>s+(x.cost||0),0);
           const totExpC=filtE.reduce((s,e)=>s+(e.amount||0),0);
           const totWasteC=filtW.reduce((s,w)=>s+(w.cost||0),0);
@@ -4611,7 +4806,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </div>
                 <div className="grid grid-cols-2 gap-2 shrink-0">
                   {[
-                    {label:"Revenue",val:inr(totRev),color:"#10b981",sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% MoM`:null},
+                    {label:"Net Revenue",val:inr(totRev),color:"#10b981",sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% MoM`:totReplDeducted>0?`−${inr(totReplDeducted)} replacements`:null},
                     {label:"Total Costs",val:inr(totCost),color:"#ef4444",sub:`avg ${inr(avgMonthlyCost)}/mo`},
                     {label:"Collection Rate",val:`${collectionRate}%`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",sub:`${inr(totDue)} due`},
                     {label:"Avg Monthly Rev",val:inr(avgMonthlyRev),color:"#f59e0b",sub:`avg profit ${inr(avgMonthlyProfit)}/mo`},
@@ -4960,15 +5155,31 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const cancelRate=totalScheduled>0?Math.round(cancelCount/totalScheduled*100):0;
 
           // ── Product sales ──
+          // Note: replacement deductions are spread proportionally across products since
+          // replacements are logged as a flat amount not tied to a specific product line.
+          // We subtract the full delivery replacement from that delivery's revenue share per product.
           const prodSales=products.map(p=>{
             const qty=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0),0);
-            const rev=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
-            return {...p,totalQty:qty,totalRev:rev,deliveryCount:delivered.filter(d=>(safeO(d.orderLines)[p.id]?.qty||0)>0).length};
+            const grossRev=delivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
+            // Subtract proportional replacement deduction for this product
+            const replDeducted=delivered.reduce((s,d)=>{
+              const dTotal=lineTotal(d.orderLines);
+              const pLineAmt=(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0);
+              const replAmt=+(d.replacement?.amount||0);
+              if(!replAmt||!dTotal) return s;
+              return s+Math.round((pLineAmt/dTotal)*replAmt);
+            },0);
+            const rev=Math.max(0,grossRev-replDeducted);
+            return {...p,totalQty:qty,totalRev:rev,grossRev,replDeducted,deliveryCount:delivered.filter(d=>(safeO(d.orderLines)[p.id]?.qty||0)>0).length};
           }).sort((a,b)=>b.totalRev-a.totalRev);
           const totalProductRev=prodSales.reduce((s,p)=>s+p.totalRev,0);
 
           // ── Customer revenue ──
-          const custRev=customers.map(c=>({...c,totalOrders:deliveries.filter(d=>d.customerId===c.id).length,totalRev:deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)})).sort((a,b)=>b.totalRev-a.totalRev);
+          const custRev=customers.map(c=>{
+            const cDelivs=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");
+            const totalRev=cDelivs.reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);
+            return {...c,totalOrders:deliveries.filter(d=>d.customerId===c.id).length,totalRev:Math.max(0,totalRev)};
+          }).sort((a,b)=>b.totalRev-a.totalRev);
           const totalPortfolioRev=custRev.reduce((s,c)=>s+c.totalRev,0);
           // Revenue concentration: top 20% of customers
           const top20pct=Math.max(1,Math.ceil(custRev.length*0.2));
@@ -5345,93 +5556,47 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         })()}
 
 
-        {/* PRODUCTION PLANNING */}
+        {/* PRODUCTION + QC + WASTAGE (merged) */}
         {tab==="Production"&&(()=>{
           const todayStr=today();
           const yesterdayStr=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
           const last7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
           const last30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
-
-          // Filter records based on active date filter
-          const filterDates = ptDateFilter==="today"?[todayStr]:ptDateFilter==="yesterday"?[yesterdayStr]:ptDateFilter==="week"?last7:ptDateFilter==="month"?last30:ptDateFilter==="custom"&&ptCustomFrom?Array.from({length:Math.min(365,Math.ceil((new Date(ptCustomTo||todayStr)-new Date(ptCustomFrom))/86400000)+1)},(_,i)=>{const d=new Date(ptCustomFrom);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);}):null;
-          const filteredPT = (filterDates ? prodTargets.filter(x=>filterDates.includes(x.date)) : prodTargets)
-            .filter(x=>!ptSearch||x.product?.toLowerCase().includes(ptSearch.toLowerCase())||x.shift?.toLowerCase().includes(ptSearch.toLowerCase())||x.notes?.toLowerCase().includes(ptSearch.toLowerCase()));
-
-          // Get unique dates in filtered set, sorted newest first
-          const uniqueDates=[...new Set(filteredPT.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
-
+          const filterDates=ptDateFilter==="today"?[todayStr]:ptDateFilter==="yesterday"?[yesterdayStr]:ptDateFilter==="week"?last7:ptDateFilter==="month"?last30:ptDateFilter==="custom"&&ptCustomFrom?Array.from({length:Math.min(365,Math.ceil((new Date(ptCustomTo||todayStr)-new Date(ptCustomFrom))/86400000)+1)},(_,i)=>{const d=new Date(ptCustomFrom);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);}):null;
+          const filteredPT=(filterDates?prodTargets.filter(x=>filterDates.includes(x.date)):prodTargets).filter(x=>!ptSearch||x.product?.toLowerCase().includes(ptSearch.toLowerCase())||x.shift?.toLowerCase().includes(ptSearch.toLowerCase())||x.notes?.toLowerCase().includes(ptSearch.toLowerCase())||x.batchLabel?.toLowerCase().includes(ptSearch.toLowerCase()));
           const todayPT=prodTargets.filter(x=>x.date===todayStr);
-          const labelFor=d=>d===todayStr?"Today":d===yesterdayStr?"Yesterday":d;
-
+          const allQty=prodTargets.reduce((s,x)=>s+(+x.actual||0),0);
+          const GRADES=[{g:"A",color:"#10b981",label:"Pass — Grade A"},{g:"B",color:"#f59e0b",label:"Pass — Grade B"},{g:"C",color:"#f97316",label:"Marginal — Grade C"},{g:"F",color:"#ef4444",label:"Fail — Reject"}];
+          const gradeColor=g=>GRADES.find(x=>x.g===g)?.color||"#6b7280";
+          const uniqueDates=[...new Set(filteredPT.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
+          const filteredWaste=(filterDates?(wastage||[]).filter(w=>filterDates.includes(w.date)):(wastage||[])).filter(w=>!ptSearch||w.product?.toLowerCase().includes(ptSearch.toLowerCase())||w.type?.toLowerCase().includes(ptSearch.toLowerCase()));
+          const filteredQC=(filterDates?(qcLogs||[]).filter(q=>filterDates.includes(q.date)):(qcLogs||[])).filter(q=>!ptSearch||q.product?.toLowerCase().includes(ptSearch.toLowerCase())||q.grade?.toLowerCase().includes(ptSearch.toLowerCase()));
           return <>
-            {/* KPI cards for production */}
-            {prodTargets.length>0&&(()=>{
-              const allTarget=prodTargets.reduce((s,x)=>s+x.target,0);
-              const allActual=prodTargets.reduce((s,x)=>s+x.actual,0);
-              const overallEff=allTarget>0?Math.round(allActual/allTarget*100):0;
-              const hitTarget=prodTargets.filter(x=>x.actual>=x.target).length;
-              const hitRate=prodTargets.length>0?Math.round(hitTarget/prodTargets.length*100):0;
-              const costPerUnit=allActual>0?Math.round(totalSupC/allActual):0;
-              return <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard dm={dm} label="Overall Efficiency" value={`${overallEff}%`} sub={`${allActual}/${allTarget} units`} accent={overallEff>=90?"#10b981":overallEff>=75?"#f59e0b":"#ef4444"}/>
-                  <StatCard dm={dm} label="Target Hit Rate" value={`${hitRate}%`} sub={`${hitTarget}/${prodTargets.length} sessions`} accent={hitRate>=80?"#10b981":hitRate>=60?"#f59e0b":"#ef4444"}/>
-                  <StatCard dm={dm} label="Total Produced" value={allActual.toLocaleString("en-IN")} sub="All time units" accent="#8b5cf6"/>
-                  <StatCard dm={dm} label="Total Target" value={allTarget.toLocaleString("en-IN")} sub="All time targets" accent="#6366f1"/>
-                </div>
-                {allActual>0&&<Card dm={dm} className="p-4 flex items-center gap-4">
-                  <div style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:14,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🧮</div>
-                  <div>
-                    <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-0.5">Cost Per Unit Produced</p>
-                    <p style={{color:t.text}} className="font-black text-xl">{inr(costPerUnit)}<span style={{color:t.sub}} className="text-sm font-medium"> / unit</span></p>
-                    <p style={{color:t.sub}} className="text-xs mt-0.5">Total supply cost {inr(totalSupC)} ÷ {allActual.toLocaleString("en-IN")} units produced</p>
-                  </div>
-                </Card>}
-              </>;
-            })()}
-            {/* Header row */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex gap-2 overflow-x-auto pb-0.5 flex-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
-                <Pill dm={dm} c="amber">{todayPT.length} today</Pill>
-                <Pill dm={dm} c={todayPT.length>0&&todayPT.every(x=>x.actual>=x.target)?"green":"red"}>
-                  {todayPT.reduce((s,x)=>s+x.actual,0)} / {todayPT.reduce((s,x)=>s+x.target,0)} units
-                </Pill>
-                <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>∞ {prodTargets.length} records</span>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",prodTargets,[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Target",key:"target",num:true},{label:"Actual",key:"actual",num:true},{label:"Efficiency",val:r=>r.target>0?Math.round((r.actual/r.target)*100)+"%":"—"},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
-                <Btn dm={dm} size="sm" onClick={()=>{setPtF({date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",product:products[0]?.name||"",target:0,actual:0,notes:""});setPtSh("add");}}>+ Log</Btn>
-              </div>
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard dm={dm} label="Total Batches" value={[...new Set(prodTargets.filter(x=>x.batchId).map(x=>x.batchId))].length||prodTargets.length} sub={`${todayPT.length} today`} accent="#8b5cf6"/>
+              <StatCard dm={dm} label="Units Produced" value={allQty.toLocaleString("en-IN")} sub="All time" accent="#6366f1"/>
+              <StatCard dm={dm} label="QC Checks" value={(qcLogs||[]).length} sub={`${Math.round((qcLogs||[]).filter(q=>q.grade!=="F").length/Math.max((qcLogs||[]).length,1)*100)}% pass rate`} accent="#14b8a6"/>
+              <StatCard dm={dm} label="Wastage Records" value={(wastage||[]).length} sub={`${inr((wastage||[]).reduce((s,w)=>s+(w.cost||0),0))} total cost`} accent="#f97316"/>
             </div>
-
-            {/* Search + Auto-Deduct toggle */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div style={{flex:1,background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px",minHeight:48}}>
-                <span style={{color:t.sub,fontSize:14}}>🔍</span>
-                <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search product, shift, notes…"
-                  style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:15,padding:"10px 0"}}/>
-                {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,lineHeight:1,background:"none",border:"none",cursor:"pointer",minWidth:28,minHeight:28}}>×</button>}
-              </div>
-              {/* Auto-Deduct toggle */}
-              <div style={{background:ptAutoDeduct?(dm?"#10b98120":"#ecfdf5"):(dm?"rgba(255,255,255,0.04)":"#f9f9f8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":t.border}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",transition:"all 0.2s",minHeight:48}}
-                onClick={()=>setPtAutoDeduct(v=>!v)}>
-                <div style={{width:36,height:20,borderRadius:99,background:ptAutoDeduct?"#10b981":t.border,padding:2,display:"flex",alignItems:"center",justifyContent:ptAutoDeduct?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0}}>
-                  <div style={{width:16,height:16,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
-                </div>
-                <div>
-                  <p style={{color:ptAutoDeduct?"#10b981":t.text,fontSize:12,fontWeight:700,lineHeight:1}}>Auto-Deduct</p>
-                  <p style={{color:t.sub,fontSize:10,marginTop:2}}>{ptAutoDeduct?"ON":"OFF"}</p>
-                </div>
-              </div>
+            {/* Sub-tab nav */}
+            <div className="flex gap-2 overflow-x-auto pb-0.5">
+              {[["batches","🏭 Batches"],["wastage","🗑️ Wastage"],["qc","✅ QC"],["handover","📋 Handovers"]].map(([id,label])=>(
+                <button key={id} onClick={()=>setProdSubTab(id)}
+                  style={{background:prodSubTab===id?(dm?"#f59e0b":"#1c1917"):t.inp,color:prodSubTab===id?(dm?"#000":"#fff"):t.sub,borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
+                  {label}
+                </button>
+              ))}
             </div>
-            {ptAutoDeduct&&<div style={{background:"#10b98112",border:"1px solid #10b98130",borderRadius:12,padding:"10px 14px"}}>
-              <p style={{color:"#10b981",fontSize:12,fontWeight:600}}>🤖 Smart Auto-Deduct is ON</p>
-              <p style={{color:t.sub,fontSize:11,marginTop:3}}>When you log actual units produced, the matching supply item's quantity is automatically reduced by that amount. You'll see exactly what changed in the notification.</p>
-            </div>}
-
-            {/* Date filter pills */}
+            {/* Shared search + date filter */}
+            <div style={{background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px",minHeight:48}}>
+              <span style={{color:t.sub,fontSize:14}}>🔍</span>
+              <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search product, batch, notes…"
+                style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:15,padding:"10px 0"}}/>
+              {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,background:"none",border:"none",cursor:"pointer",minWidth:28,minHeight:28}}>×</button>}
+            </div>
             <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-              {[["today","Today"],["yesterday","Yesterday"],["week","Last 7 Days"],["month","Last 30 Days"],["all","All Time"],["custom","📅 Custom"]].map(([val,label])=>(
+              {[["today","Today"],["yesterday","Yesterday"],["week","7 Days"],["month","30 Days"],["all","All"],["custom","📅"]].map(([val,label])=>(
                 <button key={val} onClick={()=>setPtDateFilter(val)}
                   style={ptDateFilter===val?{background:dm?"#f59e0b":"#1c1917",color:dm?"#000":"#fff"}:{background:t.inp,color:t.sub}}
                   className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0">{label}</button>
@@ -5440,151 +5605,196 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {ptDateFilter==="custom"&&<div className="flex gap-2 items-center flex-wrap">
               <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
                 <span style={{color:t.sub,fontSize:11,fontWeight:600}}>From</span>
-                <input type="date" value={ptCustomFrom} onChange={e=>setPtCustomFrom(e.target.value)}
-                  style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+                <input type="date" value={ptCustomFrom} onChange={e=>setPtCustomFrom(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
               </div>
               <span style={{color:t.sub,fontSize:12}}>→</span>
               <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
                 <span style={{color:t.sub,fontSize:11,fontWeight:600}}>To</span>
-                <input type="date" value={ptCustomTo} onChange={e=>setPtCustomTo(e.target.value)}
-                  style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+                <input type="date" value={ptCustomTo} onChange={e=>setPtCustomTo(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
               </div>
-              {ptCustomFrom&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>
-                {filteredPT.length} records · {Array.from(new Set(filteredPT.map(x=>x.date))).length} days
-              </span>}
             </div>}
 
-            {/* Summary bar for filtered period */}
-            {filteredPT.length>0&&(()=>{
-              const fTarget=filteredPT.reduce((s,x)=>s+x.target,0);
-              const fActual=filteredPT.reduce((s,x)=>s+x.actual,0);
-              const fPct=fTarget>0?Math.round(fActual/fTarget*100):0;
-              return <div style={{background:t.inp,border:`1px solid ${t.inpB}`}} className="rounded-2xl px-4 py-3">
-                <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">
-                  {ptDateFilter==="today"?"Today":ptDateFilter==="yesterday"?"Yesterday":ptDateFilter==="week"?"Last 7 Days":ptDateFilter==="month"?"Last 30 Days":"All Time"} — Summary
-                </p>
-                {(()=>{
-                  const totalDeducted=filteredPT.filter(x=>x.deduction).reduce((s,x)=>s+(x.deduction.deducted||0),0);
-                  const deductedItems=[...new Set(filteredPT.filter(x=>x.deduction).map(x=>x.deduction.supplyItem))];
-                  return <>
-                    <div className={`grid gap-3 mb-3 ${totalDeducted>0?"grid-cols-4":"grid-cols-3"}`}>
-                      <div className="text-center"><p style={{color:t.text}} className="font-black text-lg">{fTarget}</p><p style={{color:t.sub}} className="text-[10px]">Target</p></div>
-                      <div className="text-center"><p className={`font-black text-lg ${fActual>=fTarget?"text-emerald-500":"text-amber-500"}`}>{fActual}</p><p style={{color:t.sub}} className="text-[10px]">Actual</p></div>
-                      <div className="text-center"><p className={`font-black text-lg ${fPct>=100?"text-emerald-500":fPct>=75?"text-amber-500":"text-red-500"}`}>{fPct}%</p><p style={{color:t.sub}} className="text-[10px]">Efficiency</p></div>
-                      {totalDeducted>0&&<div className="text-center"><p className="font-black text-lg text-emerald-500">{totalDeducted}</p><p style={{color:t.sub}} className="text-[10px]">Supply Deducted</p></div>}
+            {/* ── BATCHES ── */}
+            {prodSubTab==="batches"&&<>
+              <div className="flex items-center justify-between">
+                <Pill dm={dm} c="purple">{filteredPT.length} runs · {filteredPT.reduce((s,x)=>s+(+x.actual||0),0)} units</Pill>
+                <div className="flex gap-2">
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty",key:"actual",num:true},{label:"QC",key:"qcGrade"},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
+                  <Btn dm={dm} size="sm" onClick={()=>{
+                    const todayBatches=[...new Set(prodTargets.filter(x=>x.date===todayStr&&x.batchId).map(x=>x.batchId))];
+                    const nextNum=todayBatches.length+1;
+                    setPtF({date:todayStr,shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:""});
+                    setPtSh("add");
+                  }}>+ New Batch</Btn>
+                </div>
+              </div>
+              {uniqueDates.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No batches yet. Tap + New Batch to start.":ptSearch?"No matches.":"No records for this period."}</p>}
+              {uniqueDates.map(date=>{
+                const dayRecs=filteredPT.filter(x=>x.date===date).sort((a,b)=>(a.batchLabel||"").localeCompare(b.batchLabel||""));
+                const dayQty=dayRecs.reduce((s,x)=>s+(+x.actual||0),0);
+                const dayLabel=date===todayStr?"Today":date===yesterdayStr?"Yesterday":date;
+                const dayWaste=(wastage||[]).filter(w=>w.date===date);
+                return <Card key={date} dm={dm}><div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p style={{color:t.text,fontWeight:800,fontSize:14}}>{dayLabel}</p>
+                      <p style={{color:t.sub,fontSize:11}}>{dayRecs.length} batch{dayRecs.length!==1?"es":""} · {dayQty} units</p>
                     </div>
-                    {deductedItems.length>0&&<div style={{background:"#10b98110",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
-                      <p style={{color:"#10b981",fontSize:10,fontWeight:700}}>📦 Deducted from: {deductedItems.join(", ")}</p>
-                    </div>}
-                  </>;
-                })()}
-                <div style={{background:t.border,height:6,borderRadius:6,overflow:"hidden"}}>
-                  <div style={{width:`${Math.min(fPct,100)}%`,background:fPct>=100?"#10b981":fPct>=75?"#f59e0b":"#ef4444",height:"100%",borderRadius:6,transition:"width 0.6s"}}/>
-                </div>
-              </div>;
-            })()}
-
-            {/* Per-product breakdown for filtered period */}
-            {filteredPT.length>0&&products.some(p=>filteredPT.find(x=>x.product===p.name))&&<Card dm={dm} className="overflow-hidden">
-              <div className="px-4 pt-4 pb-2"><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">By Product</p></div>
-              <Hr dm={dm}/>
-              {products.map(p=>{
-                const pRecs=filteredPT.filter(x=>x.product===p.name);
-                if(pRecs.length===0)return null;
-                const pTarget=pRecs.reduce((s,x)=>s+x.target,0);
-                const pActual=pRecs.reduce((s,x)=>s+x.actual,0);
-                const pct=pTarget>0?Math.round(pActual/pTarget*100):0;
-                return <div key={p.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p style={{color:t.text}} className="text-sm font-semibold">{p.name}</p>
-                    <span className={`text-sm font-black ${pct>=100?"text-emerald-500":pct>=75?"text-amber-500":"text-red-500"}`}>{pct}%</span>
+                    {dayWaste.length>0&&<span style={{background:"#f9731620",color:"#f97316",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700}}>⚠️ {dayWaste.length} wastage</span>}
                   </div>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span style={{color:t.sub}}>Target: <strong style={{color:t.text}}>{pTarget}</strong></span>
-                    <span style={{color:t.sub}}>Actual: <strong style={{color:t.text}}>{pActual}</strong></span>
-                    <span style={{color:t.sub}}>Diff: <strong className={pActual>=pTarget?"text-emerald-500":"text-red-500"}>{pActual>=pTarget?"+":""}{pActual-pTarget}</strong></span>
-                  </div>
-                  <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
-                    <div style={{width:`${Math.min(pct,100)}%`,background:pct>=100?"#10b981":pct>=75?"#f59e0b":"#ef4444",height:"100%",borderRadius:5,transition:"width 0.5s"}}/>
-                  </div>
-                </div>;
-              })}
-            </Card>}
-
-            {/* Records grouped by date */}
-            {uniqueDates.map(dateStr=>{
-              const dayRecs=filteredPT.filter(x=>x.date===dateStr);
-              const dayTarget=dayRecs.reduce((s,x)=>s+x.target,0);
-              const dayActual=dayRecs.reduce((s,x)=>s+x.actual,0);
-              const dayPct=dayTarget>0?Math.round(dayActual/dayTarget*100):0;
-              return <Card key={dateStr} dm={dm}><div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p style={{color:t.text}} className="font-semibold">{labelFor(dateStr)}</p>
-                    <p style={{color:t.sub}} className="text-xs">{dayRecs.length} {dayRecs.length===1?"entry":"entries"} · Target {dayTarget} · Actual {dayActual}</p>
-                  </div>
-                  <span className={`font-black text-lg ${dayPct>=100?"text-emerald-500":dayPct>=75?"text-amber-500":"text-red-500"}`}>{dayPct}%</span>
-                </div>
-                {dayRecs.map(r=>(
-                  <div key={r.id} style={{borderBottom:`1px solid ${t.border}`}} className="py-2.5 last:border-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span style={{color:t.text}} className="text-sm font-semibold">{r.product}</span>
-                          <Pill dm={dm} c="sky">{r.shift}</Pill>
+                  {dayRecs.map((r,ri)=>{
+                    const rWaste=(wastage||[]).filter(w=>w.batchId===r.batchId);
+                    const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
+                    return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?12:0,marginTop:ri>0?12:0}}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div style={{flex:1}}>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:800}}>{r.batchLabel||"Batch"}</span>
+                            <span style={{color:t.text,fontWeight:700,fontSize:13}}>{r.product}</span>
+                            {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{r.shift}</span>}
+                            {r.qcGrade&&<span style={{background:gradeColor(r.qcGrade)+"20",color:gradeColor(r.qcGrade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>QC: {r.qcGrade}</span>}
+                          </div>
+                          <p style={{color:"#8b5cf6",fontWeight:900,fontSize:22,lineHeight:1,marginBottom:4}}>{r.actual||0}<span style={{color:t.sub,fontSize:12,fontWeight:400}}> units</span></p>
+                          {r.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic"}}>"{r.notes}"</p>}
+                          {r.deduction&&<div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:8,padding:"4px 8px",marginTop:4,display:"inline-flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:10}}>📦</span>
+                            <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>Auto-deducted {r.deduction.deducted} from "{r.deduction.supplyItem}"</span>
+                          </div>}
+                          {recipeIngrs.length>0&&+r.actual>0&&<div style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginTop:6}}>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,marginBottom:3}}>🧪 Recipe used ({r.actual} units):</p>
+                            {recipeIngrs.map((ing,ii)=><p key={ii} style={{color:t.text,fontSize:11}}>• {(+ing.qtyPerUnit*(+r.actual)).toFixed(2)} {ing.unit} {ing.supply}</p>)}
+                          </div>}
+                          {rWaste.length>0&&<div className="flex flex-wrap gap-1.5 mt-2">
+                            {rWaste.map(w=><span key={w.id} style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🗑️ {w.qty} {w.unit} {w.product} — {w.type}</span>)}
+                          </div>}
                         </div>
-                        {r.notes&&<p style={{color:t.sub}} className="text-[11px] italic mt-0.5">"{r.notes}"</p>}
-                        {r.deduction&&<div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:8,padding:"4px 8px",marginTop:4,display:"inline-flex",alignItems:"center",gap:6}}>
-                          <span style={{fontSize:10}}>📦</span>
-                          <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>Deducted {r.deduction.deducted} from "{r.deduction.supplyItem}" ({r.deduction.qtyBefore}→{r.deduction.qtyAfter})</span>
-                        </div>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm font-black ${r.actual>=r.target?"text-emerald-500":r.actual>=r.target*0.75?"text-amber-500":"text-red-500"}`}>
-                          {r.actual}<span style={{color:t.sub}} className="text-xs font-normal">/{r.target}</span>
-                        </p>
                         <div className="flex gap-1.5 shrink-0">
-                          <button onClick={()=>{setPtF({...r,target:String(r.target),actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>Edit</button>
-                          {can("prod_delete")&&<button onClick={()=>delPT(r)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",border:"none"}}>Del</button>}
+                          <button onClick={()=>{setPtF({...r,actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                          {can("prod_delete")&&<button onClick={()=>delPT(r)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",border:"none"}}>Del</button>}
                         </div>
                       </div>
+                    </div>;
+                  })}
+                  {/* Customer paper trail for this date */}
+                  {(()=>{
+                    const dayDelivs=deliveries.filter(d=>d.date===date&&d.status==="Delivered");
+                    if(dayDelivs.length===0)return null;
+                    return <div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:12}}>
+                      <p style={{color:t.sub,fontSize:10,fontWeight:700,marginBottom:6}}>📦 Customers served {dayLabel}:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {dayDelivs.map(d=>{
+                          const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ");
+                          return <span key={d.id} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:7,padding:"3px 9px",fontSize:10,color:t.text}}><b>{d.customer}</b> — {items}</span>;
+                        })}
+                      </div>
+                    </div>;
+                  })()}
+                </div></Card>;
+              })}
+            </>}
+
+            {/* ── WASTAGE ── */}
+            {prodSubTab==="wastage"&&<>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2 flex-wrap">
+                  <Pill dm={dm} c="orange">{filteredWaste.length} records</Pill>
+                  <Pill dm={dm} c="red">{inr(filteredWaste.reduce((s,w)=>s+(w.cost||0),0))} cost</Pill>
+                </div>
+                <div className="flex gap-2">
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Wastage",filteredWaste,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Type",key:"type"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Cost",key:"cost",num:true},{label:"Reason",key:"reason"},{label:"Shift",key:"shift"}],settings)}>PDF</Btn>
+                  <Btn dm={dm} size="sm" onClick={()=>{setWSh("add");setWF(blkW());}}>+ Log Wastage</Btn>
+                </div>
+              </div>
+              {filteredWaste.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No wastage records for this period.</p>}
+              {filteredWaste.map(w=>(
+                <Card key={w.id} dm={dm}><div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span style={{background:"#f9731620",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{w.type}</span>
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{w.product}</p>
+                        {w.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10}}>{w.shift}</span>}
+                      </div>
+                      <p style={{color:t.sub,fontSize:12}}>📅 {w.date} · {w.qty} {w.unit} · by {w.loggedBy}</p>
+                      {w.reason&&<p style={{color:t.sub,fontSize:11,marginTop:3,fontStyle:"italic"}}>"{w.reason}"</p>}
+                      {w.cost>0&&<p style={{color:"#ef4444",fontSize:12,fontWeight:700,marginTop:4}}>Cost: {inr(w.cost)}</p>}
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {can("waste_edit")&&<button onClick={()=>{setWSh(w);setWF({...w});}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:36,padding:"0 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>}
+                      {can("waste_delete")&&<button onClick={()=>delW(w)} style={{background:"#dc2626",color:"#fff",minHeight:36,padding:"0 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",border:"none"}}>Del</button>}
                     </div>
                   </div>
-                ))}
-              </div></Card>;
-            })}
-            {filteredPT.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No production records yet. Tap + Log Production to start tracking. All records are stored forever — daily, weekly, monthly.":ptSearch?"No records match your search.":"No records for this period."}</p>}
+                </div></Card>
+              ))}
+            </>}
 
-            {/* ── SHIFT HANDOVER NOTES ── */}
-            {(isAdmin||isFactory)&&(()=>{
+            {/* ── QC ── */}
+            {prodSubTab==="qc"&&<>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
+                  <Pill dm={dm} c="teal">{filteredQC.length} checks</Pill>
+                  <Pill dm={dm} c={filteredQC.filter(q=>q.grade==="F").length>0?"red":"green"}>{Math.round(filteredQC.filter(q=>q.grade!=="F").length/Math.max(filteredQC.length,1)*100)}% pass</Pill>
+                </div>
+                <div className="flex gap-2">
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("QC Logs",filteredQC,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Grade",key:"grade"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
+                  <Btn dm={dm} size="sm" onClick={()=>{setQcF({product:"",shift:"",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");}}>+ QC Check</Btn>
+                </div>
+              </div>
+              {filteredQC.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No QC records for this period.</p>}
+              {filteredQC.map(q=>(
+                <Card key={q.id} dm={dm}><div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{q.grade}</div>
+                      <div>
+                        <p style={{color:t.text}} className="font-bold text-sm">{q.product}</p>
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                          <span style={{color:t.sub}} className="text-xs">📅 {q.date}</span>
+                          {q.shift&&<span style={{color:t.sub}} className="text-xs">🕐 {q.shift}</span>}
+                          {q.checker&&<span style={{color:t.sub}} className="text-xs">👤 {q.checker}</span>}
+                        </div>
+                        {q.notes&&<p style={{color:t.sub,background:t.inp,borderRadius:8,padding:"6px 10px",marginTop:8}} className="text-xs">"{q.notes}"</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),borderRadius:8,padding:"2px 8px",fontSize:10,fontWeight:700}}>{GRADES.find(x=>x.g===q.grade)?.label||q.grade}</span>
+                      {can("qc_delete")&&<button onClick={()=>delQC(q)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>}
+                    </div>
+                  </div>
+                </div></Card>
+              ))}
+            </>}
+
+            {/* ── HANDOVERS ── */}
+            {prodSubTab==="handover"&&(()=>{
               function saveHandover(){
                 if(!hvF.note.trim()){notify("Note is required");return;}
                 const rec={...hvF,id:uid(),createdAt:ts()};
                 setHandovers(p=>[rec,...p.slice(0,99)]);
-                addLog("Shift handover logged",`${rec.shift} → ${rec.nextShift||"next"}`);
-                captureGPS("handover_logged",`${rec.shift} shift`);
-                addNotif("Shift Handover",`${rec.shift} handover by ${rec.loggedBy}`,"info","newentry");
+                addLog("Shift handover logged",`${rec.shift||"—"} → ${rec.nextShift||"next"}`);
+                captureGPS("handover_logged",`shift`);
+                addNotif("Shift Handover",`Handover by ${rec.loggedBy}`,"info","newentry");
                 notify("Handover note saved ✓");
                 setHvSh(false);
               }
-              const fHV=(handovers||[]).filter(h=>!srch||(h.note.toLowerCase().includes(srch.toLowerCase())||h.shift.toLowerCase().includes(srch.toLowerCase())||h.loggedBy?.toLowerCase().includes(srch.toLowerCase())));
-              return (<>
+              const fHV=(handovers||[]).filter(h=>!ptSearch||(h.note.toLowerCase().includes(ptSearch.toLowerCase())||h.shift?.toLowerCase().includes(ptSearch.toLowerCase())||h.loggedBy?.toLowerCase().includes(ptSearch.toLowerCase())));
+              return <>
                 <div className="flex items-center justify-between">
-                  <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider">📋 Shift Handover Notes</p>
-                  <Btn dm={dm} size="sm" onClick={()=>{setHvF({shift:(settings?.shifts||["Morning"])[0],date:today(),note:"",nextShift:"",issues:"",loggedBy:displayName});setHvSh(true);}}>+ Handover</Btn>
+                  <Pill dm={dm} c="amber">{fHV.length} notes</Pill>
+                  <Btn dm={dm} size="sm" onClick={()=>{setHvF({shift:"",date:today(),note:"",nextShift:"",issues:"",loggedBy:displayName});setHvSh(true);}}>+ Handover</Btn>
                 </div>
-                {fHV.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No handover notes yet.</p>}
-                {fHV.slice(0,10).map(h=>(
+                {fHV.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No handover notes yet.</p>}
+                {fHV.slice(0,20).map(h=>(
                   <Card key={h.id} dm={dm}><div className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{h.shift}</span>
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          {h.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{h.shift}</span>}
                           {h.nextShift&&<><span style={{color:t.sub,fontSize:10}}>→</span><span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{h.nextShift}</span></>}
                         </div>
                         <p style={{color:t.sub}} className="text-xs">📅 {h.date} · by {h.loggedBy}</p>
                       </div>
-                      {can("prod_handover")&& <button onClick={()=>setHandovers(p=>p.filter(x=>x.id!==h.id))} style={{background:t.inp,color:t.sub}} className="text-xs px-2.5 py-1.5 rounded-lg font-semibold">Delete</button>}
+                      {can("prod_handover")&&<button onClick={()=>setHandovers(p=>p.filter(x=>x.id!==h.id))} style={{background:t.inp,color:t.sub}} className="text-xs px-2.5 py-1.5 rounded-lg font-semibold">Delete</button>}
                     </div>
                     <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:12,padding:"10px 14px",color:t.text}} className="text-sm">{h.note}</div>
                     {h.issues&&<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"8px 12px",marginTop:8}}>
@@ -5594,7 +5804,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 ))}
                 <Sheet dm={dm} open={hvSh} onClose={()=>setHvSh(false)} title="Log Shift Handover">
                   <div className="grid grid-cols-2 gap-3">
-                    <Sel dm={dm} label="Current Shift *" value={hvF.shift} onChange={e=>setHvF({...hvF,shift:e.target.value})}>
+                    <Sel dm={dm} label="Current Shift (optional)" value={hvF.shift||""} onChange={e=>setHvF({...hvF,shift:e.target.value})}>
+                      <option value="">— None —</option>
                       {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
                     </Sel>
                     <Sel dm={dm} label="Handing Over To" value={hvF.nextShift||""} onChange={e=>setHvF({...hvF,nextShift:e.target.value})}>
@@ -5611,81 +5822,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <Inp dm={dm} label="Issues / Problems" value={hvF.issues} onChange={e=>setHvF({...hvF,issues:e.target.value})} placeholder="Any problems, machine issues…"/>
                   <Btn dm={dm} onClick={saveHandover} className="w-full">Save Handover Note</Btn>
                 </Sheet>
-              </>);
+              </>;
             })()}
-          </>;
-        })()}
-
-        {/* QC LOG TAB */}
-        {tab==="QC"&&(()=>{
-          const canQC=isAdmin||isFactory;
-          if(!canQC)return <p style={{color:t.sub}} className="text-sm text-center py-8">Access restricted.</p>;
-          const GRADES=[{g:"A",color:"#10b981",label:"Pass — Grade A"},{g:"B",color:"#f59e0b",label:"Pass — Grade B"},{g:"C",color:"#f97316",label:"Marginal — Grade C"},{g:"F",color:"#ef4444",label:"Fail — Reject"}];
-          const gradeColor=g=>GRADES.find(x=>x.g===g)?.color||"#6b7280";
-          const fQC=qcLogs.filter(q=>!srch||(q.product.toLowerCase().includes(srch.toLowerCase())||q.grade.toLowerCase().includes(srch.toLowerCase())||q.checker?.toLowerCase().includes(srch.toLowerCase())));
-          const totalChecks=qcLogs.length;
-          const passRate=totalChecks>0?Math.round(qcLogs.filter(q=>q.grade!=="F").length/totalChecks*100):0;
-          const todayQC=qcLogs.filter(q=>q.date===today());
-          const gradeBreakdown=GRADES.map(({g,color,label})=>({g,color,label,count:qcLogs.filter(q=>q.grade===g).length}));
-          return <>
-            {/* Summary */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Total QC Checks" value={totalChecks} sub={`${todayQC.length} today`} accent="#14b8a6"/>
-              <StatCard dm={dm} label="Pass Rate" value={`${passRate}%`} sub="Grade A, B & C" accent={passRate>=90?"#10b981":passRate>=70?"#f59e0b":"#ef4444"}/>
-              <StatCard dm={dm} label="Rejections" value={qcLogs.filter(q=>q.grade==="F").length} sub="Grade F failures" accent="#ef4444"/>
-              <StatCard dm={dm} label="Grade A" value={qcLogs.filter(q=>q.grade==="A").length} sub={`${totalChecks>0?Math.round(qcLogs.filter(q=>q.grade==="A").length/totalChecks*100):0}% of checks`} accent="#10b981"/>
-            </div>
-            {/* Grade breakdown bar */}
-            {totalChecks>0&&<Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-3">Grade Distribution</p>
-              <div className="flex h-4 rounded-lg overflow-hidden gap-0.5 mb-3">
-                {gradeBreakdown.filter(x=>x.count>0).map(x=>(
-                  <div key={x.g} style={{flex:x.count,background:x.color,minWidth:4}} title={`${x.g}: ${x.count}`}/>
-                ))}
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {gradeBreakdown.map(x=>(
-                  <div key={x.g} className="text-center">
-                    <p style={{color:x.color}} className="font-black text-lg">{x.count}</p>
-                    <p style={{color:t.sub}} className="text-[10px] font-semibold">Grade {x.g}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>}
-            {/* Controls */}
-            <div className="flex items-center justify-between">
-              <Pill dm={dm} c="sky">{fQC.length} records</Pill>
-              <div className="flex gap-2">
-                {can("qc_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("QC Logs",qcLogs,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Grade",key:"grade"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>}
-                {can("qc_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("QC Logs",qcLogs,[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Grade",key:"grade"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"},{label:"Logged By",key:"loggedBy"}],settings)}>📊 XLS</Btn>}
-                {can("qc_export")&& <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(qcLogs,"qc_logs",[{label:"Product",key:"product"},{label:"Grade",key:"grade"},{label:"Shift",key:"shift"},{label:"Date",key:"date"},{label:"Checker",key:"checker"},{label:"Notes",key:"notes"}])}>CSV</Btn>}
-                <Btn dm={dm} size="sm" onClick={()=>{setQcF({product:"",shift:(settings?.shifts||["Morning"])[0],date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");}}>+ QC Check</Btn>
-              </div>
-            </div>
-            <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search product, grade, checker…"/>
-            {fQC.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No QC logs yet. Tap + QC Check to start.</p>}
-            {fQC.map(q=>(
-              <Card key={q.id} dm={dm}><div className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{q.grade}</div>
-                    <div>
-                      <p style={{color:t.text}} className="font-bold text-sm">{q.product}</p>
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
-                        <span style={{color:t.sub}} className="text-xs">📅 {q.date}</span>
-                        <span style={{color:t.sub}} className="text-xs">🕐 {q.shift}</span>
-                        {q.checker&&<span style={{color:t.sub}} className="text-xs">👤 {q.checker}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span style={{background:gradeColor(q.grade)+"20",color:gradeColor(q.grade),borderRadius:8,padding:"2px 8px",fontSize:10,fontWeight:700}}>{GRADES.find(x=>x.g===q.grade)?.label||q.grade}</span>
-                    {can("qc_delete")&& <button onClick={()=>delQC(q)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>}
-                  </div>
-                </div>
-                {q.notes&&<p style={{color:t.sub,background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:10}} className="text-xs">"{q.notes}"</p>}
-              </div></Card>
-            ))}
           </>;
         })()}
 
@@ -6151,6 +6289,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {id:"account",icon:"👤",label:"Account"},
             {id:"staff",icon:"👥",label:"Staff"},
             {id:"products",icon:"📦",label:"Products"},
+            {id:"recipes",icon:"🧪",label:"Recipes"},
             {id:"access",icon:"🔒",label:"Access"},
             {id:"app",icon:"🎨",label:"App"},
             {id:"data",icon:"💾",label:"Data"},
@@ -6299,7 +6438,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <div className="grid grid-cols-2 gap-1.5">
                     {ALL_TABS.filter(tb=>tb!=="Settings").map(tb=>{
                       const on=tabDef.includes(tb);
-                      const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅"};
+                      const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭",};
                       return <button key={tb} onClick={()=>{
                           const next=on?tabDef.filter(x=>x!==tb):[...tabDef,tb];
                           setSettings(s=>({...s,[tabDefKey]:next}));
@@ -6413,18 +6552,148 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 );
               })}
             </div></Card>
-            {/* Bulk Order Feature Toggle */}
+            {/* Delivery Features — admin-controlled */}
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
-              <p style={{color:t.text}} className="text-sm font-bold">Delivery Features</p>
+              <p style={{color:t.text}} className="text-sm font-bold">🚚 Delivery Agent Features</p>
+              <p style={{color:t.sub}} className="text-[11px]">Control what delivery agents can see and do on their Deliveries tab.</p>
+
+              {/* Bulk Order */}
               <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
                 <div>
                   <p style={{color:t.text}} className="text-sm font-semibold">📋 Bulk Order Entry</p>
-                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Allow agents/factory to create orders for multiple customers at once from the Deliveries tab.</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Allow agents/factory to create orders for multiple customers at once.</p>
                 </div>
                 <Tog dm={dm} on={settings?.bulkOrderEnabled!==false} onChange={()=>setSettings(s=>({...s,bulkOrderEnabled:s?.bulkOrderEnabled===false?true:false}))}/>
               </div>
+
+              {/* Agent Collect Cash */}
+              <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                <div>
+                  <p style={{color:t.text}} className="text-sm font-semibold">💰 Agent Cash Collection</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Show the "Collect" button on delivery cards so agents can record cash received on delivery.</p>
+                </div>
+                <Tog dm={dm} on={settings?.agentCollectEnabled!==false} onChange={()=>setSettings(s=>({...s,agentCollectEnabled:s?.agentCollectEnabled===false?true:false}))}/>
+              </div>
+
+              {/* Require note on collect */}
+              {settings?.agentCollectEnabled!==false&&<div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:16}}>
+                <div>
+                  <p style={{color:t.sub}} className="text-sm font-semibold">↳ Require collection note</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Agent must enter a note (e.g. cash/UPI ref) before confirming collection.</p>
+                </div>
+                <Tog dm={dm} on={settings?.agentCollectRequireNote===true} onChange={()=>setSettings(s=>({...s,agentCollectRequireNote:!s?.agentCollectRequireNote}))}/>
+              </div>}
+
+              {/* Agent Invoice / Receipt */}
+              <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                <div>
+                  <p style={{color:t.text}} className="text-sm font-semibold">🧾 Delivery Receipts</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Controls who sees the 🧾 Receipt button on delivery cards. Tapping it opens a full receipt card with a Print option. Admin always has access.</p>
+                </div>
+                <Tog dm={dm} on={settings?.agentInvoiceEnabled!==false} onChange={()=>setSettings(s=>({...s,agentInvoiceEnabled:s?.agentInvoiceEnabled===false?true:false}))}/>
+              </div>
+
+              {/* Per-role receipt visibility + print */}
+              {settings?.agentInvoiceEnabled!==false&&<>
+                {/* Agents */}
+                <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:16}}>
+                  <div>
+                    <p style={{color:t.sub}} className="text-sm font-semibold">↳ Show Receipt button to Agents</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Delivery agents can open the receipt card.</p>
+                  </div>
+                  <Tog dm={dm} on={(settings?.receiptVisibleTo||["agent"]).includes("agent")} onChange={()=>{const cur=settings?.receiptVisibleTo||["agent"];const next=cur.includes("agent")?cur.filter(r=>r!=="agent"):[...cur,"agent"];setSettings(s=>({...s,receiptVisibleTo:next}));}}/>
+                </div>
+                {(settings?.receiptVisibleTo||["agent"]).includes("agent")&&<div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:32}}>
+                  <div>
+                    <p style={{color:t.sub}} className="text-sm font-semibold">↳ ↳ Allow Agents to Print</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Show the 🖨 Print button on the receipt card for agents. Disable to make it view-only.</p>
+                  </div>
+                  <Tog dm={dm} on={(settings?.receiptPrintAllowed||["admin","agent"]).includes("agent")} onChange={()=>{const cur=settings?.receiptPrintAllowed||["admin","agent"];const next=cur.includes("agent")?cur.filter(r=>r!=="agent"):[...cur,"agent"];setSettings(s=>({...s,receiptPrintAllowed:next}));}}/>
+                </div>}
+                {/* Factory */}
+                <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:16}}>
+                  <div>
+                    <p style={{color:t.sub}} className="text-sm font-semibold">↳ Show Receipt button to Factory</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Factory staff can open the receipt card.</p>
+                  </div>
+                  <Tog dm={dm} on={(settings?.receiptVisibleTo||["agent"]).includes("factory")} onChange={()=>{const cur=settings?.receiptVisibleTo||["agent"];const next=cur.includes("factory")?cur.filter(r=>r!=="factory"):[...cur,"factory"];setSettings(s=>({...s,receiptVisibleTo:next}));}}/>
+                </div>
+                {(settings?.receiptVisibleTo||["agent"]).includes("factory")&&<div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:32}}>
+                  <div>
+                    <p style={{color:t.sub}} className="text-sm font-semibold">↳ ↳ Allow Factory to Print</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Show the 🖨 Print button on the receipt card for factory staff.</p>
+                  </div>
+                  <Tog dm={dm} on={(settings?.receiptPrintAllowed||["admin","agent"]).includes("factory")} onChange={()=>{const cur=settings?.receiptPrintAllowed||["admin","agent"];const next=cur.includes("factory")?cur.filter(r=>r!=="factory"):[...cur,"factory"];setSettings(s=>({...s,receiptPrintAllowed:next}));}}/>
+                </div>}
+              </>}
+
+              {/* Show prices on receipt */}
+              {settings?.agentInvoiceEnabled!==false&&<div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,paddingLeft:16}}>
+                <div>
+                  <p style={{color:t.sub}} className="text-sm font-semibold">↳ Show prices on printed receipt</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Include unit prices and totals on the printed receipt. Disable to show items only (no amounts).</p>
+                </div>
+                <Tog dm={dm} on={settings?.agentInvoiceShowPrices!==false} onChange={()=>setSettings(s=>({...s,agentInvoiceShowPrices:s?.agentInvoiceShowPrices===false?true:false}))}/>
+              </div>}
+
+              {/* Auto-open receipt after collect */}
+              {settings?.agentInvoiceEnabled!==false&&settings?.agentCollectEnabled!==false&&<div className="flex items-center justify-between py-2" style={{paddingLeft:16}}>
+                <div>
+                  <p style={{color:t.sub}} className="text-sm font-semibold">↳ Auto-print receipt after collection</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Automatically trigger the print dialog when agent confirms a cash collection (in addition to the inline receipt card that always appears).</p>
+                </div>
+                <Tog dm={dm} on={settings?.agentAutoReceipt!==false} onChange={()=>setSettings(s=>({...s,agentAutoReceipt:s?.agentAutoReceipt===false?true:false}))}/>
+              </div>}
+
             </div></Card>
           </>}
+
+          {/* ── RECIPES ── */}
+          {settingsSection==="recipes"&&(()=>{
+            const recipes=settings?.recipes||{};
+            const autoDeductOn=settings?.autoDeductEnabled!==false;
+            return <>\
+              {/* Global auto-deduct toggle */}
+              <Card dm={dm}><div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p style={{color:t.text,fontWeight:700,fontSize:14}}>🤖 Smart Auto-Deduct</p>
+                    <p style={{color:t.sub,fontSize:12,marginTop:2}}>When production is logged, automatically reduce matching supply stock. Factory staff inherit this setting.</p>
+                  </div>
+                  <Tog dm={dm} on={autoDeductOn} onChange={()=>setSettings(s=>({...s,autoDeductEnabled:!autoDeductOn}))}/>
+                </div>
+              </div></Card>
+
+              {/* Per-product recipes */}
+              <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:4}}>Product Recipes</p>
+              <p style={{color:t.sub,fontSize:11,marginTop:2,marginBottom:4}}>Define which supply items are consumed per unit produced. Used for the recipe preview in each batch.</p>
+              {products.map(prod=>{
+                const ingrs=(recipes[prod.id]?.ingredients)||[];
+                const open=openRecipe===prod.id;
+                return <Card key={prod.id} dm={dm}><div className="p-4">
+                  <button onClick={()=>setOpenRecipe(open?null:prod.id)} style={{background:"none",border:"none",cursor:"pointer",width:"100%",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",padding:0}}>
+                    <div>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{prod.name}</p>
+                      <p style={{color:t.sub,fontSize:11}}>{ingrs.length>0?`${ingrs.length} ingredient${ingrs.length!==1?"s":""}  defined`:"No recipe yet"}</p>
+                    </div>
+                    <span style={{color:t.sub,fontSize:16}}>{open?"▲":"▼"}</span>
+                  </button>
+                  {open&&<>
+                    <Hr dm={dm}/>
+                    {ingrs.map((ing,ii)=>(
+                      <div key={ii} className="flex gap-2 items-center mb-2">
+                        <Inp dm={dm} label="Supply item" value={ing.supply} onChange={e=>{const n=[...ingrs];n[ii]={...n[ii],supply:e.target.value};setSettings(s=>({...s,recipes:{...recipes,[prod.id]:{ingredients:n}}}));}} placeholder="e.g. Flour"/>
+                        <Inp dm={dm} label="Qty/unit" type="number" value={ing.qtyPerUnit} onChange={e=>{const n=[...ingrs];n[ii]={...n[ii],qtyPerUnit:e.target.value};setSettings(s=>({...s,recipes:{...recipes,[prod.id]:{ingredients:n}}}));}} placeholder="0.5"/>
+                        <Inp dm={dm} label="Unit" value={ing.unit} onChange={e=>{const n=[...ingrs];n[ii]={...n[ii],unit:e.target.value};setSettings(s=>({...s,recipes:{...recipes,[prod.id]:{ingredients:n}}}));}} placeholder="kg"/>
+                        <button onClick={()=>{const n=ingrs.filter((_,i)=>i!==ii);setSettings(s=>({...s,recipes:{...recipes,[prod.id]:{ingredients:n}}}));}} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"0 10px",minHeight:36,fontWeight:700,cursor:"pointer",flexShrink:0,marginTop:8}}>×</button>
+                      </div>
+                    ))}
+                    <Btn dm={dm} v="outline" size="sm" onClick={()=>{const n=[...ingrs,{supply:"",qtyPerUnit:"",unit:""}];setSettings(s=>({...s,recipes:{...recipes,[prod.id]:{ingredients:n}}}));}}>+ Add Ingredient</Btn>
+                  </>}
+                </div></Card>;
+              })}
+            </>;
+          })()}
 
           {/* ── ACCESS CONTROL ── */}
           {settingsSection==="access"&&<>
@@ -6894,7 +7163,18 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         <OrderEditor dm={dm} products={products} orderLines={dF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setDf(f=>({...f,orderLines:ol}))}/>
         <Hr dm={dm}/>
         <div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="Order Date" type="date" value={dF.date} onChange={e=>setDf({...dF,date:e.target.value})}/>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-widest ml-0.5">Order Date</label>
+              {dSh==="add"&&<button onClick={()=>setDf(f=>({...f,_futureOrder:!f._futureOrder,date:f._futureOrder?today():f.date}))} style={{fontSize:10,fontWeight:700,color:dF._futureOrder?"#f59e0b":t.sub,background:dF._futureOrder?"#f59e0b20":"transparent",border:`1px solid ${dF._futureOrder?"#f59e0b40":t.border}`,borderRadius:6,padding:"2px 7px",cursor:"pointer"}}>
+                {dF._futureOrder?"Future order":"Same day"}
+              </button>}
+            </div>
+            {(dSh!=="add"||dF._futureOrder)
+              ?<input type="date" value={dF.date} onChange={e=>setDf({...dF,date:e.target.value})} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:14,width:"100%",outline:"none"}}/>
+              :<div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:12,padding:"10px 14px",fontSize:13,color:t.sub}}>Today ({today()})</div>
+            }
+          </div>
           <Inp dm={dm} label="Deliver By (optional)" type="date" value={dF.deliveryDate||""} onChange={e=>setDf({...dF,deliveryDate:e.target.value})}/>
         </div>
         <Sel dm={dm} label="Status" value={dF.status} onChange={e=>setDf({...dF,status:e.target.value})}>
@@ -6926,6 +7206,32 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>
           )}
         </div>
+        <Hr dm={dm}/>
+        {/* PARTIAL PAYMENT SECTION */}
+        {canSeePrices&&<div style={{background:dF.partialPayment?.enabled?(dm?"rgba(16,185,129,0.08)":"#f0fdf4"):(dm?"rgba(255,255,255,0.03)":"#fafaf8"),border:`1.5px solid ${dF.partialPayment?.enabled?"#10b981":t.border}`,borderRadius:14,padding:"12px 14px"}}>
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <p style={{color:dF.partialPayment?.enabled?"#10b981":t.text,fontWeight:700,fontSize:13}}>💰 Collect Partial Payment</p>
+              <p style={{color:t.sub,fontSize:11,marginTop:1}}>Agent collects cash on delivery — flows into all reports</p>
+            </div>
+            <button onClick={()=>setDf(f=>({...f,partialPayment:{...f.partialPayment,enabled:!f.partialPayment?.enabled}}))}
+              style={{width:40,height:22,borderRadius:99,background:dF.partialPayment?.enabled?"#10b981":t.border,padding:2,display:"flex",alignItems:"center",justifyContent:dF.partialPayment?.enabled?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0,border:"none",cursor:"pointer"}}>
+              <div style={{width:18,height:18,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </button>
+          </div>
+          {dF.partialPayment?.enabled&&<>
+            <Inp dm={dm} label="Amount Collected (₹)" type="number" value={dF.partialPayment?.amount||""} onChange={e=>setDf(f=>({...f,partialPayment:{...f.partialPayment,amount:e.target.value}}))} placeholder="e.g. 200"/>
+            {(+dF.partialPayment?.amount)>0&&(()=>{
+              const tot=lineTotal(dF.orderLines);
+              const remaining=tot-(+dF.partialPayment.amount);
+              return <div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:10,padding:"8px 12px",marginTop:4}}>
+                <div className="flex justify-between text-xs"><span style={{color:t.sub}}>Order Total</span><span style={{color:t.text,fontWeight:700}}>{inr(tot)}</span></div>
+                <div className="flex justify-between text-xs mt-1"><span style={{color:"#10b981"}}>Collected Now</span><span style={{color:"#10b981",fontWeight:700}}>−{inr(+dF.partialPayment.amount)}</span></div>
+                <div className="flex justify-between text-xs mt-1 pt-1" style={{borderTop:`1px solid #10b98130`}}><span style={{color:t.sub,fontWeight:700}}>Still Due</span><span style={{color:remaining>0?"#f59e0b":"#10b981",fontWeight:800}}>{inr(Math.max(0,remaining))}</span></div>
+              </div>;
+            })()}
+          </>}
+        </div>}
         <div className="flex gap-2">
           {dSh!=="add"&&can("deliv_report")&&<Btn dm={dm} v="outline" onClick={()=>exportPDF(dSh,products,"delivery",settings)} className="flex-1">🧾 Invoice</Btn>}
           <Btn dm={dm} onClick={saveD} className="flex-1">Save Delivery</Btn>
@@ -7048,7 +7354,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           <div className="grid grid-cols-2 gap-1.5">
             {ALL_TABS.filter(tb=>tb!=="Settings").map(tb=>{
               const on=(uF.permissions||[]).includes(tb);
-              const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","QC":"✅"};
+              const icons={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭",};
               return <button key={tb} onClick={()=>{const p=uF.permissions||[];setUf({...uF,permissions:on?p.filter(x=>x!==tb):[...p,tb]});}}
                 style={{background:on?t.accent+"22":t.card,border:`1.5px solid ${on?t.accent:t.border}`,borderRadius:10,padding:"8px 10px",display:"flex",alignItems:"center",gap:8,textAlign:"left",transition:"all 0.15s"}}>
                 <span style={{fontSize:16,lineHeight:1}}>{icons[tb]||"•"}</span>
@@ -7177,7 +7483,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
 
       {/* Production Sheet */}
-      <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"Log Production":"Edit Production Record"}>
+      <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"Log New Batch":"Edit Batch"}>
         <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>setPtF({...ptF,product:e.target.value})}>
           {products.map(p=><option key={p.id}>{p.name}</option>)}
           <option value="__custom__">Other / Custom</option>
@@ -7190,59 +7496,19 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           <Inp dm={dm} label="Target (units) *" type="number" value={ptF.target} onChange={e=>setPtF({...ptF,target:e.target.value})} placeholder="e.g. 200"/>
           <Inp dm={dm} label="Actual (units)" type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="Fill after shift"/>
         </div>
-        {/* Efficiency preview */}
-        {(+ptF.target>0&&+ptF.actual>0)&&(()=>{
-          const eff=Math.round(+ptF.actual/+ptF.target*100);
-          const col=eff>=100?"#10b981":eff>=75?"#f59e0b":"#ef4444";
-          return <div style={{background:col+"15",border:`1px solid ${col}30`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div>
-              <p style={{color:col,fontWeight:800,fontSize:18,lineHeight:1}}>{eff}% efficiency</p>
-              <p style={{color:T(dm).sub,fontSize:11,marginTop:2}}>{+ptF.actual} produced of {+ptF.target} target · {+ptF.actual>=+ptF.target?`+${+ptF.actual-+ptF.target} over`:`${+ptF.target-+ptF.actual} short`}</p>
-            </div>
-            <span style={{fontSize:28}}>{eff>=100?"🎯":eff>=75?"⚡":"⚠️"}</span>
+        <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff…"/>
+        {ptAutoDeduct&&+ptF.actual>0&&(()=>{
+          const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
+          const pn=pname.toLowerCase();
+          const scored=supplies.map(s=>{const sn=(s.item||"").toLowerCase();let score=0;if(sn===pn)score=100;else if(sn.includes(pn)||pn.includes(sn))score=60;else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}return{...s,_score:score};}).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
+          const match=scored[0];
+          if(!match)return null;
+          const afterQty=Math.max(0,(match.qty||0)-+ptF.actual);
+          return <div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:10,padding:"8px 12px"}}>
+            <p style={{color:"#10b981",fontSize:11,fontWeight:700}}>📦 Auto-deduct: {+ptF.actual} from "{match.item}" → {afterQty} {match.unit} remaining</p>
           </div>;
         })()}
-        <Inp dm={dm} label="Date" type="date" value={ptF.date} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
-        <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff..."/>
-        {/* Auto-deduct toggle in sheet */}
-        {ptSh==="add"&&<div style={{background:ptAutoDeduct?(dm?"#10b98115":"#f0fdf4"):(dm?"rgba(255,255,255,0.03)":"#fafaf8"),border:`1.5px solid ${ptAutoDeduct?"#10b981":T(dm).border}`,borderRadius:14,padding:"12px 14px"}}>
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              <p style={{color:ptAutoDeduct?"#10b981":T(dm).text,fontWeight:700,fontSize:13}}>🤖 Smart Auto-Deduct</p>
-              <p style={{color:T(dm).sub,fontSize:11,marginTop:1}}>Reduces matching supply qty by actual units produced</p>
-            </div>
-            <button onClick={()=>setPtAutoDeduct(v=>!v)}
-              style={{width:40,height:22,borderRadius:99,background:ptAutoDeduct?"#10b981":T(dm).border,padding:2,display:"flex",alignItems:"center",justifyContent:ptAutoDeduct?"flex-end":"flex-start",transition:"all 0.2s",flexShrink:0,border:"none",cursor:"pointer"}}>
-              <div style={{width:18,height:18,borderRadius:99,background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
-            </button>
-          </div>
-          {ptAutoDeduct&&+ptF.actual>0&&(()=>{
-            const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
-            const pn=pname.toLowerCase();
-            const scored=supplies.map(s=>{
-              const sn=(s.item||"").toLowerCase();
-              let score=0;
-              if(sn===pn) score=100;
-              else if(sn.includes(pn)||pn.includes(sn)) score=60;
-              else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}
-              return{...s,_score:score};
-            }).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
-            const match=scored[0];
-            const afterQty=match?Math.max(0,(match.qty||0)-+ptF.actual):0;
-            const willGoLow=match&&match.minStock>0&&afterQty<=match.minStock;
-            return match
-              ?<div style={{background:"#10b98110",borderRadius:8,padding:"8px 10px",marginTop:8}}>
-                  <p style={{color:"#10b981",fontSize:11,fontWeight:600}}>✓ Will deduct {+ptF.actual} from "{match.item}" <span style={{opacity:0.6,fontSize:10}}>({match._score}% match)</span></p>
-                  <p style={{color:T(dm).sub,fontSize:10,marginTop:2}}>Stock: {match.qty} {match.unit} → <strong style={{color:willGoLow?"#f59e0b":"#10b981"}}>{afterQty} {match.unit}</strong>{willGoLow?" ⚠️ Low stock!":""}</p>
-                  {scored.length>1&&<p style={{color:T(dm).sub,fontSize:10,marginTop:1}}>Also found: {scored.slice(1,3).map(s=>s.item).join(", ")}</p>}
-                </div>
-              :<div style={{background:"#f59e0b10",borderRadius:8,padding:"8px 10px",marginTop:8}}>
-                  <p style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⚠️ No matching supply found for "{pname}"</p>
-                  <p style={{color:T(dm).sub,fontSize:10,marginTop:2}}>Make sure a supply item name matches this product</p>
-                </div>;
-          })()}
-        </div>}
-        <Btn dm={dm} onClick={savePT} className="w-full">Save Production Record</Btn>
+        <Btn dm={dm} onClick={savePT} className="w-full">Save Batch</Btn>
       </Sheet>
 
       {/* QC Sheet */}
@@ -7283,6 +7549,178 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
       {/* ═══════════════════════════════════════════════════════════════
           BULK ORDER ENTRY SHEET
       ═══════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════════════
+          PROFESSIONAL COLLECT PAYMENT SHEET
+      ══════════════════════════════════════════════════════════════ */}
+      <Sheet dm={dm} open={!!collectSh} onClose={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}} title="💰 Record Collection">
+        {collectSh&&(()=>{
+          const d=collectSh;
+          const orderTotal=lineTotal(d.orderLines||{});
+          const replAmt=+(d.replacement?.amount)||0;
+          const netAmt=orderTotal-replAmt;
+          const suggestedAmt=netAmt>0?netAmt:orderTotal;
+          return <>
+            {/* Customer info strip */}
+            <div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
+              <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1.2}}>{d.customer}</p>
+              {d.address&&<p style={{color:t.sub,fontSize:11,marginTop:3}}>📍 {d.address}</p>}
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>📅 {d.date}</span>
+                <span style={{background:d.status==="Delivered"?"#10b98120":d.status==="In Transit"?"#3b82f620":"#f59e0b20",color:d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":"#f59e0b",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>{d.status}</span>
+              </div>
+            </div>
+
+            {/* Order breakdown */}
+            {canSeePrices&&<div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
+              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Order Breakdown</p>
+              {lineRows(d.orderLines||{},products).filter(r=>r.qty>0).map(r=>(
+                <div key={r.id} className="flex justify-between text-xs py-1" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.sub,flex:1}}>{r.qty} × {r.name} @ {inr(r.priceAmount)}</span>
+                  <span style={{color:t.text,fontWeight:700}}>{inr(r.qty*r.priceAmount)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between mt-2" style={{fontSize:13,fontWeight:700}}>
+                <span style={{color:t.sub}}>Order Total</span>
+                <span style={{color:"#f59e0b"}}>{inr(orderTotal)}</span>
+              </div>
+              {replAmt>0&&<>
+                <div className="flex justify-between mt-1" style={{fontSize:12,color:"#f97316"}}>
+                  <span>🔄 Replacement deduction ({d.replacement?.item||"—"})</span>
+                  <span style={{fontWeight:700}}>−{inr(replAmt)}</span>
+                </div>
+                <div className="flex justify-between mt-1 pt-1" style={{borderTop:`2px solid ${t.border}`,fontSize:13,fontWeight:800}}>
+                  <span style={{color:t.text}}>Net Payable</span>
+                  <span style={{color:"#10b981"}}>{inr(netAmt)}</span>
+                </div>
+              </>}
+            </div>}
+
+            {/* Quick amount selector */}
+            {canSeePrices&&<div>
+              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Quick Select</p>
+              <div className="flex gap-2 flex-wrap">
+                {[suggestedAmt,...[500,1000,2000].filter(v=>v!==suggestedAmt&&v>0)].filter((v,i,a)=>a.indexOf(v)===i&&v>0).slice(0,4).map(q=>(
+                  <button key={q} onClick={()=>setCollectAmt(String(q))}
+                    style={{background:collectAmt===String(q)?"#10b981":t.inp,color:collectAmt===String(q)?"#fff":t.text,border:`1.5px solid ${collectAmt===String(q)?"#10b981":t.border}`,borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                    {inr(q)}{q===suggestedAmt?" (Full)":""}
+                  </button>
+                ))}
+              </div>
+            </div>}
+
+            {/* Amount input */}
+            <Inp dm={dm} label="Amount Collected (₹) *" type="number" value={collectAmt} onChange={e=>setCollectAmt(e.target.value)} placeholder="Enter exact amount received"/>
+
+            {/* Live balance preview */}
+            {canSeePrices&&collectAmt&&+collectAmt>0&&<div style={{background:+collectAmt>=(netAmt||orderTotal)?"#10b98115":"#f59e0b15",border:`1px solid ${+collectAmt>=(netAmt||orderTotal)?"#10b98140":"#f59e0b40"}`,borderRadius:12,padding:"10px 14px"}}>
+              <div className="flex justify-between text-sm"><span style={{color:t.sub}}>Collecting now</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+collectAmt)}</span></div>
+              <div className="flex justify-between text-sm mt-1"><span style={{color:t.sub}}>Balance remaining</span><span style={{color:Math.max(0,(netAmt||orderTotal)-+collectAmt)>0?"#f59e0b":"#10b981",fontWeight:700}}>{inr(Math.max(0,(netAmt||orderTotal)-+collectAmt))}</span></div>
+              {+collectAmt>=(netAmt||orderTotal)&&<p style={{color:"#10b981",fontSize:11,marginTop:4,fontWeight:600}}>✓ Full amount — account will be settled</p>}
+            </div>}
+
+            {/* Note field (admin can make required) */}
+            {(settings?.agentCollectRequireNote||true)&&<Inp dm={dm} label={`Collection Note${settings?.agentCollectRequireNote?" *":""}`} value={collectNote} onChange={e=>setCollectNote(e.target.value)} placeholder="e.g. Paid in cash at gate, UPI ref #12345…"/>}
+
+            <div className="flex gap-2">
+              <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}}>Cancel</Btn>
+              <Btn dm={dm} v="success" className="flex-1" onClick={()=>{
+                const amt=+collectAmt;
+                if(!amt||amt<=0){notify("Enter a valid amount");return;}
+                if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");return;}
+                const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
+                setDeliv(p=>p.map(x=>x.id===d.id?upd:x));
+                if(d.customerId){setCust(p=>p.map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt,pending:Math.max(0,(c.pending||0)-amt)}:c));}
+                addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
+                addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
+                notify(`${inr(amt)} collected ✓`);
+                // Show inline receipt card on phone
+                setLastReceiptData({delivery:upd,amt,note:collectNote,customer:d.customer,ts:ts()});
+                // Auto-print receipt only if admin has it enabled
+                if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportAgentReceipt(upd,products,settings);
+                setCollectSh(null);setCollectAmt("");setCollectNote("");
+              }}>Confirm Collection</Btn>
+            </div>
+          </>;
+        })()}
+      </Sheet>
+
+      {/* ── INLINE RECEIPT CARD — tap 🧾 Receipt button OR shown after collection ── */}
+      <Sheet dm={dm} open={!!lastReceiptData} onClose={()=>setLastReceiptData(null)} title={lastReceiptData?.viewOnly?"🧾 Delivery Receipt":"✅ Collection Confirmed"}>
+        {lastReceiptData&&(()=>{
+          const {delivery:rd,amt,note,customer,ts:rts,viewOnly}=lastReceiptData;
+          const orderTotal=lineTotal(rd.orderLines);
+          const replAmt=+(rd.replacement?.amount||0);
+          const netAmt=Math.max(0,orderTotal-replAmt);
+          const collected=viewOnly?(+(rd.partialPayment?.amount||0)):amt;
+          const balanceDue=Math.max(0,netAmt-collected);
+          const rows=lineRows(rd.orderLines,products).filter(r=>r.qty>0);
+          const statusColor=rd.status==="Delivered"?"#10b981":rd.status==="In Transit"?"#3b82f6":rd.status==="Cancelled"?"#ef4444":"#f59e0b";
+          const showReceiptPrices=settings?.agentInvoiceShowPrices!==false; // syncs with admin setting
+          return <>
+            {/* Header banner */}
+            {viewOnly
+              ?<div style={{background:statusColor+"18",border:`1.5px solid ${statusColor}40`,borderRadius:16,padding:"12px 16px"}}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p style={{color:statusColor,fontWeight:900,fontSize:16}}>{rd.customer}</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:3}}>📅 {rd.date}{rd.deliveryDate&&rd.deliveryDate!==rd.date?` · Deliver by: ${rd.deliveryDate}`:""}</p>
+                    {rd.agent&&<p style={{color:t.sub,fontSize:11}}>👤 {rd.agent}</p>}
+                  </div>
+                  <span style={{background:statusColor+"22",color:statusColor,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99}}>{rd.status}</span>
+                </div>
+              </div>
+              :<div style={{background:"#10b98120",border:"1.5px solid #10b98140",borderRadius:16,padding:"14px 16px",textAlign:"center"}}>
+                <p style={{fontSize:32,lineHeight:1,marginBottom:6}}>✅</p>
+                <p style={{color:"#10b981",fontWeight:900,fontSize:18}}>{inr(collected)} Collected</p>
+                <p style={{color:t.sub,fontSize:12,marginTop:4}}>{customer} · {rts}</p>
+              </div>
+            }
+
+            {/* Items */}
+            {rows.length>0&&<div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
+              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Items Ordered</p>
+              {rows.map(r=>(
+                <div key={r.id} className="flex justify-between text-sm py-1" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.sub}}>{r.qty} × {r.name}</span>
+                  {showReceiptPrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
+                </div>
+              ))}
+              {showReceiptPrices&&orderTotal>0&&<div className="flex justify-between text-sm mt-2 font-bold">
+                <span style={{color:t.sub}}>Order Total</span>
+                <span style={{color:t.text}}>{inr(orderTotal)}</span>
+              </div>}
+            </div>}
+
+            {/* Replacement */}
+            {rd.replacement?.done&&<div style={{background:"#f9731615",border:"1px solid #f9731630",borderRadius:12,padding:"10px 12px"}}>
+              <p style={{color:"#f97316",fontWeight:700,fontSize:12}}>🔄 Replacement: {rd.replacement.item||"—"}{rd.replacement.qty?` (${rd.replacement.qty})`:""}</p>
+              {rd.replacement.reason&&<p style={{color:t.sub,fontSize:11,marginTop:2}}>{rd.replacement.reason}</p>}
+              {showReceiptPrices&&replAmt>0&&<p style={{color:"#f97316",fontWeight:700,fontSize:12,marginTop:4}}>Deducted: −{inr(replAmt)}</p>}
+            </div>}
+
+            {/* Payment summary */}
+            {showReceiptPrices&&<div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
+              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Payment Summary</p>
+              {orderTotal>0&&<div className="flex justify-between text-sm py-1"><span style={{color:t.sub}}>Order Total</span><span style={{color:t.text,fontWeight:600}}>{inr(orderTotal)}</span></div>}
+              {replAmt>0&&<div className="flex justify-between text-sm py-1"><span style={{color:"#f97316"}}>🔄 Replacement</span><span style={{color:"#f97316",fontWeight:700}}>−{inr(replAmt)}</span></div>}
+              {replAmt>0&&<div className="flex justify-between text-sm py-1"><span style={{color:t.sub}}>Net Payable</span><span style={{color:t.text,fontWeight:700}}>{inr(netAmt)}</span></div>}
+              {collected>0&&<div className="flex justify-between text-sm py-1"><span style={{color:"#10b981"}}>✓ {viewOnly?"Collected":"Collected now"}</span><span style={{color:"#10b981",fontWeight:700}}>{inr(collected)}</span></div>}
+              <div className="flex justify-between text-sm pt-2 font-bold" style={{borderTop:`2px solid ${t.border}`}}>
+                <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{balanceDue===0?"✓ Fully Settled":"Balance Due"}</span>
+                <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{inr(balanceDue)}</span>
+              </div>
+            </div>}
+
+            {(note||(viewOnly&&rd.partialPayment?.note))&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",textAlign:"center"}}>📝 "{note||(rd.partialPayment?.note)}"</p>}
+
+            <div className="flex gap-2">
+              <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setLastReceiptData(null)}>Close</Btn>
+              {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportAgentReceipt(rd,products,settings)}>🖨 Print Receipt</Btn>}
+            </div>
+          </>;
+        })()}
+      </Sheet>
+
       <Sheet dm={dm} open={bulkOrderSh} onClose={()=>setBulkOrderSh(false)} title="📋 Bulk Order Entry">
         <p style={{color:t.sub}} className="text-xs">Create delivery orders for multiple customers at once. Toggle on the customers you want, optionally adjust quantities, then save all at once.</p>
         <div className="grid grid-cols-2 gap-3">
