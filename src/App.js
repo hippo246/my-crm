@@ -123,10 +123,10 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","Wastage","P&L","Analytics","Production","GPS","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","P&L","Analytics","Production","GPS","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
-  factory: ["Dashboard","Customers","Deliveries","Supplies","Wastage","Production"],
+  factory: ["Dashboard","Customers","Deliveries","Supplies","Production"],
   agent:   ["Dashboard","Customers","Deliveries","GPS"],
 };
 
@@ -235,7 +235,7 @@ const D_EXP = [];
 
 const D_USERS = [
   {id:"u1",username:"admin",   password:hashPw("TAS@admin2026"),role:"admin",  name:"Admin",         active:true,createdAt:"2026-01-01",permissions:ALL_TABS},
-  {id:"u2",username:"factory1",password:hashPw("factory123"),  role:"factory",name:"Factory Staff",  active:true,createdAt:"2026-01-01",permissions:["Customers","Deliveries","Supplies","Wastage"]},
+  {id:"u2",username:"factory1",password:hashPw("factory123"),  role:"factory",name:"Factory Staff",  active:true,createdAt:"2026-01-01",permissions:["Customers","Deliveries","Supplies","Production"]},
   {id:"u3",username:"agent1",  password:hashPw("deliver123"),  role:"agent",  name:"Delivery Agent", active:true,createdAt:"2026-01-01",permissions:["Customers","Deliveries"]},
 ];
 
@@ -345,7 +345,7 @@ function exportPDF(record, products, type, settings, deliveries) {
     <div class="section-title" style="margin-top:24px">📦 Delivery History (${cDelivs.length} orders)</div>
     <table>
       <thead><tr>
-        <th>Date</th><th>Status</th><th>Items</th><th>Order Total</th><th>Replacement</th><th>Repl. Amount</th><th>Notes</th>
+        <th>Date</th><th>Status</th><th>Items</th><th>Order Total</th><th>Replacement</th><th>Repl. Amount</th><th>Net Payable</th><th>Collected</th><th>Balance Due</th><th>Notes</th>
       </tr></thead>
       <tbody>
         ${cDelivs.map((d,i)=>{
@@ -353,13 +353,20 @@ function exportPDF(record, products, type, settings, deliveries) {
           const dLineEntries=Object.entries(d.orderLines||{}).filter(([,l])=>l.qty>0);
           const itemsStr=dLineEntries.map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ");
           const statusColor=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":d.status==="Cancelled"?"#dc2626":"#d97706";
+          const dReplAmt=+(d.replacement?.amount)||0;
+          const dNetAmt=dTotal-dReplAmt;
+          const dCollected=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
+          const dBalance=Math.max(0,dNetAmt-dCollected);
           return `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
             <td style="white-space:nowrap">${d.date||"—"}</td>
             <td><span style="background:${statusColor}18;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">${d.status||"Pending"}</span></td>
             <td style="font-size:11px;color:#475569">${itemsStr||"—"}</td>
             <td class="r" style="font-weight:700">₹${dTotal.toLocaleString("en-IN")}</td>
             <td style="font-size:11px">${d.replacement?.done?`<span style="color:#f97316;font-weight:600">🔄 ${d.replacement.item||"Done"}${d.replacement.qty?" ("+d.replacement.qty+")":""}</span>`:"—"}</td>
-            <td class="r" style="color:#f97316;font-weight:700">${d.replacement?.done&&d.replacement?.amount?"−₹"+Number(d.replacement.amount).toLocaleString("en-IN"):"—"}</td>
+            <td class="r" style="color:#f97316;font-weight:700">${d.replacement?.done&&dReplAmt?"−₹"+dReplAmt.toLocaleString("en-IN"):"—"}</td>
+            <td class="r" style="font-weight:700;color:#0f172a">₹${dNetAmt.toLocaleString("en-IN")}</td>
+            <td class="r" style="color:#059669;font-weight:700">${dCollected>0?"₹"+dCollected.toLocaleString("en-IN"):"—"}</td>
+            <td class="r" style="color:${dBalance===0?"#059669":"#d97706"};font-weight:800">${dBalance===0?"✓ Paid":"₹"+dBalance.toLocaleString("en-IN")}</td>
             <td style="font-size:11px;color:#94a3b8">${d.notes||"—"}</td>
           </tr>`;
         }).join("")}
@@ -451,11 +458,9 @@ ${rows.map(r=>`<tr><td>${r.name}</td><td>${r.unit||"—"}</td><td>${r.qty}</td><
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  exportAgentReceipt — A clean, professional delivery receipt for agents.
-//  Shows full order, replacements with deductions, partial payment collected,
-//  balance due, and a paper-trail footer. Admin-controlled via settings.
-// ─────────────────────────────────────────────────────────────────────────────
-function exportAgentReceipt(d, products, settings) {
+//  exportAgentReceipt — kept for backwards compatibility
+// eslint-disable-next-line no-unused-vars
+function exportAgentReceipt(d, products, settings, invNo) {
   const showPrices = settings?.agentInvoiceShowPrices !== false;
   const co     = settings?.companyName     || "TAS Healthy World";
   const cosub  = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
@@ -467,7 +472,417 @@ function exportAgentReceipt(d, products, settings) {
   const netAmt     = orderTotal - replAmt;
   const collected  = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
   const balanceDue = Math.max(0, netAmt - collected);
-  const receiptNo  = `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
+  const receiptNo  = invNo ? `RCP-${invNo.replace("TAS-","")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
+  const now        = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const statusColor= d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Delivery Receipt — ${d.customer}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;color:#1c1917;background:#fff;padding:0;max-width:420px;margin:0 auto}
+.wrap{padding:24px 20px}
+.brand-bar{background:#1e3a5f;color:#fff;padding:14px 20px;text-align:center}
+.brand-name{font-size:17px;font-weight:900;letter-spacing:0.02em}
+.brand-sub{font-size:10px;opacity:0.75;margin-top:2px}
+.receipt-title{text-align:center;padding:14px 20px 0;border-bottom:2px dashed #e5e5e5;padding-bottom:14px;margin-bottom:0}
+.receipt-no{font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+.receipt-date{font-size:10px;color:#9ca3af;margin-top:2px}
+.section{padding:12px 20px;border-bottom:1px solid #f3f4f6}
+.section-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px}
+.cust-name{font-size:16px;font-weight:800;color:#111827}
+.cust-detail{font-size:11px;color:#6b7280;margin-top:3px;line-height:1.5}
+.status-badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;margin-top:6px}
+.line-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f9fafb;font-size:12px}
+.line-name{color:#374151;flex:1}
+.line-qty{color:#6b7280;width:32px;text-align:center;font-weight:600}
+.line-price{color:#6b7280;width:60px;text-align:right;font-size:11px}
+.line-amt{color:#111827;width:64px;text-align:right;font-weight:700}
+.total-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13px}
+.repl-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;margin:0 20px 0}
+.repl-title{font-size:11px;font-weight:800;color:#92400e;margin-bottom:6px}
+.repl-detail{font-size:11px;color:#78716c;line-height:1.6}
+.pay-section{padding:12px 20px}
+.pay-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.balance-box{background:#111827;color:#fff;margin:0 20px;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.balance-label{font-size:11px;opacity:0.7;font-weight:700;text-transform:uppercase;letter-spacing:0.06em}
+.balance-amt{font-size:22px;font-weight:900}
+.balance-paid{background:#059669}
+.collected-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin:8px 20px;display:flex;justify-content:space-between;align-items:center}
+.trail{font-size:9.5px;color:#9ca3af;line-height:1.8;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-family:monospace}
+.footer{text-align:center;font-size:9px;color:#d1d5db;padding:16px 20px 24px;line-height:1.8}
+.print-bar{position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:12px;gap:10px}
+.print-bar a{background:#3b82f6;color:#fff;padding:6px 14px;border-radius:7px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap}
+@media print{@page{size:80mm auto;margin:0}body{max-width:100%}.print-bar{display:none!important}body{padding-top:0}}
+</style></head><body>
+<div class="brand-bar">
+  <div class="brand-name">🫓 ${co}</div>
+  <div class="brand-sub">${cosub}</div>
+  ${coPhone?`<div class="brand-sub">📞 ${coPhone}</div>`:""}
+  ${gst?`<div class="brand-sub">GST: ${gst}</div>`:""}
+</div>
+<div class="receipt-title">
+  <div class="receipt-no">Delivery Receipt · ${receiptNo}</div>
+  <div class="receipt-date">Issued: ${now}</div>
+</div>
+<div class="section">
+  <div class="section-label">Customer</div>
+  <div class="cust-name">${d.customer||"—"}</div>
+  ${d.phone?`<div class="cust-detail">📞 ${d.phone}</div>`:""}
+  ${d.address?`<div class="cust-detail">📍 ${d.address}</div>`:""}
+  <span class="status-badge" style="background:${statusColor}20;color:${statusColor}">${d.status||"Pending"}</span>
+  <div class="cust-detail" style="margin-top:6px">Order date: <b>${d.date||"—"}</b>${d.deliveryDate&&d.deliveryDate!==d.date?` · Deliver by: <b>${d.deliveryDate}</b>`:""}</div>
+  <div class="cust-detail">Handled by: <b>${d.agent||d.createdBy||"—"}</b> · Ref: #${(d.id||"").slice(-8)}</div>
+</div>
+<div class="section">
+  <div class="section-label">Items Ordered</div>
+  ${rows.length===0?'<div style="font-size:12px;color:#9ca3af">No items</div>':rows.map(r=>`
+  <div class="line-row">
+    <span class="line-name">${r.name}</span>
+    <span class="line-qty">${r.qty}×</span>
+    ${showPrices?`<span class="line-price">₹${r.priceAmount.toLocaleString("en-IN")}</span><span class="line-amt">₹${(r.qty*r.priceAmount).toLocaleString("en-IN")}</span>`:`<span class="line-price"></span><span class="line-amt" style="color:#9ca3af">${r.qty} ${r.unit||"pcs"}</span>`}
+  </div>`).join("")}
+  ${showPrices&&orderTotal>0?`<div class="total-row" style="border-top:2px solid #111827;margin-top:6px;font-weight:700"><span style="color:#374151">Order Total</span><span style="color:#111827">₹${orderTotal.toLocaleString("en-IN")}</span></div>`:""}
+</div>
+${d.replacement?.done?`
+<div style="padding:10px 20px 0">
+<div class="repl-box">
+  <div class="repl-title">🔄 Replacement Made</div>
+  <div class="repl-detail">
+    ${d.replacement.item?`<b>Item:</b> ${d.replacement.item}<br>`:""}
+    ${d.replacement.qty?`<b>Quantity:</b> ${d.replacement.qty}<br>`:""}
+    ${d.replacement.reason?`<b>Reason:</b> ${d.replacement.reason}<br>`:""}
+    ${showPrices&&replAmt>0?`<b style="color:#ea580c">Amount deducted: −₹${replAmt.toLocaleString("en-IN")}</b>`:""}
+  </div>
+</div>
+</div>`:""}
+${showPrices?`
+<div class="pay-section">
+  <div class="section-label">Payment Summary</div>
+  ${orderTotal>0?`<div class="pay-row"><span style="color:#6b7280">Order Total</span><span style="font-weight:600">₹${orderTotal.toLocaleString("en-IN")}</span></div>`:""}
+  ${replAmt>0?`<div class="pay-row"><span style="color:#ea580c">Replacement Deduction</span><span style="color:#ea580c;font-weight:700">−₹${replAmt.toLocaleString("en-IN")}</span></div>`:""}
+  ${replAmt>0?`<div class="pay-row" style="border-top:1px solid #e5e7eb;padding-top:6px;font-weight:700"><span>Net Payable</span><span>₹${netAmt.toLocaleString("en-IN")}</span></div>`:""}
+</div>
+${collected>0?`<div class="collected-box"><div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#059669">✓ Amount Collected</div><div style="font-size:9px;color:#6b7280;margin-top:1px">Received at time of delivery</div></div><div style="font-size:18px;font-weight:900;color:#059669">₹${collected.toLocaleString("en-IN")}</div></div>`:""}
+<div style="padding:8px 20px 12px">
+<div class="balance-box ${balanceDue===0?"balance-paid":""}">
+  <div>
+    <div class="balance-label">${balanceDue===0?"✓ Fully Paid":"Balance Due"}</div>
+    ${balanceDue===0?'<div style="font-size:10px;opacity:0.7;margin-top:2px">No amount outstanding</div>':collected>0?`<div style="font-size:9px;opacity:0.6;margin-top:2px">After ₹${collected.toLocaleString("en-IN")} collected</div>`:""}
+  </div>
+  <div class="balance-amt">₹${balanceDue.toLocaleString("en-IN")}</div>
+</div>
+</div>`:""}
+<div style="padding:8px 20px 0">
+<div class="trail">
+  <b>PAPER TRAIL</b><br>
+  Receipt No:      ${receiptNo}<br>
+  Invoice No:      ${invNo||"—"}<br>
+  Delivery ID:     ${(d.id||"").slice(-12)}<br>
+  Order Date:      ${d.date||"—"}<br>
+  Status:          ${d.status||"—"}<br>
+  Created by:      ${d.createdBy||"—"}<br>
+  ${d.agent?`Agent:           ${d.agent}<br>`:""}
+  Issued at:       ${now}<br>
+  ${d.replacement?.done?`Replacement:     YES — ${d.replacement.item||"item"} × ${d.replacement.qty||"?"}<br>`:""}
+  ${replAmt>0?`Repl. Deducted:  ₹${replAmt.toLocaleString("en-IN")}<br>`:""}
+  ${collected>0?`Collected:       ₹${collected.toLocaleString("en-IN")}<br>`:""}
+  ${balanceDue>0?`Balance Due:     ₹${balanceDue.toLocaleString("en-IN")}<br>`:"Balance:         SETTLED<br>"}
+</div>
+</div>
+<div class="footer">
+  ${co} · ${cosub}<br>
+  This is a computer-generated delivery receipt and serves as an official record.<br>
+  For queries contact: ${coPhone||"your account manager"}
+</div>
+<div class="print-bar"><span>🧾 Receipt ${receiptNo} — ${d.customer}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;">🖨 Print</a><a style="background:#059669" href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='receipt_${receiptNo}.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;">⬇ Save</a></div></div>
+<script>window.addEventListener("load",function(){window.print();});</script>
+</body></html>`;
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  exportDeliveryInvoice — Full A4 printable invoice for a single delivery.
+//  Shows: invoice number, bill-to, itemised order, replacement deduction,
+//  net payable, partial payment collected, balance due, paper trail footer.
+// ─────────────────────────────────────────────────────────────────────────────
+function exportDeliveryInvoice(d, products, settings, invNo) {
+  const co      = settings?.companyName     || "TAS Healthy World";
+  const cosub   = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
+  const gst     = settings?.companyGST      || "";
+  const coPhone = settings?.companyPhone    || "";
+  const coAddr  = settings?.companyAddress  || "";
+  const rows    = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
+  const gross   = lineTotal(d.orderLines||{});
+  const replAmt = +(d.replacement?.amount)||0;
+  const net     = Math.max(0, gross - replAmt);
+  const partial = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
+  const balance = Math.max(0, net - partial);
+  const now     = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const sc      = d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":d.status==="Cancelled"?"#dc2626":"#d97706";
+  const delivId = (d.id||"").slice(-10).toUpperCase();
+
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<title>Invoice ${invNo} — ${d.customer}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-size:13px;line-height:1.5}
+.page{max-width:820px;margin:0 auto;padding:48px 56px}
+/* Header */
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;padding-bottom:28px;border-bottom:3px solid #111827}
+.brand-name{font-size:22px;font-weight:900;color:#111827;letter-spacing:-0.03em}
+.brand-sub{font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6}
+.inv-block{text-align:right}
+.inv-title{font-size:36px;font-weight:900;color:#111827;letter-spacing:-0.04em;line-height:1}
+.inv-num{font-size:14px;font-weight:700;color:#2563eb;margin-top:8px;letter-spacing:0.02em}
+.inv-meta{font-size:11px;color:#6b7280;margin-top:3px}
+.status-pill{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px}
+/* Addresses */
+.addresses{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:32px}
+.addr-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px}
+.addr-name{font-size:16px;font-weight:700;color:#111827}
+.addr-detail{font-size:12px;color:#6b7280;margin-top:3px;line-height:1.6}
+/* Items table */
+.items-table{width:100%;border-collapse:collapse;margin-bottom:0}
+.items-table thead tr{background:#f1f5f9;border-bottom:2px solid #e2e8f0}
+.items-table th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;padding:10px 14px;text-align:left}
+.items-table th.r{text-align:right}
+.items-table td{padding:11px 14px;border-bottom:1px solid #f1f5f9;color:#111827;font-size:13px;vertical-align:middle}
+.items-table td.r{text-align:right;font-variant-numeric:tabular-nums}
+.items-table tbody tr:last-child td{border-bottom:2px solid #111827}
+.item-name{font-weight:600}
+.item-sku{font-size:10px;color:#9ca3af;margin-top:1px}
+/* Totals */
+.totals-wrap{display:flex;justify-content:flex-end;margin-bottom:28px}
+.totals-box{width:320px}
+.tot-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f1f5f9}
+.tot-row.gross{color:#374151}
+.tot-row.repl{color:#ea580c}
+.tot-row.net{font-weight:700;color:#111827;border-bottom:2px solid #111827}
+.tot-row.collected{color:#059669;font-weight:600}
+.tot-row.balance-due{font-weight:800;font-size:15px;border-bottom:none;padding-top:10px;color:#dc2626}
+.tot-row.balance-paid{font-weight:800;font-size:15px;border-bottom:none;padding-top:10px;color:#059669}
+/* Replacement box */
+.repl-section{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 20px;margin-bottom:20px}
+.repl-heading{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#92400e;margin-bottom:10px}
+.repl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.repl-field{font-size:11px;color:#78350f}
+.repl-val{font-weight:700;color:#111827;font-size:12px;margin-top:2px}
+/* Partial pay banner */
+.partial-banner{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.partial-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#059669}
+.partial-detail{font-size:11px;color:#6b7280;margin-top:2px}
+.partial-amt{font-size:22px;font-weight:900;color:#059669}
+/* Balance box */
+.balance-banner{border-radius:12px;padding:16px 22px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center}
+.balance-banner.due{background:#111827;color:#fff}
+.balance-banner.paid{background:#059669;color:#fff}
+.bal-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;opacity:0.7}
+.bal-sub{font-size:10px;opacity:0.55;margin-top:3px}
+.bal-amt{font-size:28px;font-weight:900;letter-spacing:-0.02em}
+/* Paper trail */
+.trail-section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:28px}
+.trail-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;margin-bottom:10px}
+.trail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 24px}
+.trail-item{font-size:10px;color:#6b7280;font-family:monospace;line-height:1.7}
+.trail-item b{color:#374151}
+/* Footer */
+.footer{border-top:1px solid #e5e7eb;padding-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9ca3af}
+.footer-brand{font-weight:700;color:#374151}
+/* Print */
+.print-bar{position:fixed;top:0;left:0;right:0;background:#111827;color:#fff;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,Arial,sans-serif;font-size:13px;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,0.4)}
+.print-bar a{padding:7px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap;color:#fff}
+.print-bar a.print{background:#2563eb}
+.print-bar a.save{background:#059669}
+.print-bar a.inv{background:#7c3aed}
+@media print{
+  @page{size:A4;margin:1.2cm 1.4cm}
+  body{font-size:12px}
+  .print-bar{display:none!important}
+  .page{padding:0;max-width:100%}
+  .items-table th,.items-table td{padding:8px 10px}
+}
+</style></head><body>
+<div class="page">
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="brand-name">🫓 ${co}</div>
+    <div class="brand-sub">
+      ${cosub}<br>
+      ${coAddr?coAddr+"<br>":""}
+      ${coPhone?`📞 ${coPhone}<br>`:""}
+      ${gst?`GST: ${gst}`:""}
+    </div>
+  </div>
+  <div class="inv-block">
+    <div class="inv-title">INVOICE</div>
+    <div class="inv-num">${invNo}</div>
+    <div class="inv-meta">Date: ${d.date||today()}</div>
+    ${d.deliveryDate&&d.deliveryDate!==d.date?`<div class="inv-meta">Deliver by: ${d.deliveryDate}</div>`:""}
+    <div class="inv-meta">Issued: ${now}</div>
+    <span class="status-pill" style="background:${sc}20;color:${sc}">${d.status||"Pending"}</span>
+  </div>
+</div>
+
+<!-- BILL TO / FROM -->
+<div class="addresses">
+  <div>
+    <div class="addr-label">Bill To</div>
+    <div class="addr-name">${d.customer||"—"}</div>
+    ${d.phone?`<div class="addr-detail">📞 ${d.phone}</div>`:""}
+    ${d.address?`<div class="addr-detail">📍 ${d.address}</div>`:""}
+  </div>
+  <div>
+    <div class="addr-label">Order Details</div>
+    <div class="addr-detail"><b>Order ID:</b> #${delivId}</div>
+    <div class="addr-detail"><b>Agent:</b> ${d.agent||d.createdBy||"—"}</div>
+    ${d.notes?`<div class="addr-detail"><b>Notes:</b> ${d.notes}</div>`:""}
+  </div>
+</div>
+
+<!-- ITEMS TABLE -->
+<table class="items-table">
+  <thead>
+    <tr>
+      <th style="width:40px">#</th>
+      <th>Product</th>
+      <th>Unit</th>
+      <th class="r">Qty</th>
+      <th class="r">Unit Price</th>
+      <th class="r">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows.map((r,i)=>`
+    <tr>
+      <td style="color:#9ca3af;font-size:11px">${i+1}</td>
+      <td><div class="item-name">${r.name}</div><div class="item-sku">${r.unit}</div></td>
+      <td style="color:#6b7280">${r.unit}</td>
+      <td class="r">${r.qty}</td>
+      <td class="r">₹${r.priceAmount.toLocaleString("en-IN")}</td>
+      <td class="r" style="font-weight:700">₹${(r.qty*r.priceAmount).toLocaleString("en-IN")}</td>
+    </tr>`).join("")}
+    ${rows.length===0?`<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:20px">No items recorded</td></tr>`:""}
+  </tbody>
+</table>
+
+<!-- TOTALS -->
+<div class="totals-wrap">
+  <div class="totals-box">
+    <div class="tot-row gross"><span>Subtotal</span><span>₹${gross.toLocaleString("en-IN")}</span></div>
+    ${replAmt>0?`<div class="tot-row repl"><span>🔄 Replacement Deduction</span><span>−₹${replAmt.toLocaleString("en-IN")}</span></div>`:""}
+    <div class="tot-row net"><span>Net Payable</span><span>₹${net.toLocaleString("en-IN")}</span></div>
+    ${partial>0?`<div class="tot-row collected"><span>✓ Amount Collected</span><span>₹${partial.toLocaleString("en-IN")}</span></div>`:""}
+  </div>
+</div>
+
+${d.replacement?.done?`
+<!-- REPLACEMENT DETAILS -->
+<div class="repl-section">
+  <div class="repl-heading">🔄 Replacement Details</div>
+  <div class="repl-grid">
+    ${d.replacement.item?`<div><div class="repl-field">Item Replaced</div><div class="repl-val">${d.replacement.item}</div></div>`:""}
+    ${d.replacement.qty?`<div><div class="repl-field">Quantity</div><div class="repl-val">${d.replacement.qty}</div></div>`:""}
+    ${d.replacement.reason?`<div style="grid-column:1/-1"><div class="repl-field">Reason</div><div class="repl-val">${d.replacement.reason}</div></div>`:""}
+    ${replAmt>0?`<div><div class="repl-field">Amount Deducted from Invoice</div><div class="repl-val" style="color:#ea580c">−₹${replAmt.toLocaleString("en-IN")}</div></div>`:""}
+  </div>
+</div>`:""}
+
+${partial>0?`
+<!-- PARTIAL PAYMENT -->
+<div class="partial-banner">
+  <div>
+    <div class="partial-label">✓ Partial Payment Collected</div>
+    <div class="partial-detail">Collected at time of delivery${d.partialPayment?.collectedAt?" on "+d.partialPayment.collectedAt:""}</div>
+    ${d.partialPayment?.note?`<div class="partial-detail">Note: ${d.partialPayment.note}</div>`:""}
+  </div>
+  <div class="partial-amt">₹${partial.toLocaleString("en-IN")}</div>
+</div>`:""}
+
+<!-- BALANCE BANNER -->
+<div class="balance-banner ${balance===0?"paid":"due"}">
+  <div>
+    <div class="bal-label">${balance===0?"✓ Invoice Fully Settled":"Balance Due"}</div>
+    ${balance===0?`<div class="bal-sub">No outstanding amount · Thank you!</div>`
+    :partial>0?`<div class="bal-sub">After ₹${partial.toLocaleString("en-IN")} collected · Remaining balance</div>`
+    :`<div class="bal-sub">Full amount outstanding · Please arrange payment</div>`}
+  </div>
+  <div class="bal-amt">₹${balance.toLocaleString("en-IN")}</div>
+</div>
+
+<!-- PAPER TRAIL -->
+<div class="trail-section">
+  <div class="trail-title">📋 Paper Trail</div>
+  <div class="trail-grid">
+    <div class="trail-item"><b>Invoice No:</b> ${invNo}</div>
+    <div class="trail-item"><b>Delivery ID:</b> #${delivId}</div>
+    <div class="trail-item"><b>Order Date:</b> ${d.date||"—"}</div>
+    <div class="trail-item"><b>Status:</b> ${d.status||"—"}</div>
+    <div class="trail-item"><b>Created by:</b> ${d.createdBy||"—"}</div>
+    ${d.agent?`<div class="trail-item"><b>Agent:</b> ${d.agent}</div>`:""}
+    <div class="trail-item"><b>Gross Amount:</b> ₹${gross.toLocaleString("en-IN")}</div>
+    ${replAmt>0?`<div class="trail-item"><b>Replacement Deducted:</b> −₹${replAmt.toLocaleString("en-IN")}</div>`:""}
+    <div class="trail-item"><b>Net Payable:</b> ₹${net.toLocaleString("en-IN")}</div>
+    ${partial>0?`<div class="trail-item"><b>Collected:</b> ₹${partial.toLocaleString("en-IN")}</div>`:""}
+    <div class="trail-item"><b>Balance:</b> ${balance===0?"SETTLED":"₹"+balance.toLocaleString("en-IN")}</div>
+    <div class="trail-item"><b>Issued at:</b> ${now}</div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div>
+    <div class="footer-brand">🫓 ${co}</div>
+    <div>${cosub}${coPhone?" · 📞 "+coPhone:""}</div>
+    ${gst?`<div>GST: ${gst}</div>`:""}
+  </div>
+  <div style="text-align:right">
+    <div>This is a computer-generated invoice.</div>
+    <div>For disputes contact: ${coPhone||"your account manager"}</div>
+  </div>
+</div>
+
+</div><!-- .page -->
+<div class="print-bar">
+  <span style="font-weight:700">📄 Invoice ${invNo} — ${d.customer||"—"}</span>
+  <div style="display:flex;gap:8px">
+    <a class="print" href="#" onclick="window.print();return false;">🖨 Print / PDF</a>
+    <a class="save" href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='Invoice_${invNo}_${(d.customer||"").replace(/[^a-zA-Z0-9]/g,"_")}.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;">⬇ Save</a>
+  </div>
+</div>
+<script>window.addEventListener("load",function(){window.print();});</script>
+</body></html>`;
+
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+// ─── exportDeliveryReceipt — compact thermal-style delivery receipt ───
+function exportDeliveryReceipt(d, products, settings, invNo) {
+  const showPrices = settings?.agentInvoiceShowPrices !== false;
+  const co      = settings?.companyName     || "TAS Healthy World";
+  const cosub   = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
+  const gst     = settings?.companyGST      || "";
+  const coPhone = settings?.companyPhone    || "";
+  const rows    = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
+  const orderTotal = lineTotal(d.orderLines||{});
+  const replAmt    = +(d.replacement?.amount)||0;
+  const netAmt     = orderTotal - replAmt;
+  const collected  = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
+  const balanceDue = Math.max(0, netAmt - collected);
+  const receiptNo  = invNo ? `RCP-${invNo.replace("TAS-","")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
   const now        = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const statusColor= d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
 
@@ -626,6 +1041,16 @@ function shareWhatsApp(record, products, type, settings) {
   msg += `\n\n*Items:*\n`;
   rows.forEach(r=>{msg+=`• ${r.qty} × ${r.name} @ ₹${r.priceAmount} = ₹${r.qty*r.priceAmount}\n`;});
   msg += `\n*Total: ₹${total.toLocaleString("en-IN")}*`;
+  if(type==="delivery") {
+    const replAmt = +(record.replacement?.amount||0);
+    const collected = record.partialPayment?.enabled ? +(record.partialPayment?.amount||0) : 0;
+    const net = Math.max(0, total - replAmt);
+    const balance = Math.max(0, net - collected);
+    if(replAmt>0) msg += `\n🔄 Replacement deducted: −₹${replAmt.toLocaleString("en-IN")}\n*Net Payable: ₹${net.toLocaleString("en-IN")}*`;
+    if(collected>0) msg += `\n✅ Collected: ₹${collected.toLocaleString("en-IN")}`;
+    if(balance>0) msg += `\n⚠️ *Balance Due: ₹${balance.toLocaleString("en-IN")}*`;
+    else if(collected>0) msg += `\n✓ Fully settled`;
+  }
   if(type==="customer"&&record.pending>0) msg+=`\n⚠️ Pending: ₹${(record.pending||0).toLocaleString("en-IN")}`;
   msg += `\n\n_${co}_`;
   const encoded = encodeURIComponent(msg);
@@ -804,6 +1229,260 @@ tbody tr:nth-child(even) td{background:#f8fafc}
   const burl=URL.createObjectURL(blob);
   const a2=document.createElement("a");
   a2.href=burl;a2.target="_blank";a2.rel="noopener";
+  document.body.appendChild(a2);a2.click();
+  setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(burl);},1000);
+}
+
+// ─── P&L FULL REPORT EXPORT ──────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+function exportPnLReport({co,periodLabel,mData,totRev,totSupC,totExpC,totWasteC,totCost,totProfit,totMargin,totReplDeducted,collectionRate,totDue,totCollected,avgMonthlyRev,avgMonthlyProfit,burnRate,healthScore,healthLabel,healthColor,insights,filtD,filtS,filtE,filtW,customers,deliveries,expenses,supplies,wastage,products,lineTotal,inr,today_fn,settings}){
+  const now=new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const pct=(a,b)=>b>0?Math.round(a/b*100):0;
+  const expCatBreak=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).map(cat=>({cat,total:filtE.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),count:filtE.filter(e=>e.category===cat).length})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const supCatBreak=(()=>{const m={};filtS.forEach(s=>{const c=s.category||s.item||"Other";m[c]=(m[c]||0)+(s.cost||0);});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,10);})();
+  const vendorBreak=(()=>{const m={};filtE.forEach(e=>{if(e.vendor)m[e.vendor]=(m[e.vendor]||0)+(e.amount||0);});return Object.entries(m).sort((a,b)=>b[1]-a[1]);})();
+  const pmBreak=(()=>{const m={};filtE.forEach(e=>{const p=e.paymentMethod||"Cash";m[p]=(m[p]||0)+(e.amount||0);});return Object.entries(m);})();
+  const wasteByProd=(()=>{const m={};filtW.forEach(w=>{if(!m[w.product])m[w.product]={qty:0,cost:0};m[w.product].qty+=(w.qty||0);m[w.product].cost+=(w.cost||0);});return Object.entries(m).sort((a,b)=>b[1].cost-a[1].cost);})();
+  const custRows=[...customers].map(c=>{const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");const rev=cd.reduce((s,d)=>s+lineTotal(d.orderLines),0);const repl=cd.reduce((s,d)=>s+(+d.replacement?.amount||0),0);return{name:c.name,orders:deliveries.filter(d=>d.customerId===c.id).length,delivered:cd.length,revenue:Math.max(0,rev-repl),collected:c.paid||0,pending:c.pending||0,avgOrder:cd.length>0?Math.round((rev-repl)/cd.length):0};}).sort((a,b)=>b.revenue-a.revenue);
+  const topProd=(()=>{return products.map(p=>{const qty=filtD.reduce((s,d)=>s+(d.orderLines?.[p.id]?.qty||0),0);const rev=filtD.reduce((s,d)=>s+(d.orderLines?.[p.id]?.qty||0)*(d.orderLines?.[p.id]?.priceAmount||0),0);return{name:p.name||p.id,qty,rev};}).filter(x=>x.qty>0).sort((a,b)=>b.rev-a.rev);})();
+  const statCard=(label,val,color="#0f172a")=>`<div class="sc"><div class="sv" style="color:${color}">${val}</div><div class="sl">${label}</div></div>`;
+  const barRow=(label,val,pct2,color,sub="")=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px"><span style="font-weight:600;font-size:12px">${label}</span><div style="text-align:right"><span style="font-weight:800;color:${color};font-size:13px">${val}</span>${sub?`<span style="color:#94a3b8;font-size:10px;margin-left:6px">${sub}</span>`:""}</div></div><div style="height:5px;background:#e2e8f0;border-radius:5px;overflow:hidden"><div style="width:${Math.min(pct2,100)}%;height:100%;background:${color};border-radius:5px"></div></div></div>`;
+  const section=(title,content)=>`<div class="sect"><div class="sh">${title}</div>${content}</div>`;
+  const tableHtml=(headers,rows2)=>`<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows2}</tbody></table>`;
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>P&L Report — ${co}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;background:#fff;font-size:13px}
+.cover{background:linear-gradient(135deg,#0f1923 0%,#1a3a5f 60%,#0a2a1a 100%);color:#fff;padding:44px 52px 40px;position:relative;overflow:hidden}
+.cover::before{content:'P&L';position:absolute;right:-20px;top:-40px;font-size:200px;font-weight:900;opacity:0.04;letter-spacing:-10px;color:#fff}
+.co{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.5;margin-bottom:12px}
+.title{font-size:38px;font-weight:900;letter-spacing:-.03em;line-height:1.1;margin-bottom:8px}
+.meta{font-size:11px;opacity:.45;margin-top:8px}
+.hero{display:flex;gap:14px;margin-top:22px;flex-wrap:wrap}
+.hk{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 18px;min-width:140px}
+.hkv{font-size:24px;font-weight:900;line-height:1}
+.hkl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;opacity:.5;margin-top:4px}
+.content{padding:36px 52px}
+.sect{margin-bottom:32px}
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:#94a3b8;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f1f5f9}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.sc{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px}
+.sv{font-size:20px;font-weight:900;line-height:1}
+.sl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-top:5px}
+table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+thead tr{background:#f1f5f9}
+th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#64748b;padding:9px 12px;text-align:left;border-bottom:2px solid #e2e8f0;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid #f1f5f9;color:#1e293b;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even) td{background:#f8fafc}
+.r{text-align:right}.c{text-align:center}
+.g{color:#059669;font-weight:700}.r2{color:#dc2626;font-weight:700}.a{color:#d97706;font-weight:700}.p{color:#7c3aed;font-weight:700}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:800}
+.bg{background:#dcfce7;color:#15803d}.br{background:#fee2e2;color:#b91c1c}.by{background:#fef9c3;color:#92400e}.bb{background:#dbeafe;color:#1e40af}
+.insight{display:flex;gap:10px;padding:10px 14px;background:#f8fafc;border-left:3px solid #3b82f6;border-radius:0 10px 10px 0;margin-bottom:8px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px}
+.footer{padding:20px 52px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;margin-top:40px}
+.no-print{position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.4);gap:12px}
+@media print{@page{size:A4;margin:16mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}.cover{padding:32px 40px}.content{padding:24px 40px}}
+</style></head><body>
+<div class="no-print"><span style="font-weight:700">📈 P&L Report — ${co} · ${periodLabel}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;" style="background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px">🖨 Print / Save PDF</a><a href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='PnL_${today_fn().replace(/-/g,'')}.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;" style="background:#059669;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px">⬇ Download</a></div></div>
+<div class="cover">
+  <div class="co">🫓 ${co}</div>
+  <div class="title">Profit &amp; Loss<br>Report</div>
+  <div class="meta">Period: ${periodLabel} &nbsp;·&nbsp; Exported ${now}</div>
+  <div class="hero">
+    <div class="hk"><div class="hkv" style="color:#10b981">${inr(totRev)}</div><div class="hkl">Net Revenue</div></div>
+    <div class="hk"><div class="hkv" style="color:#ef4444">${inr(totCost)}</div><div class="hkl">Total Costs</div></div>
+    <div class="hk"><div class="hkv" style="color:${totProfit>=0?"#10b981":"#ef4444"}">${inr(totProfit)}</div><div class="hkl">Net Profit / Loss</div></div>
+    <div class="hk"><div class="hkv" style="color:${healthColor}">${healthScore}/100</div><div class="hkl">Health Score · ${healthLabel}</div></div>
+    <div class="hk"><div class="hkv">${totMargin}%</div><div class="hkl">Net Margin</div></div>
+    <div class="hk"><div class="hkv">${collectionRate}%</div><div class="hkl">Collection Rate</div></div>
+  </div>
+</div>
+<div class="content">
+
+${section("Executive Summary",`
+<div class="stats">
+  ${statCard("Total Revenue",inr(totRev),"#059669")}
+  ${statCard("Supply Costs",inr(totSupC),"#7c3aed")}
+  ${statCard("Operating Expenses",inr(totExpC),"#dc2626")}
+  ${statCard("Wastage Losses",inr(totWasteC),"#ea580c")}
+  ${statCard("Total Costs",inr(totCost),"#dc2626")}
+  ${statCard("Net Profit",inr(totProfit),totProfit>=0?"#059669":"#dc2626")}
+  ${statCard("Net Margin",totMargin+"%",totMargin>=30?"#059669":totMargin>=15?"#d97706":"#dc2626")}
+  ${statCard("Replacement Deductions",inr(totReplDeducted),"#94a3b8")}
+  ${statCard("Cash Collected",inr(totCollected),"#059669")}
+  ${statCard("Cash Pending",inr(totDue),totDue>0?"#dc2626":"#059669")}
+  ${statCard("Avg Monthly Revenue",inr(avgMonthlyRev),"#0ea5e9")}
+  ${statCard("Avg Monthly Profit",inr(avgMonthlyProfit),avgMonthlyProfit>=0?"#059669":"#dc2626")}
+  ${statCard("Avg Monthly Burn",inr(burnRate),"#f97316")}
+</div>`)}
+
+${insights.length>0?section("Smart Insights",insights.map(i=>`<div class="insight"><span style="font-size:16px">${i.icon}</span><p style="font-size:12px;line-height:1.6">${i.text}</p></div>`).join("")):""}
+
+${section("Revenue Breakdown",`
+<div class="two-col">
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">By Month</div>
+    ${mData.map(m=>barRow(m.monthFull,inr(m.revenue),pct(m.revenue,Math.max(...mData.map(x=>x.revenue),1)),"#059669",`${m.deliveriesCount} deliveries`)).join("")}
+  </div>
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">Top Customers</div>
+    ${custRows.slice(0,8).map((c,i)=>barRow(`${i+1}. ${c.name}`,inr(c.revenue),pct(c.revenue,custRows[0]?.revenue||1),"#f59e0b",`${c.delivered} orders · ${Math.round(pct(c.revenue,custRows.reduce((s,x)=>s+x.revenue,0)))}% share`)).join("")}
+  </div>
+</div>`)}
+
+${section("Cost Structure",`
+<div class="two-col">
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">Supply Costs — By Item / Category</div>
+    ${supCatBreak.map(([cat,v])=>barRow(cat,inr(v),pct(v,totSupC),"#7c3aed")).join("")||"<p style='color:#94a3b8;font-size:12px'>No supplies in period</p>"}
+  </div>
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">Operating Expenses — By Category</div>
+    ${expCatBreak.map(c=>barRow(c.cat,inr(c.total),pct(c.total,totExpC),"#dc2626",`${c.count} entries`)).join("")||"<p style='color:#94a3b8;font-size:12px'>No expenses in period</p>"}
+  </div>
+</div>
+${vendorBreak.length>0?`<div class="two-col" style="margin-top:16px">
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">Expenses by Vendor</div>
+    ${vendorBreak.map(([vendor,v])=>barRow(vendor,inr(v),pct(v,totExpC),"#ef4444")).join("")}
+  </div>
+  <div class="card">
+    <div class="sh" style="margin-bottom:10px">Expenses by Payment Method</div>
+    ${pmBreak.map(([pm,v])=>barRow(pm,inr(v),pct(v,totExpC),"#8b5cf6")).join("")}
+  </div>
+</div>`:""}
+${wasteByProd.length>0?`<div class="card" style="margin-top:16px">
+  <div class="sh" style="margin-bottom:10px">Wastage by Product</div>
+  ${tableHtml(["Product","Qty Wasted","Cost"],wasteByProd.map(([p,d])=>`<tr><td>${p}</td><td>${d.qty} units</td><td class="r2">${inr(d.cost)}</td></tr>`).join(""))}
+</div>`:""}`)}
+
+${section("Monthly P&L Breakdown",tableHtml(
+  ["Month","Deliveries","Revenue","Supply","Expenses","Waste","Replacements","Total Cost","Profit / Loss","Margin","Gross Margin"],
+  mData.map(m=>`<tr>
+    <td style="font-weight:700">${m.monthFull}</td>
+    <td class="c">${m.deliveriesCount}</td>
+    <td class="g">${inr(m.revenue)}</td>
+    <td class="p">${inr(m.supplyCost)}</td>
+    <td class="r2">${inr(m.expenses)}</td>
+    <td style="color:#ea580c;font-weight:600">${inr(m.wasteCost)}</td>
+    <td style="color:#94a3b8">${inr(m.replDeducted||0)}</td>
+    <td class="r2">${inr(m.totalCost)}</td>
+    <td class="${m.profit>=0?"g":"r2"}">${inr(m.profit)}</td>
+    <td class="c"><span class="badge ${m.margin>=30?"bg":m.margin>=15?"by":"br"}">${m.margin}%</span></td>
+    <td class="c"><span class="badge bb">${m.grossMargin||0}%</span></td>
+  </tr>`).join("")+`
+  <tr style="background:#f1f5f9;font-weight:900;border-top:2px solid #e2e8f0">
+    <td>TOTAL</td><td class="c">${filtD.length}</td>
+    <td class="g">${inr(totRev)}</td><td class="p">${inr(totSupC)}</td>
+    <td class="r2">${inr(totExpC)}</td><td style="color:#ea580c;font-weight:700">${inr(totWasteC)}</td>
+    <td style="color:#94a3b8">${inr(totReplDeducted)}</td>
+    <td class="r2">${inr(totCost)}</td>
+    <td class="${totProfit>=0?"g":"r2"}">${inr(totProfit)}</td>
+    <td class="c"><span class="badge ${totMargin>=30?"bg":totMargin>=15?"by":"br"}">${totMargin}%</span></td>
+    <td></td>
+  </tr>`))}
+
+${section("Customer Revenue & Collection", tableHtml(
+  ["#","Customer","Orders","Delivered","Revenue","Collected","Pending","Avg Order","Coll. Rate"],
+  custRows.map((c,i)=>`<tr>
+    <td class="c" style="color:#94a3b8;font-weight:700">${i+1}</td>
+    <td style="font-weight:600">${c.name}</td>
+    <td class="c">${c.orders}</td><td class="c">${c.delivered}</td>
+    <td class="g">${inr(c.revenue)}</td>
+    <td class="g">${inr(c.collected)}</td>
+    <td class="${c.pending>0?"r2":"g"}">${inr(c.pending)}</td>
+    <td>${inr(c.avgOrder)}</td>
+    <td class="c"><span class="badge ${(c.collected+c.pending>0?Math.round(c.collected/(c.collected+c.pending)*100):100)>=90?"bg":(c.collected+c.pending>0?Math.round(c.collected/(c.collected+c.pending)*100):100)>=60?"by":"br"}">${c.collected+c.pending>0?Math.round(c.collected/(c.collected+c.pending)*100):100}%</span></td>
+  </tr>`).join("")))}
+
+${topProd.length>0?section("Product Sales (Period)", tableHtml(
+  ["Product","Qty Sold","Revenue"],
+  topProd.map(p=>`<tr><td style="font-weight:600">${p.name}</td><td class="c">${p.qty}</td><td class="g">${inr(p.rev)}</td></tr>`).join(""))):""}
+
+${filtE.length>0?section("Expense Paper Trail — All Entries", tableHtml(
+  ["Date","Category","Amount","Vendor","Payment","Approved By","Receipt","Tags","Notes"],
+  [...filtE].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>`<tr>
+    <td style="white-space:nowrap">${e.date}</td>
+    <td><span class="badge br">${e.category}</span></td>
+    <td class="r2">${inr(e.amount)}</td>
+    <td>${e.vendor||"—"}</td>
+    <td>${e.paymentMethod||"Cash"}</td>
+    <td>${e.approvedBy||"—"}</td>
+    <td>${e.receipt||"—"}</td>
+    <td>${e.tags||"—"}</td>
+    <td style="color:#64748b">${e.notes||"—"}</td>
+  </tr>`).join(""))):""}
+
+${filtS.length>0?section("Supply Paper Trail — All Entries", tableHtml(
+  ["Date","Item","Category","Qty","Unit","Cost","Supplier","Notes"],
+  [...filtS].sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr>
+    <td style="white-space:nowrap">${s.date}</td>
+    <td style="font-weight:600">${s.item||"—"}</td>
+    <td>${s.category||"—"}</td>
+    <td class="c">${s.qty||"—"}</td>
+    <td>${s.unit||"—"}</td>
+    <td class="p">${inr(s.cost)}</td>
+    <td>${s.supplier||"—"}</td>
+    <td style="color:#64748b">${s.notes||"—"}</td>
+  </tr>`).join(""))):""}
+
+</div>
+<div class="footer"><span>${co} &mdash; Confidential. P&L Report.</span><span>Generated ${now} &nbsp;·&nbsp; Period: ${periodLabel}</span></div>
+</body></html>`;
+  const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+  const burl=URL.createObjectURL(blob);
+  const a2=document.createElement("a");
+  a2.href=burl;a2.target="_blank";a2.rel="noopener";
+  document.body.appendChild(a2);a2.click();
+  setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(burl);},1000);
+}
+
+// eslint-disable-next-line no-unused-vars
+function exportPnLCSV({mData,filtD,filtE,filtS,filtW,customers,deliveries,expenses,supplies,wastage,products,lineTotal,today_fn,periodLabel}){
+  const rows=[];
+  const esc=v=>typeof v==="string"&&(v.includes(",")||v.includes('"')||v.includes("\n"))?`"${v.replace(/"/g,'""')}"`:(v??"-");
+  const row=arr=>arr.map(esc).join(",");
+  // Section: Monthly Summary
+  rows.push(row(["=== MONTHLY P&L SUMMARY ===","Period: "+periodLabel]));
+  rows.push(row(["Month","Deliveries","Revenue","Supply Cost","Op Expenses","Waste Cost","Replacements","Total Cost","Profit/Loss","Net Margin %","Gross Margin %"]));
+  mData.forEach(m=>rows.push(row([m.monthFull,m.deliveriesCount,m.revenue,m.supplyCost,m.expenses,m.wasteCost,m.replDeducted||0,m.totalCost,m.profit,m.margin,m.grossMargin||0])));
+  const totRevC=mData.reduce((s,m)=>s+m.revenue,0);
+  const totSupCC=mData.reduce((s,m)=>s+m.supplyCost,0);
+  const totExpCC=mData.reduce((s,m)=>s+m.expenses,0);
+  const totWasteCC=mData.reduce((s,m)=>s+m.wasteCost,0);
+  const totReplC=mData.reduce((s,m)=>s+(m.replDeducted||0),0);
+  const totCostC=mData.reduce((s,m)=>s+m.totalCost,0);
+  const totProfC=mData.reduce((s,m)=>s+m.profit,0);
+  const totMarC=totRevC>0?Math.round(totProfC/totRevC*100):0;
+  rows.push(row(["TOTAL",filtD.length,totRevC,totSupCC,totExpCC,totWasteCC,totReplC,totCostC,totProfC,totMarC,""]));
+  rows.push([""]);
+  // Section: Customer Revenue
+  rows.push(row(["=== CUSTOMER REVENUE & COLLECTION ==="]));
+  rows.push(row(["Customer","Total Orders","Delivered","Revenue","Collected","Pending","Avg Order Value","Collection Rate %"]));
+  [...customers].map(c=>{const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");const rev=cd.reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);return{name:c.name,orders:deliveries.filter(d=>d.customerId===c.id).length,delivered:cd.length,revenue:Math.max(0,rev),collected:c.paid||0,pending:c.pending||0,avg:cd.length>0?Math.round(Math.max(0,rev)/cd.length):0,rate:c.paid+c.pending>0?Math.round(c.paid/(c.paid+c.pending)*100):100};}).sort((a,b)=>b.revenue-a.revenue).forEach(c=>rows.push(row([c.name,c.orders,c.delivered,c.revenue,c.collected,c.pending,c.avg,c.rate+"%"])));
+  rows.push([""]);
+  // Section: Expenses paper trail
+  rows.push(row(["=== EXPENSE PAPER TRAIL ==="]));
+  rows.push(row(["Date","Category","Amount","Vendor","Payment Method","Approved By","Receipt","Tags","Notes","Created At"]));
+  [...filtE].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push(row([e.date,e.category,e.amount,e.vendor||"",e.paymentMethod||"Cash",e.approvedBy||"",e.receipt||"",e.tags||"",e.notes||"",e.createdAt||""])));
+  rows.push([""]);
+  // Section: Supply paper trail
+  rows.push(row(["=== SUPPLY PAPER TRAIL ==="]));
+  rows.push(row(["Date","Item","Category","Qty","Unit","Cost","Supplier","Notes"]));
+  [...filtS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(s=>rows.push(row([s.date,s.item||"",s.category||"",s.qty||"",s.unit||"",s.cost||0,s.supplier||"",s.notes||""])));
+  rows.push([""]);
+  // Section: Wastage paper trail
+  rows.push(row(["=== WASTAGE PAPER TRAIL ==="]));
+  rows.push(row(["Date","Product","Qty","Unit","Type","Reason","Cost","Logged By"]));
+  [...filtW].sort((a,b)=>a.date.localeCompare(b.date)).forEach(w=>rows.push(row([w.date,w.product||"",w.qty||"",w.unit||"",w.type||"",w.reason||"",w.cost||0,w.loggedBy||""])));
+  const csv=rows.map(r=>Array.isArray(r)?r.join(""):r).join("\n");
+  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+  const burl=URL.createObjectURL(blob);
+  const a2=document.createElement("a");
+  a2.href=burl;a2.download=`PnL_full_${today_fn().replace(/-/g,"")}.csv`;
   document.body.appendChild(a2);a2.click();
   setTimeout(()=>{document.body.removeChild(a2);URL.revokeObjectURL(burl);},1000);
 }
@@ -1146,6 +1825,481 @@ function sendBrowserNotif(title, body, icon = "🫓") {
       tag: title,
     });
   } catch (e) { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DETAIL MODAL — Universal deep-dive overlay
+//  Renders rich interactive details for any entity clicked
+// ═══════════════════════════════════════════════════════════════
+function DetailModal({modal, onClose, dm, customers, deliveries, expenses, supplies, wastage, products, settings, setDetailModal, setEsh, setEf, setDsh, setDf, delE, delD, setPaySh, setPayAmt, isAdmin, sess, invRegistry}) {
+  const t = T(dm);
+  if (!modal) return null;
+  const {type, data} = modal;
+
+  const overlayStyle = {
+    position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.72)",
+    backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",
+    display:"flex",alignItems:"flex-end",justifyContent:"center",overflowY:"auto"
+  };
+  const panelStyle = {
+    background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",
+    width:"100%",maxWidth:560,maxHeight:"92svh",display:"flex",flexDirection:"column",
+    boxShadow:"0 -8px 60px rgba(0,0,0,0.5)",paddingBottom:"env(safe-area-inset-bottom,12px)"
+  };
+  const Header = ({icon,title,sub,accent})=>(
+    <div style={{padding:"20px 22px 16px",borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:44,height:44,borderRadius:14,background:(accent||"#3b82f6")+"20",border:`1.5px solid ${(accent||"#3b82f6")}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{icon}</div>
+          <div>
+            <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1.2}}>{title}</p>
+            {sub&&<p style={{color:t.sub,fontSize:11,marginTop:2}}>{sub}</p>}
+          </div>
+        </div>
+        <button onClick={onClose} style={{width:36,height:36,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,cursor:"pointer",flexShrink:0}}>✕</button>
+      </div>
+    </div>
+  );
+  const Kpi = ({label,val,color,bg})=>(
+    <div style={{background:bg||(color+"12"),border:`1px solid ${color}25`,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
+      <p style={{color,fontWeight:900,fontSize:13,lineHeight:1}}>{val}</p>
+      <p style={{color:t.sub,fontSize:9,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>
+    </div>
+  );
+  const Row = ({label,val,color,onClick})=>(
+    <div onClick={onClick} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${t.border}`,cursor:onClick?"pointer":"default"}}
+      onMouseEnter={ev=>{if(onClick)ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+      <span style={{color:t.sub,fontSize:12}}>{label}</span>
+      <span style={{color:color||t.text,fontWeight:700,fontSize:12}}>{val}</span>
+    </div>
+  );
+  const scrollStyle = {overflowY:"auto",WebkitOverflowScrolling:"touch",flex:1,padding:"0 22px 20px"};
+
+  // ── EXPENSE DETAIL ──
+  if (type === "expense") {
+    const e = data;
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="💸" title={`${e.category} Expense`} sub={`${e.date}${e.vendor?` · ${e.vendor}`:""}`} accent="#ef4444"/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Amount" val={inr(e.amount||0)} color="#ef4444"/>
+              <Kpi label="Method" val={e.paymentMethod||"Cash"} color="#8b5cf6"/>
+            </div>
+            {e.vendor&&<Row label="Vendor / Payee" val={e.vendor}/>}
+            {e.approvedBy&&<Row label="Approved By" val={`✅ ${e.approvedBy}`} color="#10b981"/>}
+            {e.receipt&&<Row label="Receipt Ref" val={`🧾 ${e.receipt}`}/>}
+            {e.tags&&<Row label="Tags" val={e.tags.split(",").map(tg=>`#${tg.trim()}`).join(" ")} color="#8b5cf6"/>}
+            {e.notes&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px",margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Notes</p>
+              <p style={{color:t.text,fontSize:13,lineHeight:1.5}}>{e.notes}</p>
+            </div>}
+            {/* Category context */}
+            {(()=>{
+              const catTotal = expenses.filter(x=>x.category===e.category).reduce((s,x)=>s+(x.amount||0),0);
+              const catCount = expenses.filter(x=>x.category===e.category).length;
+              const allTotal = expenses.reduce((s,x)=>s+(x.amount||0),0);
+              const pct = allTotal>0?Math.round(catTotal/allTotal*100):0;
+              return <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",margin:"12px 0"}}>
+                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Category Context — {e.category}</p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                  <Kpi label="Category Total" val={inr(catTotal)} color="#ef4444"/>
+                  <Kpi label="# Entries" val={catCount} color="#8b5cf6"/>
+                  <Kpi label="% of All Exp" val={`${pct}%`} color="#f59e0b"/>
+                </div>
+                <div style={{marginTop:10,height:5,borderRadius:5,overflow:"hidden",background:t.border}}>
+                  <div style={{width:`${pct}%`,background:"#ef4444",height:"100%",borderRadius:5}}/>
+                </div>
+              </div>;
+            })()}
+            {/* Vendor history */}
+            {e.vendor&&(()=>{
+              const vendorExps = expenses.filter(x=>x.vendor===e.vendor).sort((a,b)=>b.date.localeCompare(a.date));
+              const vendorTotal = vendorExps.reduce((s,x)=>s+(x.amount||0),0);
+              return vendorExps.length>1&&<div style={{margin:"4px 0 12px"}}>
+                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>All Payments to {e.vendor}</p>
+                <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                  {vendorExps.map((ve,vi)=>(
+                    <div key={ve.id||vi} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"1fr auto auto",gap:8,borderTop:vi>0?`1px solid ${t.border}`:"none",background:ve.id===e.id?(t.inp+"aa"):"transparent",cursor:"pointer"}}
+                      onClick={()=>setDetailModal({type:"expense",data:ve})}>
+                      <div>
+                        <p style={{color:t.text,fontSize:11,fontWeight:600}}>{ve.category}</p>
+                        <p style={{color:t.sub,fontSize:10}}>📅 {ve.date}{ve.paymentMethod?` · ${ve.paymentMethod}`:""}</p>
+                      </div>
+                      <span style={{color:"#ef4444",fontWeight:800,fontSize:11,alignSelf:"center"}}>{inr(ve.amount)}</span>
+                      {ve.id===e.id&&<span style={{color:"#3b82f6",fontSize:9,fontWeight:700,alignSelf:"center"}}>← this</span>}
+                    </div>
+                  ))}
+                  <div style={{padding:"8px 12px",background:t.inp,borderTop:`2px solid ${t.border}`,display:"flex",justifyContent:"space-between"}}>
+                    <span style={{color:t.text,fontSize:11,fontWeight:700}}>Total to {e.vendor}</span>
+                    <span style={{color:"#ef4444",fontWeight:900,fontSize:12}}>{inr(vendorTotal)}</span>
+                  </div>
+                </div>
+              </div>;
+            })()}
+            {isAdmin&&<div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>{setEf({...e,amount:String(e.amount)});setEsh(e);onClose();}} style={{flex:1,padding:"12px",borderRadius:12,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>✏️ Edit</button>
+              <button onClick={()=>{delE(e);onClose();}} style={{flex:1,padding:"12px",borderRadius:12,background:"#dc2626",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",border:"none"}}>🗑️ Delete</button>
+            </div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── CUSTOMER DETAIL / HISTORY ──
+  if (type === "customer") {
+    const c = data;
+    const cDelivs = deliveries.filter(d=>d.customerId===c.id);
+    const cDelivered = cDelivs.filter(d=>d.status==="Delivered");
+    const cPending = cDelivs.filter(d=>d.status==="Pending");
+    const cRev = cDelivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const cRepl = cDelivered.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+    const cNetRev = Math.max(0,cRev-cRepl);
+    const cAvgOrder = cDelivered.length>0?Math.round(cNetRev/cDelivered.length):0;
+    const cPaid = c.paid||0;
+    const cDue = c.pending||0;
+    const collPct = cPaid+cDue>0?Math.round(cPaid/(cPaid+cDue)*100):100;
+    const cProducts = products.map(p=>{
+      const qty=cDelivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0),0);
+      const rev=cDelivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
+      return{...p,qty,rev};
+    }).filter(x=>x.qty>0).sort((a,b)=>b.rev-a.rev);
+    const lastD = cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+    const firstD = cDelivs.length>0?[...cDelivs].sort((a,b)=>a.date.localeCompare(b.date))[0]:null;
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="👤" title={c.name} sub={`${c.phone||"No phone"}${c.address?` · ${c.address}`:""}`} accent="#f59e0b"/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Net Revenue" val={inr(cNetRev)} color="#10b981"/>
+              <Kpi label="Collected" val={inr(cPaid)} color="#10b981"/>
+              <Kpi label="Pending" val={inr(cDue)} color={cDue>0?"#ef4444":"#10b981"}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
+              <Kpi label="Orders" val={cDelivs.length} color="#3b82f6"/>
+              <Kpi label="Delivered" val={cDelivered.length} color="#10b981"/>
+              <Kpi label="Pending" val={cPending.length} color="#f59e0b"/>
+              <Kpi label="Coll. Rate" val={`${collPct}%`} color={collPct>=90?"#10b981":collPct>=60?"#f59e0b":"#ef4444"}/>
+            </div>
+            {/* Collection bar */}
+            {(cPaid+cDue)>0&&<div style={{marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>Collected: {inr(cPaid)}</span>
+                <span style={{color:cDue>0?"#ef4444":"#10b981",fontSize:10,fontWeight:700}}>Due: {inr(cDue)}</span>
+              </div>
+              <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
+                <div style={{width:`${collPct}%`,background:"#10b981"}}/>
+                <div style={{width:`${100-collPct}%`,background:cDue>0?"#ef4444":"transparent"}}/>
+              </div>
+            </div>}
+            {/* Info rows */}
+            {c.phone&&<Row label="Phone" val={`📞 ${c.phone}`}/>}
+            {c.joinDate&&<Row label="Customer Since" val={c.joinDate}/>}
+            {firstD&&<Row label="First Order" val={firstD.date}/>}
+            {lastD&&<Row label="Last Activity" val={lastD.date}/>}
+            {cAvgOrder>0&&<Row label="Avg Order Value" val={inr(cAvgOrder)} color="#f59e0b"/>}
+            {c.notes&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px",margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Notes</p>
+              <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{c.notes}</p>
+            </div>}
+            {/* Products */}
+            {cProducts.length>0&&<div style={{margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Products Ordered</p>
+              {cProducts.map(p=>(
+                <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${t.border}`}}>
+                  <div><p style={{color:t.text,fontSize:12,fontWeight:600}}>{p.name}</p><p style={{color:t.sub,fontSize:10}}>{p.qty} units total</p></div>
+                  <span style={{color:"#f59e0b",fontWeight:700,fontSize:12,alignSelf:"center"}}>{inr(p.rev)}</span>
+                </div>
+              ))}
+            </div>}
+            {/* Delivery history */}
+            {cDelivs.length>0&&<div style={{margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Delivery History ({cDelivs.length})</p>
+              <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                <div style={{maxHeight:300,overflowY:"auto"}}>
+                  {[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).map((d,di)=>{
+                    const st = d.status;
+                    const sc = st==="Delivered"?"#10b981":st==="Cancelled"?"#ef4444":"#f59e0b";
+                    const tot = lineTotal(d.orderLines);
+                    const repl = +d.replacement?.amount||0;
+                    const dInvNo2=(invRegistry?.issued||{})[d.id];
+                    const dPartial=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
+                    const dNet=Math.max(0,tot-repl);
+                    const dBal=Math.max(0,dNet-dPartial);
+                    return <div key={d.id||di} style={{padding:"10px 12px",borderTop:di>0?`1px solid ${t.border}`:"none",cursor:"pointer",transition:"background .12s"}}
+                      onClick={()=>setDetailModal({type:"delivery",data:d})}
+                      onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                        <div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
+                            <span style={{background:sc+"20",color:sc,borderRadius:5,padding:"1px 7px",fontSize:9,fontWeight:700}}>{st}</span>
+                            <span style={{color:t.sub,fontSize:10}}>📅 {d.date}</span>
+                            {dInvNo2&&<span style={{fontFamily:"monospace",fontSize:9,color:t.sub,background:t.inp,borderRadius:4,padding:"1px 5px"}}>{dInvNo2}</span>}
+                          </div>
+                          {d.createdBy&&<p style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</p>}
+                          {d.orderLines&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>{Object.values(d.orderLines).filter(l=>l.qty>0).map(l=>`${l.qty}×${l.name||""}`).join(", ")}</p>}
+                          {d.replacement?.done&&<p style={{color:"#f97316",fontSize:10,marginTop:2}}>🔄 Replacement: {d.replacement.item||""}{d.replacement.qty?` (${d.replacement.qty})`:""}{repl>0?` · −${inr(repl)}`:""}</p>}
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          {st==="Delivered"&&<p style={{color:"#10b981",fontWeight:800,fontSize:12}}>{inr(tot)}</p>}
+                          {repl>0&&<p style={{color:"#f97316",fontSize:10}}>Net: {inr(dNet)}</p>}
+                          {dPartial>0&&<p style={{color:"#10b981",fontSize:10}}>💰 {inr(dPartial)}</p>}
+                          {dPartial>0&&<p style={{color:dBal>0?"#f59e0b":"#10b981",fontSize:10,fontWeight:700}}>{dBal>0?`Due: ${inr(dBal)}`:"✓ Settled"}</p>}
+                        </div>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </div>
+            </div>}
+            {/* Action buttons */}
+            {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(c);setPayAmt("");onClose();}} style={{width:"100%",padding:"13px",borderRadius:12,background:"#10b981",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",border:"none",marginTop:8}}>💰 Record Payment — {inr(cDue)} due</button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── DELIVERY DETAIL ──
+  if (type === "delivery") {
+    const d = data;
+    const tot = lineTotal(d.orderLines);
+    const repl = +d.replacement?.amount||0;
+    const net = Math.max(0,tot-repl);
+    const cust = customers.find(c=>c.id===d.customerId)||{name:d.customer};
+    const st = d.status;
+    const sc = st==="Delivered"?"#10b981":st==="Cancelled"?"#ef4444":"#f59e0b";
+    const items = Object.values(safeO(d.orderLines)).filter(l=>l.qty>0);
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="📦" title={d.customer} sub={`${d.date}${d.deliveryDate&&d.deliveryDate!==d.date?` · Deliver by ${d.deliveryDate}`:""}`} accent={sc}/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Status" val={st} color={sc}/>
+              <Kpi label="Order Total" val={inr(tot)} color="#10b981"/>
+              <Kpi label="Net" val={inr(net)} color={repl>0?"#f97316":"#10b981"}/>
+            </div>
+            {d.createdBy&&<Row label="Created By" val={`👤 ${d.createdBy}`} onClick={()=>setDetailModal({type:"agent",data:{name:d.createdBy}})}/>}
+            {d.createdAt&&<Row label="Created At" val={d.createdAt}/>}
+            {d.address&&<Row label="Address" val={`📍 ${d.address}`}/>}
+            {d.notes&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px",margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Notes</p>
+              <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{d.notes}</p>
+            </div>}
+            {items.length>0&&<div style={{margin:"12px 0"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Items</p>
+              <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                {items.map((l,li)=>(
+                  <div key={li} style={{padding:"9px 12px",display:"flex",justifyContent:"space-between",borderTop:li>0?`1px solid ${t.border}`:"none"}}>
+                    <span style={{color:t.text,fontSize:12,fontWeight:600}}>{l.qty} × {l.name||""}</span>
+                    <span style={{color:"#10b981",fontWeight:700,fontSize:12}}>{inr(l.qty*(l.priceAmount||0))}</span>
+                  </div>
+                ))}
+                <div style={{padding:"9px 12px",background:t.inp,borderTop:`2px solid ${t.border}`,display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:t.text,fontWeight:800,fontSize:12}}>Order Total</span>
+                  <span style={{color:"#10b981",fontWeight:900,fontSize:13}}>{inr(tot)}</span>
+                </div>
+              </div>
+            </div>}
+            {d.replacement?.done&&<div style={{background:"#f9731615",border:"1px solid #f9731630",borderRadius:12,padding:"12px 14px",margin:"8px 0"}}>
+              <p style={{color:"#f97316",fontWeight:700,fontSize:12,marginBottom:4}}>🔄 Replacement</p>
+              {d.replacement.item&&<Row label="Item" val={d.replacement.item}/>}
+              {d.replacement.qty&&<Row label="Qty" val={d.replacement.qty}/>}
+              {repl>0&&<Row label="Amount Deducted" val={inr(repl)} color="#f97316"/>}
+              {d.replacement.reason&&<div style={{marginTop:8}}><p style={{color:t.sub,fontSize:11,lineHeight:1.5}}>{d.replacement.reason}</p></div>}
+            </div>}
+            {d.partialPayment?.enabled&&(+d.partialPayment?.amount||0)>0&&<div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:12,padding:"12px 14px",margin:"8px 0"}}>
+              <Row label="Collected" val={inr(+d.partialPayment.amount)} color="#10b981"/>
+              {d.partialPayment.note&&<p style={{color:t.sub,fontSize:11,marginTop:6,fontStyle:"italic"}}>"{d.partialPayment.note}"</p>}
+            </div>}
+            {/* Customer quick-link */}
+            {cust.id&&<button onClick={()=>setDetailModal({type:"customer",data:cust})} style={{width:"100%",padding:"12px",borderRadius:12,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer",marginTop:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span>👤 View {cust.name}'s full history</span><span style={{color:t.sub}}>→</span>
+            </button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── DATE DRILLDOWN ──
+  if (type === "date") {
+    const dateStr = data.date;
+    const dayDelivs = deliveries.filter(d=>d.date===dateStr);
+    const dayDone = dayDelivs.filter(d=>d.status==="Delivered");
+    const dayExp = expenses.filter(e=>e.date===dateStr);
+    const daySup = supplies.filter(s=>s.date===dateStr);
+    const dayWaste = (wastage||[]).filter(w=>w.date===dateStr);
+    const dayRev = dayDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const dayExpTotal = dayExp.reduce((s,e)=>s+(e.amount||0),0);
+    const daySupTotal = daySup.reduce((s,s2)=>s+(s2.cost||0),0);
+    const dayWasteTotal = dayWaste.reduce((s,w)=>s+(w.cost||0),0);
+    const dayProfit = dayRev-dayExpTotal-daySupTotal-dayWasteTotal;
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="📅" title={`Day Drilldown`} sub={dateStr} accent="#3b82f6"/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Revenue" val={inr(dayRev)} color="#10b981"/>
+              <Kpi label="Net P&L" val={inr(dayProfit)} color={dayProfit>=0?"#10b981":"#ef4444"}/>
+              <Kpi label="Expenses" val={inr(dayExpTotal)} color="#ef4444"/>
+              <Kpi label="Supply Cost" val={inr(daySupTotal)} color="#8b5cf6"/>
+            </div>
+            {dayDelivs.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Deliveries ({dayDelivs.length})</p>
+              {dayDelivs.map((d,di)=>{
+                const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                return <div key={d.id||di} style={{padding:"10px 12px",background:t.inp,borderRadius:10,marginBottom:6,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                  onClick={()=>setDetailModal({type:"delivery",data:d})}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                      <span style={{background:sc+"20",color:sc,borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{d.status}</span>
+                      <span style={{color:t.text,fontSize:12,fontWeight:600}}>{d.customer}</span>
+                    </div>
+                    {d.createdBy&&<p style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</p>}
+                  </div>
+                  {d.status==="Delivered"&&<span style={{color:"#10b981",fontWeight:800,fontSize:12}}>{inr(lineTotal(d.orderLines))}</span>}
+                </div>;
+              })}
+            </div>}
+            {dayExp.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Expenses ({dayExp.length})</p>
+              {dayExp.map((e,ei)=><div key={e.id||ei} style={{padding:"10px 12px",background:"#ef444412",border:"1px solid #ef444430",borderRadius:10,marginBottom:6,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                onClick={()=>setDetailModal({type:"expense",data:e})}>
+                <div>
+                  <p style={{color:t.text,fontSize:12,fontWeight:600}}>{e.category}</p>
+                  {e.vendor&&<p style={{color:t.sub,fontSize:10}}>{e.vendor}</p>}
+                </div>
+                <span style={{color:"#ef4444",fontWeight:800,fontSize:12}}>{inr(e.amount)}</span>
+              </div>)}
+            </div>}
+            {daySup.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Supply Entries ({daySup.length})</p>
+              {daySup.map((s,si)=><div key={s.id||si} style={{padding:"10px 12px",background:"#8b5cf612",border:"1px solid #8b5cf630",borderRadius:10,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><p style={{color:t.text,fontSize:12,fontWeight:600}}>{s.item}</p>{s.supplier&&<p style={{color:t.sub,fontSize:10}}>{s.supplier}</p>}</div>
+                <div style={{textAlign:"right"}}><p style={{color:"#8b5cf6",fontWeight:800,fontSize:12}}>{inr(s.cost||0)}</p><p style={{color:t.sub,fontSize:10}}>{s.qty} {s.unit}</p></div>
+              </div>)}
+            </div>}
+            {dayWaste.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Wastage ({dayWaste.length})</p>
+              {dayWaste.map((w,wi)=><div key={w.id||wi} style={{padding:"10px 12px",background:"#f9731612",border:"1px solid #f9731630",borderRadius:10,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><p style={{color:t.text,fontSize:12,fontWeight:600}}>{w.product}</p><p style={{color:t.sub,fontSize:10}}>{w.qty} {w.unit} · {w.type}</p></div>
+                <span style={{color:"#f97316",fontWeight:800,fontSize:12}}>{inr(w.cost||0)}</span>
+              </div>)}
+            </div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── AGENT / LOGGED-BY HISTORY ──
+  if (type === "agent") {
+    const agentName = data.name;
+    const agentDelivs = deliveries.filter(d=>d.createdBy===agentName||d.agent===agentName).sort((a,b)=>b.date.localeCompare(a.date));
+    const agentDone = agentDelivs.filter(d=>d.status==="Delivered");
+    const agentRev = agentDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const agentExps = expenses.filter(e=>e.approvedBy===agentName).sort((a,b)=>b.date.localeCompare(a.date));
+    const u = data.user||null;
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="👤" title={agentName} sub={u?`@${u.username} · ${u.role}`:"Agent / Staff"} accent="#8b5cf6"/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Deliveries" val={agentDelivs.length} color="#3b82f6"/>
+              <Kpi label="Delivered" val={agentDone.length} color="#10b981"/>
+              <Kpi label="Revenue" val={inr(agentRev)} color="#f59e0b"/>
+            </div>
+            {agentDelivs.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Delivery Log ({agentDelivs.length})</p>
+              <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                <div style={{maxHeight:320,overflowY:"auto"}}>
+                  {agentDelivs.map((d,di)=>{
+                    const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                    return <div key={d.id||di} style={{padding:"10px 12px",borderTop:di>0?`1px solid ${t.border}`:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                      onClick={()=>setDetailModal({type:"delivery",data:d})}
+                      onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          <span style={{background:sc+"20",color:sc,borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{d.status}</span>
+                          <span style={{color:t.text,fontSize:12,fontWeight:600}}>{d.customer}</span>
+                        </div>
+                        <p style={{color:t.sub,fontSize:10}}>📅 {d.date}</p>
+                      </div>
+                      {d.status==="Delivered"&&<span style={{color:"#10b981",fontWeight:800,fontSize:12}}>{inr(lineTotal(d.orderLines))}</span>}
+                    </div>;
+                  })}
+                </div>
+              </div>
+            </div>}
+            {agentExps.length>0&&<div style={{margin:"8px 0 16px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Approved Expenses ({agentExps.length})</p>
+              {agentExps.map((e,ei)=><div key={e.id||ei} style={{padding:"9px 12px",background:"#ef444412",borderRadius:10,marginBottom:6,display:"flex",justifyContent:"space-between",cursor:"pointer"}}
+                onClick={()=>setDetailModal({type:"expense",data:e})}>
+                <div><p style={{color:t.text,fontSize:12,fontWeight:600}}>{e.category}</p><p style={{color:t.sub,fontSize:10}}>{e.date}</p></div>
+                <span style={{color:"#ef4444",fontWeight:800,fontSize:12}}>{inr(e.amount)}</span>
+              </div>)}
+            </div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── CATEGORY DRILLDOWN ──
+  if (type === "category") {
+    const {cat, catExpenses, catTotal} = data;
+    const allTotal = expenses.reduce((s,e)=>s+(e.amount||0),0);
+    const pct = allTotal>0?Math.round(catTotal/allTotal*100):0;
+    return (
+      <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
+        <div style={panelStyle}>
+          <Header icon="📂" title={cat} sub={`${catExpenses.length} entries · ${pct}% of all expenses`} accent="#ef4444"/>
+          <div style={scrollStyle}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+              <Kpi label="Total" val={inr(catTotal)} color="#ef4444"/>
+              <Kpi label="Entries" val={catExpenses.length} color="#8b5cf6"/>
+              <Kpi label="% of All" val={`${pct}%`} color="#f59e0b"/>
+            </div>
+            <div style={{height:5,borderRadius:5,overflow:"hidden",background:t.border,marginBottom:16}}>
+              <div style={{width:`${pct}%`,background:"#ef4444",height:"100%",borderRadius:5}}/>
+            </div>
+            <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>All {cat} Entries</p>
+            <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{maxHeight:400,overflowY:"auto"}}>
+                {[...catExpenses].sort((a,b)=>b.date.localeCompare(a.date)).map((e,ei)=>(
+                  <div key={e.id||ei} style={{padding:"10px 12px",borderTop:ei>0?`1px solid ${t.border}`:"none",cursor:"pointer",transition:"background .12s"}}
+                    onClick={()=>setDetailModal({type:"expense",data:e})}
+                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <p style={{color:t.sub,fontSize:10}}>📅 {e.date}{e.vendor?` · 🏪 ${e.vendor}`:""}</p>
+                        {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic",marginTop:1}}>{e.notes}</p>}
+                        {e.paymentMethod&&<p style={{color:t.sub,fontSize:10}}>{e.paymentMethod}</p>}
+                      </div>
+                      <span style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(e.amount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{padding:"9px 12px",background:t.inp,borderTop:`2px solid ${t.border}`,display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:t.text,fontWeight:800,fontSize:12}}>Total · {catExpenses.length} entries</span>
+                <span style={{color:"#ef4444",fontWeight:900,fontSize:13}}>{inr(catTotal)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1805,12 +2959,34 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Agent live locations — kept in memory only, NOT stored in Firebase/cloud
   // Uses Ably free-tier WebSockets for cross-device real-time relay
   const [notifs, setNotifs]=useStore("tas9_notifs",[]);
+  const [finSnapshots, setFinSnapshots]=useStore("tas9_fin_snaps",{});
   // eslint-disable-next-line no-unused-vars
   const [qcLogs,    setQcLogs]   = useStore("tas9_qclogs", []);
   const [handovers, setHandovers]= useStore("tas9_handovers", []);
   const [notices,   setNotices]  = useStore("tas9_notices", []);
   const [briefingDismissed, setBriefingDismissed] = useStore("tas_pref_briefing_dismissed_"+sess.id,"");
   const [briefingPinned, setBriefingPinned] = useStore("tas_pref_briefing_pinned_"+sess.id, true);
+  // ── INVOICE SEQUENCE COUNTER (persisted in Firebase) ──
+  // Format: {seq: N, issued: {deliveryId: "TAS-YYYY-NNNN", ...}}
+  const [invRegistry, setInvRegistry] = useStore("tas9_inv_registry", {seq:0, issued:{}});
+  function getOrCreateInvNo(deliveryId) {
+    const existing = (invRegistry.issued||{})[deliveryId];
+    if(existing) return existing;
+    const newSeq = (invRegistry.seq||0) + 1;
+    const year = new Date().getFullYear();
+    const invNo = `TAS-${year}-${String(newSeq).padStart(4,"0")}`;
+    setInvRegistry(prev => ({
+      seq: newSeq,
+      issued: {...(prev.issued||{}), [deliveryId]: invNo}
+    }));
+    return invNo;
+  }
+  // eslint-disable-next-line no-unused-vars
+  function getReceiptNo(deliveryId) {
+    const invNo = (invRegistry.issued||{})[deliveryId];
+    if(invNo) return `RCP-${invNo.replace("TAS-","")}`;
+    return `RCP-${(deliveryId||"").slice(-8).toUpperCase()}`;
+  }
   const [notifOpen, setNotifOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
   function addNotif(title,body,type="info",notifType="newentry"){
@@ -1989,7 +3165,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
   const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""},partialPayment:{enabled:false,amount:""}});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
-  const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:""});
+  const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:"",vendor:"",paymentMethod:"Cash",approvedBy:"",tags:""});
   const blkP=()=>({id:"",name:"",unit:"pcs",prices:[5,6]});
   const blkU=()=>({username:"",password:"",name:"",role:"agent",active:true,permissions:[...ROLE_DEF.agent]});
   const blkW=useCallback(()=>({product:"",qty:"",unit:(settings?.supplyUnits||["pcs"])[0]||"pcs",type:(settings?.wastageTypes||["Other"])[0]||"Other",reason:"",cost:"",date:today(),shift:(settings?.shifts||["Morning"])[0]||"Morning",loggedBy:displayName}),[settings,displayName]);
@@ -1999,6 +3175,19 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [dSh,setDsh]=useState(null); const [dF,setDf]=useState(blkD());
   const [sSh,setSsh]=useState(null); const [sF,setSf]=useState(blkS());
   const [eSh,setEsh]=useState(null); const [eF,setEf]=useState(blkE());
+  const [expSearch,setExpSearch]=useState("");
+  const [expCatFilter,setExpCatFilter]=useState("all");
+  const [expDateFilter,setExpDateFilter]=useState("all");
+  const [expCustomFrom,setExpCustomFrom]=useState("");
+  const [expCustomTo,setExpCustomTo]=useState(today());
+  const [expShowFilters,setExpShowFilters]=useState(false);
+  const [finView,setFinView]=useState("overview"); // "overview"|"daily"|"revenue"|"supply"|"ops"|"wastage"
+  const [finDailyDate,setFinDailyDate]=useState(today());
+  const [finExpandedDay,setFinExpandedDay]=useState(null);
+  const [finOvOpen,setFinOvOpen]=useState(false);
+  const [finOvHover,setFinOvHover]=useState(false);
+  const [expPTOpen,setExpPTOpen]=useState(false);
+  const [expPTSection,setExpPTSection]=useState("revenue");
   const [pSh,setPsh]=useState(null); const [pF,setPf]=useState(blkP());
   const [uSh,setUsh]=useState(null); const [uF,setUf]=useState(blkU());
   const [paySh,setPaySh]=useState(null); const [payAmt,setPayAmt]=useState("");
@@ -2009,12 +3198,12 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [lastSync,setLastSync]=useState(null);
   useEffect(()=>{const fn=ts=>{setLastSync(ts);};_syncListeners.add(fn);return()=>_syncListeners.delete(fn);},[]);
   const [ptSh,setPtSh]=useState(null);
-  const [ptF,setPtF]=useState(()=>({date:today(),shift:"",product:"",actual:0,notes:"",batchId:"",batchLabel:"Batch 1",qcGrade:"A",qcNotes:""}));
+  const [ptF,setPtF]=useState(()=>({date:today(),shift:"",product:"",actual:0,notes:"",batchId:"",batchLabel:"Batch 1",qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]}));
   const [ptDateFilter,setPtDateFilter]=useState("today");
   const [nbSh,setNbSh]=useState(false);
   const [nbF,setNbF]=useState({title:"",body:"",pinned:false});
   const [hvSh,setHvSh]=useState(false);
-  const [prodSubTab,setProdSubTab]=useState("batches");
+  const prodSubTab="batches"; // always batches — sub-tabs removed
   const [openRecipe,setOpenRecipe]=useState(null);
   const [hvF,setHvF]=useState({shift:"Morning",date:today(),note:"",nextShift:"",issues:"",loggedBy:""});
   const [bulkSelect,setBulkSelect]=useState(false);
@@ -2068,16 +3257,54 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [plPeriod,setPlPeriod]=useState("6m");
   const [plCustomFrom,setPlCustomFrom]=useState("");
   const [plCustomTo,setPlCustomTo]=useState(today());
+  // Analytics date filter
+  const [anlPeriod,setAnlPeriod]=useState("all");
+  const [anlCustomFrom,setAnlCustomFrom]=useState("");
+  const [anlCustomTo,setAnlCustomTo]=useState(today());
+  const [anlSpecificDate,setAnlSpecificDate]=useState(today());
+  const [anlActiveSection,setAnlActiveSection]=useState("overview");
+  // Analytics interactive sub-states
+  const [anlCustSearch,setAnlCustSearch]=useState("");
+  const [anlCustSort,setAnlCustSort]=useState("revenue");
+  const [anlCustFilter,setAnlCustFilter]=useState("all");
+  const [anlCustExpanded,setAnlCustExpanded]=useState(null);
+  const [anlProdSort,setAnlProdSort]=useState("revenue");
+  const [anlProdExpanded,setAnlProdExpanded]=useState(null);
+  const [anlOpsView,setAnlOpsView]=useState("production");
+  const [anlFinView,setAnlFinView]=useState("summary");
+  const [anlOverviewMetric,setAnlOverviewMetric]=useState("revenue");
+  const [anlExportOpen,setAnlExportOpen]=useState(null);
   // Production search + auto-deduct toggle
   const [ptSearch,setPtSearch]=useState("");
+  const [ptShiftFilter,setPtShiftFilter]=useState("all");
   const ptAutoDeduct=settings?.autoDeductEnabled!==false;
   const [ptCustomFrom,setPtCustomFrom]=useState("");
   const [ptCustomTo,setPtCustomTo]=useState(today());
+  const [ptProductFilter,setPtProductFilter]=useState("all");
+  const [ptWasteTypeFilter,setPtWasteTypeFilter]=useState("all");
+  const [ptQcGradeFilter,setPtQcGradeFilter]=useState("all");
+  const [ptHandoverFilter,setPtHandoverFilter]=useState("all"); // "all" | "with" | "without"
+  const [ptShowFilters,setPtShowFilters]=useState(false);
   // Bulk delete cutoff
   const [bulkDelMonths,setBulkDelMonths]=useState("3");
   // Reset password
   const [resetPwUser,setResetPwUser]=useState("");
   const [resetPwVal,setResetPwVal]=useState("");
+  // ── INTERACTIVE EXPENSE / FINANCIAL OVERVIEW / P&L STATE ──
+  const [expCardExpanded,setExpCardExpanded]=useState(null);
+  const [expHovered,setExpHovered]=useState(null);
+  const [expCatModal,setExpCatModal]=useState(null);
+  const [expVendorModal,setExpVendorModal]=useState(null);
+  const [finOvSubModal,setFinOvSubModal]=useState(null);
+  const [plMonthExpanded,setPlMonthExpanded]=useState(null);
+  const [plMonthHovered,setPlMonthHovered]=useState(null);
+  const [plCustExpanded,setPlCustExpanded]=useState(null);
+  const [plCustHovered,setPlCustHovered]=useState(null);
+  const [plInsightExpanded,setPlInsightExpanded]=useState(false);
+  const [expSortMode,setExpSortMode]=useState("date");
+  // ── DEEP INTERACTIVE MODALS ──────────────────────────────────
+  const [detailModal,setDetailModal]=useState(null); // {type:"expense"|"delivery"|"customer"|"date"|"agent"|"supply", data:...}
+  const closeDetail=()=>setDetailModal(null);
 
   // CUSTOMERS
   function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
@@ -2148,6 +3375,14 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     else{setExp(p=>p.map(x=>x.id===eSh.id?{...eF,id:x.id,amount:+eF.amount}:x));addLog("Edited expense",`${eF.category} ${inr(eF.amount)}`);notify("Updated ✓");captureGPS("expense_logged",eF.category);}
     setEsh(null);}
   function delE(e){ask(`Delete "${e.category} ${inr(e.amount)}"?`,()=>{setExp(p=>p.filter(x=>x.id!==e.id));addLog("Deleted expense",`${e.category} ${inr(e.amount)}`);notify("Deleted");});}
+  function saveFinSnapshot(dateStr){
+    const dayRevenue=deliveries.filter(d=>d.date===dateStr&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+    const daySupply=supplies.filter(s=>s.date===dateStr).reduce((s,x)=>s+(x.cost||0),0);
+    const dayExpenses=expenses.filter(e=>e.date===dateStr).reduce((s,e)=>s+(e.amount||0),0);
+    const dayWastage=(wastage||[]).filter(w=>w.date===dateStr).reduce((s,w)=>s+(w.cost||0),0);
+    const snap={date:dateStr,revenue:dayRevenue,supplyCost:daySupply,opExpenses:dayExpenses,wastageCost:dayWastage,netProfit:dayRevenue-daySupply-dayExpenses-dayWastage,savedBy:sess.name,savedAt:ts()};
+    setFinSnapshots(p=>({...(p||{}),["day_"+dateStr.replace(/-/g,"")]:snap}));
+    addLog("Saved financial snapshot",dateStr);notify("Snapshot saved ✓");}
 
   // WASTAGE
   function saveW(){
@@ -2209,20 +3444,33 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     if(!ptF.product.trim()){notify("Product required");return;}
     const productName=ptF.product==="__custom__"?(ptF.customProduct||"").trim():ptF.product;
     if(!productName){notify("Product name required");return;}
+    const batchIdFinal=ptF.batchId||uid();
     const rec={...ptF,product:productName,actual:+ptF.actual||0,
-      batchId:ptF.batchId||uid(),
+      batchId:batchIdFinal,
       batchLabel:ptF.batchLabel||"Batch 1",
       qcGrade:ptF.qcGrade||"A",
       qcNotes:ptF.qcNotes||"",
       shift:ptF.shift||"",
     };
+    // Remove embedded sub-records from the main batch record
+    delete rec.embWastage; delete rec.embQC; delete rec.embHandover;
     // Remove legacy target field
     delete rec.target;
+
+    // Save embedded wastage records
+    const embW=(ptF.embWastage||[]).filter(w=>w.product&&w.qty);
+    const embQ=(ptF.embQC||[]).filter(q=>q.product&&q.grade);
+    const embH=(ptF.embHandover||[]).filter(h=>h.note&&h.note.trim());
+
     if(ptSh==="add"){
       const deduction=runAutoDeduct(productName,rec.actual,null);
       const saved={...rec,id:uid(),createdAt:ts(),deduction:deduction||null};
       setProdTargets(p=>[saved,...p]);
-      addLog("Production logged",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units${rec.shift?" ("+rec.shift+")":""}`);
+      // Save embedded records linked to this batch
+      if(embW.length>0) setWaste(p=>[...embW.map(w=>({...w,batchId:batchIdFinal,id:w.id||uid(),createdAt:w.createdAt||ts()})),...p]);
+      if(embQ.length>0) setQcLogs(p=>[...embQ.map(q=>({...q,batchId:batchIdFinal,id:q.id||uid(),createdAt:q.createdAt||ts()})),...p]);
+      if(embH.length>0) setHandovers(p=>[...embH.map(h=>({...h,batchId:batchIdFinal,id:h.id||uid(),createdAt:h.createdAt||ts()})),...p]);
+      addLog("Production logged",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units${rec.shift?" ("+rec.shift+")":""}${embW.length>0?` · ${embW.length} wastage`:""}${embQ.length>0?` · ${embQ.length} QC`:""}${embH.length>0?` · handover`:""}`);
       captureGPS("production_logged",rec.product);
       if(!ptAutoDeduct) notify("Batch saved ✓");
     } else {
@@ -2230,6 +3478,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       const deduction=runAutoDeduct(productName,rec.actual,prev?.actual);
       const mergedDeduction=deduction||(prev?.deduction||null);
       setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
+      // On edit: remove old linked records and re-add from embedded
+      setWaste(p=>{const withoutOld=p.filter(w=>w.batchId!==batchIdFinal||!w._embLinked);return embW.length>0?[...embW.map(w=>({...w,batchId:batchIdFinal,_embLinked:true,id:w.id||uid(),createdAt:w.createdAt||ts()})),...withoutOld]:withoutOld;});
+      setQcLogs(p=>{const withoutOld=p.filter(q=>q.batchId!==batchIdFinal||!q._embLinked);return embQ.length>0?[...embQ.map(q=>({...q,batchId:batchIdFinal,_embLinked:true,id:q.id||uid(),createdAt:q.createdAt||ts()})),...withoutOld]:withoutOld;});
+      setHandovers(p=>{const withoutOld=p.filter(h=>h.batchId!==batchIdFinal||!h._embLinked);return embH.length>0?[...embH.map(h=>({...h,batchId:batchIdFinal,_embLinked:true,id:h.id||uid(),createdAt:h.createdAt||ts()})),...withoutOld]:withoutOld;});
       addLog("Production updated",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units`);
       captureGPS("production_logged",rec.product);
       if(!ptAutoDeduct) notify("Updated ✓");
@@ -2269,7 +3521,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     const totalWasteCost=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
     const delivWithRepl=deliveries.filter(d=>d.replacement?.done);
     const totalOrderVal=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-    const totalPaidAll=deliveries.reduce((s,d)=>s+(d.paid||0),0);
+    const totalPaidAll=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
     const totalRemAll=totalOrderVal-totalReplAmt-totalPaidAll;
     // Build per-customer delivery groups
     const custDelivMap={};
@@ -2322,7 +3574,7 @@ ${customers.map(c=>`<tr><td><b>${c.name}</b></td><td>${c.phone||"—"}</td><td>$
   <div class="stat"><div class="val amber">${delivWithRepl.length}</div><div class="lbl">Deliveries With Replacements</div></div>
 </div>
 <table><tr><th>Customer</th><th>Date</th><th>Status</th><th>Total Order</th><th>Repl Deducted</th><th>Net Amt</th><th>Paid</th><th>Remaining</th><th>By</th></tr>
-${deliveries.map(d=>{const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const paid=d.paid||0;const rem=net-paid;return`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td><td>${d.createdBy||"—"}</td></tr>`;}).join("")}
+${deliveries.map(d=>{const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;const rem=Math.max(0,net-paid);return`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td><td>${d.createdBy||"—"}</td></tr>`;}).join("")}
 </table>
 
 <h2>Deliveries by Customer</h2>
@@ -2330,8 +3582,8 @@ ${custGroups.map(cg=>{
   const cTotOrd=cg.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
   const cTotRepl=cg.delivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
   const cNet=cTotOrd-cTotRepl;
-  const cPaid=cg.delivs.reduce((s,d)=>s+(d.paid||0),0);
-  const cRem=cNet-cPaid;
+  const cPaid=cg.delivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
+  const cRem=Math.max(0,cNet-cPaid);
   return `<h3>${cg.name} — ${cg.delivs.length} deliveries</h3>
 <div class="cust-totals">
   <span>Total Order: <b>₹${cTotOrd.toLocaleString("en-IN")}</b></span>
@@ -2344,8 +3596,8 @@ ${cg.delivs.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
   const tot=lineTotal(d.orderLines);
   const repl=+d.replacement?.amount||0;
   const net=tot-repl;
-  const paid=d.paid||0;
-  const rem=net-paid;
+  const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+  const rem=Math.max(0,net-paid);
   const items=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty}×${products.find(p=>p.id===Object.keys(safeO(d.orderLines)).find(k=>safeO(d.orderLines)[k]===l))?.name||"?"}`).join(", ") || Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty} items`).join(", ") || "—";
   return`<tr><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td style="font-size:10px">${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"replaced"}</span> `:""}${items}</td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td></tr>`;
 }).join("")}
@@ -2550,7 +3802,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               {key:"logWastage",   icon:"🗑️",label:"Log Wastage",    color:"#f97316", action:()=>{setWF(blkW());setWSh("add");setTab("Wastage");}},
               {key:"addExpense",   icon:"💸",label:"Add Expense",    color:"#ef4444", action:()=>{setEf(blkE());setEsh("add");setTab("Expenses");}},
               {key:"logSupply",    icon:"📦",label:"Log Supply",     color:"#8b5cf6", action:()=>{setSf(blkS());setSsh("add");setTab("Supplies");}},
-              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{const nextNum=(prodTargets.filter(x=>x.date===today()).length)+1;setPtF({date:today(),shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:""});setPtSh("add");setTab("Production");}},
+              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{const nextNum=(prodTargets.filter(x=>x.date===today()).length)+1;setPtF({date:today(),shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});setPtSh("add");setTab("Production");}},
               {key:"qcCheck",      icon:"✅",label:"QC Check",       color:"#14b8a6", action:()=>{setQcF({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");setTab("Production");}},
             ];
             const activeKeys=settings?.quickActions||["newDelivery","markDone","logWastage","addExpense"];
@@ -4107,9 +5359,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
             {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Amount Paid (₹)",val:r=>r.paid||0},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.paid||0,num:true},{label:"Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.paid||0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Amount Paid",val:r=>r.paid||0,num:true},{label:"Amount Remaining",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
           </div>
           {/* BULK ACTION BAR */}
           {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
@@ -4365,6 +5617,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <span style={{color:t.sub}} className="text-xs">📅 {d.date}</span>
                         {d.deliveryDate&&<span style={{color:t.sub}} className="text-xs">→ by {d.deliveryDate}</span>}
                         <span style={{color:t.sub}} className="text-xs">by {d.createdBy||"—"}</span>
+                        {(invRegistry?.issued||{})[d.id]&&<span style={{color:t.sub,fontSize:9,fontFamily:"monospace",background:t.inp,borderRadius:4,padding:"1px 5px"}}>{(invRegistry?.issued||{})[d.id]}</span>}
                       </div>
                     </div>
                   </div>
@@ -4379,10 +5632,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>
                   ))}
                   {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
-                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1 pt-1 flex justify-between text-xs"><span style={{color:"#10b981"}}>Collected</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+d.partialPayment.amount)}</span></div>}
+                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1 pt-1 flex justify-between text-xs"><span style={{color:"#10b981"}}>✓ Collected</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+d.partialPayment.amount)}</span></div>}
+                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&(()=>{const _repl=+d.replacement?.amount||0;const _net=Math.max(0,tot-_repl);const _bal=Math.max(0,_net-(+d.partialPayment.amount));return _bal>0?<div className="flex justify-between text-xs" style={{color:"#f59e0b",fontWeight:700}}><span>Balance Due</span><span>{inr(_bal)}</span></div>:<div className="flex justify-between text-xs" style={{color:"#10b981",fontWeight:700}}><span>✓ Fully Settled</span><span>—</span></div>;})()}
                 </div>
                 {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
-                {d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:10,padding:"6px 10px",marginBottom:8}} className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-500">💰 Partial collected</span>{canSeePrices&&<span className="text-xs font-bold text-emerald-500">{inr(+d.partialPayment.amount)}</span>}</div>}
+                {d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&(()=>{const _repl=+d.replacement?.amount||0;const _net=Math.max(0,(canSeePrices?lineTotal(d.orderLines):0)-_repl);const _bal=Math.max(0,_net-(+d.partialPayment.amount));return<div style={{background:_bal>0?"#f59e0b15":"#10b98115",border:`1px solid ${_bal>0?"#f59e0b30":"#10b98130"}`,borderRadius:10,padding:"6px 10px",marginBottom:8}} className="flex items-center justify-between"><span className="text-xs font-semibold" style={{color:_bal>0?"#d97706":"#10b981"}}>💰 {_bal>0?"Partial collected":"Fully collected"}</span>{canSeePrices&&<span className="text-xs font-bold" style={{color:_bal>0?"#d97706":"#10b981"}}>{inr(+d.partialPayment.amount)}{_bal>0?` · Due ${inr(_bal)}`:""}</span>}</div>;})()} 
                 {d.replacement?.done&&(
                   <div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
                     <p className="text-[11px] font-semibold text-orange-500 mb-0.5">🔄 Replacement Made</p>
@@ -4395,6 +5649,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
                   <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
                   {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
+                  {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
                   <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>WA</button>
                   {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
                   {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
@@ -4481,90 +5736,1143 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         </>)}
 
         {/* EXPENSES */}
-        {tab==="Expenses"&&isAdmin&&(<>
-          {/* Summary cards */}
+        {tab==="Expenses"&&isAdmin&&(()=>{
+          // ── derived filter values ──
+          const expCats=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]);
+          const totalWasteCost=(wastage||[]).reduce((a,w)=>a+(w.cost||0),0);
+          // date range for expense filters
+          const getExpDateRange=()=>{
+            const t2=today();
+            if(expDateFilter==="today")return{from:t2,to:t2};
+            if(expDateFilter==="week"){const d=new Date();d.setDate(d.getDate()-6);return{from:d.toISOString().slice(0,10),to:t2};}
+            if(expDateFilter==="month"){return{from:t2.slice(0,7)+"-01",to:t2};}
+            if(expDateFilter==="custom")return{from:expCustomFrom||"2000-01-01",to:expCustomTo||t2};
+            return{from:"2000-01-01",to:t2};
+          };
+          const {from:eFr,to:eTo}=getExpDateRange();
+          const filteredExp=expenses.filter(e=>{
+            const inDate=e.date>=eFr&&e.date<=eTo;
+            const inCat=expCatFilter==="all"||e.category===expCatFilter;
+            const q=expSearch.toLowerCase();
+            const inSearch=!q||(e.category||"").toLowerCase().includes(q)||(e.notes||"").toLowerCase().includes(q)||(e.vendor||"").toLowerCase().includes(q)||(e.receipt||"").toLowerCase().includes(q)||(e.approvedBy||"").toLowerCase().includes(q)||(e.tags||"").toLowerCase().includes(q);
+            return inDate&&inCat&&inSearch;
+          }).sort((a,b)=>b.date.localeCompare(a.date));
+          const filtExpTotal=filteredExp.reduce((s,e)=>s+(e.amount||0),0);
+
+          // ── cat breakdown for filtered ──
+          const catBreakdown=expCats.map(cat=>({cat,total:filteredExp.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),count:filteredExp.filter(e=>e.category===cat).length})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+          const maxCatVal=catBreakdown[0]?.total||1;
+
+          // ── vendor breakdown ──
+          const vendorMap={};
+          filteredExp.forEach(e=>{if(e.vendor){vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+(e.amount||0);}});
+          const vendorBreakdown=Object.entries(vendorMap).sort((a,b)=>b[1]-a[1]);
+
+          // ── payment method breakdown ──
+          const pmMap={};
+          filteredExp.forEach(e=>{const pm=e.paymentMethod||"Cash";pmMap[pm]=(pmMap[pm]||0)+(e.amount||0);});
+
+          // ── revenue drill-down ──
+          const delivByMonth={};
+          deliveries.filter(d=>d.status==="Delivered").forEach(d=>{const m=d.date?.slice(0,7)||"";delivByMonth[m]=(delivByMonth[m]||0)+lineTotal(d.orderLines);});
+
+          // ── supply cost by category ──
+          const supCatMap={};
+          supplies.forEach(s=>{const cat=s.category||s.item||"Other";supCatMap[cat]=(supCatMap[cat]||0)+(s.cost||0);});
+          const supCatBreak=Object.entries(supCatMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+          // ── daily snapshots from Firebase ──
+          const savedSnaps=Object.values(finSnapshots||{}).sort((a,b)=>b.date?.localeCompare(a.date||"")||0);
+
+          const PALETTE=["#ef4444","#f97316","#f59e0b","#10b981","#0ea5e9","#8b5cf6","#ec4899"];
+
+          return(<>
+          {/* ── KPI row ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard dm={dm} label="Operating Expenses" value={inr(totalExpOp)} sub={`${expenses.length} entries`} accent="#ef4444"/>
             <StatCard dm={dm} label="Supply Costs" value={inr(totalSupC)} sub="Raw materials" accent="#8b5cf6"/>
             <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981"/>
             <StatCard dm={dm} label="Net Profit" value={inr(netProfit)} sub={netProfit>=0?"Profitable ✓":"In loss ⚠️"} accent={netProfit>=0?"#10b981":"#ef4444"}/>
           </div>
-          {/* Financial overview card */}
-          <Card dm={dm}><div className="p-4">
-            <p style={{color:t.text}} className="font-bold text-sm mb-3">Financial Overview</p>
-            {[
-              {l:"Total Revenue",v:totalRev,c:"#10b981",icon:"💰",pct:null},
-              {l:"Supply Costs",v:totalSupC,c:"#8b5cf6",icon:"📦",pct:totalRev>0?Math.round(totalSupC/totalRev*100):0},
-              {l:"Operating Expenses",v:totalExpOp,c:"#ef4444",icon:"💸",pct:totalRev>0?Math.round(totalExpOp/totalRev*100):0},
-              {l:"Wastage Losses",v:(wastage||[]).reduce((a,w)=>a+(w.cost||0),0),c:"#f97316",icon:"🗑️",pct:totalRev>0?Math.round((wastage||[]).reduce((a,w)=>a+(w.cost||0),0)/totalRev*100):0},
-              {l:"Net Profit",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444",icon:"📈",pct:totalRev>0?Math.round(netProfit/totalRev*100):0},
-            ].map((x,i)=><div key={x.l} className="py-2.5" style={{borderBottom:i<4?`1px solid ${t.border}`:"none"}}>
-              <div className="flex justify-between items-center mb-1">
+
+          {/* ── PAPER TRAIL ── */}
+          {(()=>{
+            const totalWC=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
+            const totalReplDed=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+            const grossRev=deliveries.filter(d=>d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const totalCost=totalExpOp+totalSupC+totalWC;
+            const PT_SECTIONS=[
+              {key:"revenue",label:"💰 Revenue",color:"#10b981",value:totalRev},
+              {key:"supply",label:"📦 Supply",color:"#8b5cf6",value:totalSupC},
+              {key:"expenses",label:"💸 Expenses",color:"#ef4444",value:totalExpOp},
+              {key:"wastage",label:"🗑️ Wastage",color:"#f97316",value:totalWC},
+              {key:"netprofit",label:"📈 Net P&L",color:netProfit>=0?"#10b981":"#ef4444",value:netProfit},
+            ];
+            // per-section detail rows
+            const revenueRows=deliveries.filter(d=>d.status==="Delivered").sort((a,b)=>b.date.localeCompare(a.date));
+            const supplyRows=[...supplies].sort((a,b)=>b.date?.localeCompare(a.date||""));
+            const expenseRows=[...expenses].sort((a,b)=>b.date?.localeCompare(a.date||""));
+            const wastageRows=[...(wastage||[])].sort((a,b)=>b.date?.localeCompare(a.date||""));
+            // monthly breakdown for net profit
+            const months=[...new Set([
+              ...deliveries.map(d=>d.date?.slice(0,7)),
+              ...supplies.map(s=>s.date?.slice(0,7)),
+              ...expenses.map(e=>e.date?.slice(0,7)),
+            ].filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+            return(
+            <Card dm={dm}><div className="p-4">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2" style={{cursor:"pointer"}} onClick={()=>setExpPTOpen(p=>!p)}>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm">{x.icon}</span>
-                  <span style={{color:t.sub}} className="text-sm font-medium">{x.l}</span>
+                  <span style={{color:t.text,fontWeight:800,fontSize:14}}>📋 Financial Paper Trail</span>
+                  {!expPTOpen&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>tap to expand</span>}
                 </div>
-                <div className="flex items-center gap-2">
-                  {x.pct!==null&&<span style={{color:t.sub}} className="text-[11px]">{x.pct}%</span>}
-                  <span className="font-bold text-sm" style={{color:x.c}}>{inr(x.v)}</span>
+                <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
+                  {expPTOpen&&<>
+                    <button onClick={()=>exportPnLReport({co:settings?.companyName||"Company",periodLabel:"All Time",mData:months.map(m=>({month:m.slice(5)+"/"+m.slice(2,4),monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length})).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0})),totRev:totalRev,totSupC:totalSupC,totExpC:totalExpOp,totWasteC:totalWC,totCost:totalCost,totProfit:netProfit,totMargin:totalRev>0?Math.round(netProfit/totalRev*100):0,totReplDeducted:totalReplDed,collectionRate:customers.reduce((s,c)=>s+(c.paid||0),0)+customers.reduce((s,c)=>s+(c.pending||0),0)>0?Math.round(customers.reduce((s,c)=>s+(c.paid||0),0)/(customers.reduce((s,c)=>s+(c.paid||0),0)+customers.reduce((s,c)=>s+(c.pending||0),0))*100):100,totDue:customers.reduce((s,c)=>s+(c.pending||0),0),totCollected:customers.reduce((s,c)=>s+(c.paid||0),0),avgMonthlyRev:0,avgMonthlyProfit:0,burnRate:0,healthScore:0,healthLabel:"",healthColor:"#10b981",insights:[],filtD:deliveries.filter(d=>d.status==="Delivered"),filtS:supplies,filtE:expenses,filtW:wastage||[],customers,deliveries,expenses,supplies,wastage,products,lineTotal,inr,today_fn:today,settings})} style={{background:"#3b82f620",color:"#3b82f6",border:"1.5px solid #3b82f640",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Full Report</button>
+                    <button onClick={()=>exportPnLCSV({mData:months.map(m=>({month:m.slice(5)+"/"+m.slice(2,4),monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length})).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0})),filtD:deliveries.filter(d=>d.status==="Delivered"),filtE:expenses,filtS:supplies,filtW:wastage||[],customers,deliveries,expenses,supplies,wastage,products,lineTotal,today_fn:today,periodLabel:"All Time"})} style={{background:"#10b98120",color:"#10b981",border:"1.5px solid #10b98140",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📊 CSV</button>
+                  </>}
+                  <span style={{color:t.sub,fontSize:16,transition:"transform 0.2s",display:"inline-block",transform:expPTOpen?"rotate(180deg)":"rotate(0deg)"}}>⌄</span>
                 </div>
               </div>
-              {x.pct!==null&&totalRev>0&&<div style={{background:t.border,height:3,borderRadius:3,overflow:"hidden"}}><div style={{width:`${Math.min(x.pct,100)}%`,background:x.c,height:"100%",borderRadius:3}}/></div>}
-            </div>)}
-          </div></Card>
-          {/* Expense by category */}
-          {expenses.length>0&&(()=>{
-            const cats=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]);
-            const catData=cats.map(cat=>({cat,total:expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),count:expenses.filter(e=>e.category===cat).length})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
-            const maxCat=catData[0]?.total||1;
-            return catData.length>0&&<Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-3">Expenses by Category</p>
-              {catData.map((c,i)=>(
-                <div key={c.cat} className="mb-3 last:mb-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span style={{color:t.text}} className="text-sm font-semibold">{c.cat}</span>
+
+              {/* Summary strip — always visible */}
+              <div className="grid grid-cols-5 gap-1.5 mb-0" style={{marginBottom:expPTOpen?12:0}}>
+                {PT_SECTIONS.map(s=>(
+                  <button key={s.key} onClick={()=>{setExpPTSection(s.key);if(!expPTOpen)setExpPTOpen(true);}} style={{background:expPTOpen&&expPTSection===s.key?s.color+"22":t.inp,border:`1.5px solid ${expPTOpen&&expPTSection===s.key?s.color:t.border}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all .15s"}}>
+                    <p style={{color:s.color,fontSize:11,fontWeight:800,lineHeight:1.2}}>{inr(Math.abs(s.value))}{s.key==="netprofit"&&netProfit<0?"▼":""}  </p>
+                    <p style={{color:t.sub,fontSize:9,marginTop:2,fontWeight:600}}>{s.label}</p>
+                  </button>
+                ))}
+              </div>
+
+              {/* Expanded detail panel */}
+              {expPTOpen&&<>
+                <div style={{height:1,background:t.border,margin:"12px 0"}}/>
+
+                {/* ── REVENUE detail ── */}
+                {expPTSection==="revenue"&&<>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
                     <div>
-                      <span className="text-red-500 font-bold text-sm">{inr(c.total)}</span>
-                      <span style={{color:t.sub}} className="text-[11px] ml-2">{c.count} entries</span>
+                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>💰 Revenue Paper Trail — All Delivered Orders</span>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{revenueRows.length} orders · sorted newest first</p>
+                    </div>
+                    <span style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(totalRev)}</span>
+                  </div>
+                  {/* Summary pills */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      {l:"GROSS REVENUE",v:inr(grossRev),c:"#10b981",bg:"#10b98118",bc:"#10b98140"},
+                      {l:"REPLACEMENTS DEDUCTED",v:`-${inr(totalReplDed)}`,c:"#f97316",bg:"#f9731618",bc:"#f9731640"},
+                      {l:"NET REVENUE",v:inr(totalRev),c:"#10b981",bg:"#10b98118",bc:"#10b98140"},
+                      {l:"DELIVERED ORDERS",v:revenueRows.length,c:"#3b82f6",bg:"#3b82f618",bc:"#3b82f640"},
+                      {l:"AVG PER ORDER",v:inr(revenueRows.length>0?Math.round(totalRev/revenueRows.length):0),c:"#8b5cf6",bg:"#8b5cf618",bc:"#8b5cf640"},
+                    ].map(x=>(
+                      <div key={x.l} style={{background:x.bg,border:`1px solid ${x.bc}`,borderRadius:8,padding:"6px 10px"}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{x.l}</p>
+                        <p style={{color:x.c,fontWeight:900,fontSize:12}}>{x.v}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Ledger table */}
+                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6}}>
+                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CUSTOMER / DATE / LOGGED BY</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>GROSS</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>REPL.</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>NET</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
+                    </div>
+                    <div style={{maxHeight:360,overflowY:"auto"}}>
+                      {(()=>{
+                        let running=0;
+                        return revenueRows.map((d,i)=>{
+                          const gross=lineTotal(d.orderLines);
+                          const repl=+d.replacement?.amount||0;
+                          const net=gross-repl;
+                          running+=net;
+                          return(
+                          <div key={d.id||i} onClick={()=>setDetailModal({type:"delivery",data:d})} onMouseEnter={ev=>{ev.currentTarget.style.background=dm?"#ffffff08":"#00000006";}} onMouseLeave={ev=>{ev.currentTarget.style.background=i%2===0?"transparent":t.inp+"88";}} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88",cursor:"pointer",transition:"background .12s"}}>
+                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{revenueRows.length-i}</span>
+                            <div>
+                              <p style={{color:t.text,fontSize:12,fontWeight:700,lineHeight:1.2,textDecoration:"underline"}} onClick={ev=>{ev.stopPropagation();const c=customers.find(cx=>cx.id===d.customerId);if(c)setDetailModal({type:"customer",data:c});}}>{d.customer}</p>
+                              <p style={{color:t.sub,fontSize:10}}><span style={{textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:d.date}});}}>📅 {d.date}</span>{d.createdBy?<span style={{textDecoration:"underline",cursor:"pointer",marginLeft:4}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:d.createdBy}});}}> · 👤 {d.createdBy}</span>:""}</p>
+                              {d.replacement?.reason&&<p style={{color:"#f97316",fontSize:9,fontStyle:"italic",marginTop:1}}>↩ {d.replacement.reason}</p>}
+                              {d.orderLines&&Object.values(d.orderLines).filter(l=>l.qty>0).length>0&&(
+                                <p style={{color:t.sub,fontSize:9,marginTop:1}}>{Object.values(d.orderLines).filter(l=>l.qty>0).map(l=>`${l.qty}×${l.name||""}`).join(", ")}</p>
+                              )}
+                            </div>
+                            <p style={{color:"#10b981",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(gross)}</p>
+                            <p style={{color:repl>0?"#f97316":t.sub,fontSize:11,fontWeight:repl>0?700:400,textAlign:"right"}}>{repl>0?`-${inr(repl)}`:"—"}</p>
+                            <p style={{color:"#10b981",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(net)}</p>
+                            <p style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(running)}</p>
+                          </div>);
+                        });
+                      })()}
+                      {revenueRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No delivered orders yet.</p>}
+                    </div>
+                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
+                      <span/>
+                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {revenueRows.length} orders</span>
+                      <span style={{color:"#10b981",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(grossRev)}</span>
+                      <span style={{color:"#f97316",fontSize:12,fontWeight:800,textAlign:"right"}}>{totalReplDed>0?`-${inr(totalReplDed)}`:"—"}</span>
+                      <span style={{color:"#10b981",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalRev)}</span>
+                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalRev)}</span>
                     </div>
                   </div>
-                  <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${Math.round(c.total/maxCat*100)}%`,background:["#ef4444","#f97316","#f59e0b","#10b981","#0ea5e9","#8b5cf6","#ec4899"][i%7],height:"100%",borderRadius:5}}/></div>
+                </>}
+
+                {/* ── SUPPLY detail ── */}
+                {expPTSection==="supply"&&<>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
+                    <div>
+                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>📦 Supply Cost Paper Trail</span>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{supplyRows.length} entries · sorted newest first</p>
+                    </div>
+                    <span style={{color:"#8b5cf6",fontWeight:900,fontSize:14}}>{inr(totalSupC)}</span>
+                  </div>
+                  {/* By category summary */}
+                  {supCatBreak.length>0&&<div className="flex flex-wrap gap-1.5 mb-3">
+                    {supCatBreak.map(([cat,val])=>(
+                      <div key={cat} style={{background:"#8b5cf618",border:"1px solid #8b5cf640",borderRadius:8,padding:"5px 9px"}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{cat.toUpperCase()}</p>
+                        <p style={{color:"#8b5cf6",fontWeight:800,fontSize:11}}>{inr(val)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{totalSupC>0?Math.round(val/totalSupC*100):0}% of total</p>
+                      </div>
+                    ))}
+                  </div>}
+                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6}}>
+                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>ITEM / SUPPLIER / DATE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CATEGORY</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>COST</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
+                    </div>
+                    <div style={{maxHeight:360,overflowY:"auto"}}>
+                      {(()=>{
+                        let running=0;
+                        return supplyRows.map((s,i)=>{
+                          running+=(s.cost||0);
+                          return(
+                          <div key={s.id||i} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
+                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{supplyRows.length-i}</span>
+                            <div>
+                              <p style={{color:t.text,fontSize:12,fontWeight:600,lineHeight:1.2}}>{s.item||s.name||"—"}</p>
+                              <p style={{color:t.sub,fontSize:10}}>📅 {s.date}{s.supplier?` · 🏪 ${s.supplier}`:""}</p>
+                              {s.qty&&<p style={{color:t.sub,fontSize:10}}>📦 {s.qty} {s.unit||""}</p>}
+                              {s.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic",marginTop:1}}>{s.notes}</p>}
+                            </div>
+                            <span style={{color:t.sub,fontSize:11,paddingTop:2}}>{s.category||"—"}</span>
+                            <span style={{color:"#8b5cf6",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(s.cost||0)}</span>
+                            <span style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(running)}</span>
+                          </div>);
+                        });
+                      })()}
+                      {supplyRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No supply records yet.</p>}
+                    </div>
+                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
+                      <span/>
+                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {supplyRows.length} entries</span>
+                      <span/>
+                      <span style={{color:"#8b5cf6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalSupC)}</span>
+                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalSupC)}</span>
+                    </div>
+                  </div>
+                </>}
+
+                {/* ── EXPENSES detail ── */}
+                {expPTSection==="expenses"&&<>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
+                    <div>
+                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>💸 Operating Expenses Paper Trail</span>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{expenseRows.length} entries · sorted newest first</p>
+                    </div>
+                    <span style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(totalExpOp)}</span>
+                  </div>
+                  {/* Category summary */}
+                  {catBreakdown.length>0&&<div className="flex flex-wrap gap-1.5 mb-3">
+                    {catBreakdown.map((c,i)=>(
+                      <div key={c.cat} style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:"5px 9px"}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{c.cat.toUpperCase()} · {c.count} entries</p>
+                        <p style={{color:"#ef4444",fontWeight:800,fontSize:11}}>{inr(c.total)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{totalExpOp>0?Math.round(c.total/totalExpOp*100):0}% of total</p>
+                      </div>
+                    ))}
+                  </div>}
+                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6}}>
+                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CATEGORY / VENDOR / DATE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>PAYMENT</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>AMOUNT</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
+                    </div>
+                    <div style={{maxHeight:360,overflowY:"auto"}}>
+                      {(()=>{
+                        let running=0;
+                        return expenseRows.map((e,i)=>{
+                          running+=(e.amount||0);
+                          return(
+                          <div key={e.id||i} onClick={()=>setDetailModal({type:"expense",data:e})} onMouseEnter={ev=>{ev.currentTarget.style.background=dm?"#ffffff08":"#00000006";ev.currentTarget.style.cursor="pointer";}} onMouseLeave={ev=>{ev.currentTarget.style.background=i%2===0?"transparent":t.inp+"88";}} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88",cursor:"pointer",transition:"background .12s"}}>
+                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{expenseRows.length-i}</span>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span style={{background:"#ef444420",color:"#ef4444",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.category}</span>
+                                {e.tags&&e.tags.split(",").map(tg=>tg.trim()).filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:600}}>{tg}</span>)}
+                                {e.approvedBy&&<span style={{background:"#10b98120",color:"#10b981",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:600,cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:e.approvedBy}});}}>✅ {e.approvedBy}</span>}
+                              </div>
+                              <p style={{color:t.sub,fontSize:10,marginTop:2}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:e.date}});}}>📅 <span style={{textDecoration:"underline",cursor:"pointer"}}>{e.date}</span>{e.vendor?` · 🏪 ${e.vendor}`:""}</p>
+                              {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic",marginTop:1}}>{e.notes}</p>}
+                              {e.receipt&&<p style={{color:t.sub,fontSize:9,marginTop:1}}>🧾 {e.receipt}</p>}
+                            </div>
+                            <span style={{color:t.sub,fontSize:10,alignSelf:"center"}}>{e.paymentMethod||"Cash"}</span>
+                            <span style={{color:"#ef4444",fontSize:12,fontWeight:800,textAlign:"right",alignSelf:"center"}}>{inr(e.amount||0)}</span>
+                            <span style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right",alignSelf:"center"}}>{inr(running)}</span>
+                          </div>);
+                        });
+                      })()}
+                      {expenseRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No expenses recorded yet.</p>}
+                    </div>
+                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
+                      <span/>
+                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {expenseRows.length} entries</span>
+                      <span/>
+                      <span style={{color:"#ef4444",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalExpOp)}</span>
+                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalExpOp)}</span>
+                    </div>
+                  </div>
+                </>}
+
+                {/* ── WASTAGE detail ── */}
+                {expPTSection==="wastage"&&<>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
+                    <span style={{color:t.text,fontWeight:700,fontSize:12}}>🗑️ Wastage Loss Breakdown</span>
+                    <span style={{color:"#f97316",fontWeight:800,fontSize:13}}>{inr(totalWC)}</span>
+                  </div>
+                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8}}>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>PRODUCT / DATE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>TYPE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>QTY</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>COST</span>
+                    </div>
+                    <div style={{maxHeight:320,overflowY:"auto"}}>
+                      {wastageRows.map((w,i)=>(
+                        <div key={w.id||i} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
+                          <div>
+                            <p style={{color:t.text,fontSize:12,fontWeight:600}}>{w.product}</p>
+                            <p style={{color:t.sub,fontSize:10}}>📅 {w.date}{w.loggedBy?` · ${w.loggedBy}`:""}</p>
+                            {w.reason&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{w.reason}</p>}
+                          </div>
+                          <span style={{color:t.sub,fontSize:11,alignSelf:"center"}}>{w.type||"—"}</span>
+                          <span style={{color:"#f97316",fontSize:12,fontWeight:700,textAlign:"right",alignSelf:"center"}}>{w.qty||0} {w.unit||""}</span>
+                          <span style={{color:"#f97316",fontSize:12,fontWeight:800,textAlign:"right",alignSelf:"center"}}>{inr(w.cost||0)}</span>
+                        </div>
+                      ))}
+                      {wastageRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No wastage records yet.</p>}
+                    </div>
+                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8,borderTop:`2px solid ${t.border}`}}>
+                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {wastageRows.length} entries</span>
+                      <span/><span/>
+                      <span style={{color:"#f97316",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalWC)}</span>
+                    </div>
+                  </div>
+                </>}
+
+                {/* ── NET PROFIT monthly drill-down ── */}
+                {expPTSection==="netprofit"&&<>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
+                    <span style={{color:t.text,fontWeight:700,fontSize:12}}>📈 Net Profit / Loss — Monthly Ledger</span>
+                    <span style={{color:netProfit>=0?"#10b981":"#ef4444",fontWeight:800,fontSize:13}}>{inr(netProfit)}</span>
+                  </div>
+                  {/* Running total summary */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      {l:"Total Revenue",v:totalRev,c:"#10b981"},
+                      {l:"Supply Costs",v:totalSupC,c:"#8b5cf6"},
+                      {l:"Op. Expenses",v:totalExpOp,c:"#ef4444"},
+                      {l:"Wastage Loss",v:totalWC,c:"#f97316"},
+                      {l:"Total Costs",v:totalCost,c:"#dc2626"},
+                      {l:"Net Profit",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444"},
+                    ].map(x=>(
+                      <div key={x.l} style={{background:x.c+"18",border:`1px solid ${x.c}40`,borderRadius:8,padding:"6px 10px",minWidth:80}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{x.l.toUpperCase()}</p>
+                        <p style={{color:x.c,fontWeight:900,fontSize:12}}>{inr(x.v)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Monthly table */}
+                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6}}>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>MONTH</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>REVENUE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>SUPPLY</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>EXPENSE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>WASTE</span>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>NET P&L</span>
+                    </div>
+                    <div style={{maxHeight:360,overflowY:"auto"}}>
+                      {(()=>{
+                        return months.map((m,i)=>{
+                          const mRev=deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);
+                          const mSup=supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0);
+                          const mExp=expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0);
+                          const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0);
+                          const mNet=mRev-mSup-mExp-mWaste;
+                          const mLabel=new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"2-digit"});
+                          return(
+                          <div key={m} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
+                            <span style={{color:t.text,fontSize:11,fontWeight:700}}>{mLabel}</span>
+                            <span style={{color:"#10b981",fontSize:11,fontWeight:700}}>{inr(mRev)}</span>
+                            <span style={{color:"#8b5cf6",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mSup)}</span>
+                            <span style={{color:"#ef4444",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mExp)}</span>
+                            <span style={{color:"#f97316",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mWaste)}</span>
+                            <div style={{textAlign:"right"}}>
+                              <p style={{color:mNet>=0?"#10b981":"#ef4444",fontSize:11,fontWeight:900}}>{inr(mNet)}</p>
+                              <p style={{color:t.sub,fontSize:9}}>{totalRev>0?Math.round(mNet/totalRev*100):0}%</p>
+                            </div>
+                          </div>);
+                        });
+                      })()}
+                    </div>
+                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6,borderTop:`2px solid ${t.border}`}}>
+                      <span style={{color:t.text,fontSize:11,fontWeight:800}}>ALL</span>
+                      <span style={{color:"#10b981",fontSize:11,fontWeight:900}}>{inr(totalRev)}</span>
+                      <span style={{color:"#8b5cf6",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalSupC)}</span>
+                      <span style={{color:"#ef4444",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalExpOp)}</span>
+                      <span style={{color:"#f97316",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalWC)}</span>
+                      <span style={{color:netProfit>=0?"#10b981":"#ef4444",fontSize:12,fontWeight:900,textAlign:"right"}}>{inr(netProfit)}</span>
+                    </div>
+                  </div>
+                </>}
+              </>}
+            </div></Card>
+            );
+          })()}
+
+          {/* ── Financial Overview section tabs — hover/click to reveal ── */}
+          <Card dm={dm}><div className="p-4">
+            {/* Section header — click or hover to toggle */}
+            <div
+              className="flex items-center justify-between flex-wrap gap-2"
+              style={{cursor:"pointer",userSelect:"none"}}
+              onClick={()=>setFinOvOpen(p=>!p)}
+              onMouseEnter={()=>setFinOvHover(true)}
+              onMouseLeave={()=>setFinOvHover(false)}
+            >
+              <div className="flex items-center gap-2">
+                <p style={{color:t.text}} className="font-bold text-sm">📊 Financial Overview</p>
+                {!finOvOpen&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{inr(netProfit)} net · tap to expand</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                {finOvOpen&&<div className="flex gap-1 flex-wrap" onClick={e=>e.stopPropagation()}>
+                  {[["overview","All"],["revenue","Revenue"],["supply","Supply"],["ops","Expenses"],["wastage","Wastage"],["daily","Daily"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setFinView(v)} style={{background:finView===v?"#3b82f6":t.inp,color:finView===v?"#fff":t.sub,border:`1.5px solid ${finView===v?"#3b82f6":t.border}`,padding:"4px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer"}}>{l}</button>
+                  ))}
+                </div>}
+                <span style={{color:t.sub,fontSize:16,lineHeight:1,transition:"transform 0.2s",display:"inline-block",transform:finOvOpen?"rotate(180deg)":"rotate(0deg)"}}>⌄</span>
+              </div>
+            </div>
+            {/* Hover preview bar — shows when closed but hovered */}
+            {!finOvOpen&&finOvHover&&<div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                {l:"Revenue",v:totalRev,c:"#10b981"},
+                {l:"Supply",v:totalSupC,c:"#8b5cf6"},
+                {l:"Expenses",v:totalExpOp,c:"#ef4444"},
+                {l:"Net Profit",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444"},
+              ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                <p className="font-black text-xs" style={{color:x.c}}>{inr(x.v)}</p>
+                <p style={{color:t.sub}} className="text-[9px] mt-0.5">{x.l}</p>
+              </div>)}
+            </div>}
+            {/* Full expanded content */}
+            {finOvOpen&&<><div className="mt-4">
+
+            {/* ── ALL OVERVIEW ── */}
+            {finView==="overview"&&(()=>{
+              const cashCollectedFO=customers.reduce((a,c)=>a+(c.paid||0),0);
+              const cashPendingFO=customers.reduce((a,c)=>a+(c.pending||0),0);
+              const totalWC2=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
+              const ovRows=[
+                {l:"Total Revenue",v:totalRev,c:"#10b981",icon:"💰",pct:null,tab:"revenue",sub:`${deliveries.filter(d=>d.status==="Delivered").length} delivered orders`},
+                {l:"Supply Costs",v:totalSupC,c:"#8b5cf6",icon:"📦",pct:totalRev>0?Math.round(totalSupC/totalRev*100):0,tab:"supply",sub:`${supplies.length} supply entries`},
+                {l:"Operating Expenses",v:totalExpOp,c:"#ef4444",icon:"💸",pct:totalRev>0?Math.round(totalExpOp/totalRev*100):0,tab:"ops",sub:`${expenses.length} expense entries`},
+                {l:"Wastage Losses",v:totalWC2,c:"#f97316",icon:"🗑️",pct:totalRev>0?Math.round(totalWC2/totalRev*100):0,tab:"wastage",sub:`${(wastage||[]).length} wastage records`},
+                {l:"Net Profit / Loss",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444",icon:"📈",pct:totalRev>0?Math.round(netProfit/totalRev*100):0,tab:null,sub:netProfit>=0?"Business profitable ✓":"In loss — review costs ⚠️"},
+              ];
+              return(<>
+              {/* Summary tiles row */}
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
+                {ovRows.map(x=>(
+                  <div key={x.l} onClick={x.tab?()=>setFinView(x.tab):undefined}
+                    onMouseEnter={ev=>{if(x.tab)ev.currentTarget.style.transform="scale(1.03)";}}
+                    onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
+                    style={{background:x.c+"12",border:`1.5px solid ${x.c}30`,borderRadius:14,padding:"10px 10px",textAlign:"center",cursor:x.tab?"pointer":"default",transition:"all .15s"}}>
+                    <span style={{fontSize:18}}>{x.icon}</span>
+                    <p style={{color:x.c,fontWeight:900,fontSize:13,marginTop:4}}>{inr(Math.abs(x.v))}</p>
+                    {x.pct!==null&&<p style={{color:t.sub,fontSize:9}}>{x.pct}%</p>}
+                    <p style={{color:t.sub,fontSize:9,marginTop:2,fontWeight:600}}>{x.l}</p>
+                    {x.tab&&<p style={{color:x.c,fontSize:8,marginTop:2}}>tap to drill →</p>}
+                  </div>
+                ))}
+              </div>
+              {/* Detailed rows */}
+              {ovRows.map((x,i)=>(
+                <div key={x.l} onClick={x.tab?()=>setFinView(x.tab):undefined}
+                  onMouseEnter={ev=>{if(x.tab){ev.currentTarget.style.background=x.c+"08";}}}
+                  onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}
+                  style={{borderBottom:i<ovRows.length-1?`1px solid ${t.border}`:"none",cursor:x.tab?"pointer":"default",borderRadius:8,padding:"4px",transition:"background .15s"}}>
+                  <div className="flex justify-between items-center py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{x.icon}</span>
+                      <div>
+                        <span style={{color:t.text}} className="text-sm font-semibold">{x.l}</span>
+                        <p style={{color:t.sub,fontSize:10}}>{x.sub}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {x.pct!==null&&<span style={{color:t.sub,minWidth:30,textAlign:"right"}} className="text-[11px] font-mono">{x.pct}%</span>}
+                      <span className="font-black text-sm" style={{color:x.c,minWidth:90,textAlign:"right"}}>{inr(x.v)}</span>
+                      {x.tab&&<span style={{color:t.sub,fontSize:11}}>›</span>}
+                    </div>
+                  </div>
+                  {x.pct!==null&&totalRev>0&&<div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden",marginBottom:4}}><div style={{width:`${Math.min(x.pct,100)}%`,background:x.c,height:"100%",borderRadius:4,transition:"width .5s"}}/></div>}
                 </div>
               ))}
-            </Card>;
-          })()}
-          <div className="flex justify-between items-center">
-            <div className="flex gap-2 flex-wrap">
-              <Pill dm={dm} c="red">{inr(totalExpOp)} ops</Pill>
-              <Pill dm={dm} c={netProfit>=0?"green":"red"}>Profit {inr(netProfit)}</Pill>
-            </div>
-            <div className="flex gap-2">
-              <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Expenses",expenses,[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount",num:true},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)}>📄 PDF</Btn>
-              <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Expenses",expenses,[{label:"Category",key:"category"},{label:"Amount",key:"amount",num:true},{label:"Date",key:"date"},{label:"Receipt",key:"receipt"},{label:"Notes",key:"notes"}],settings)}>📊 XLS</Btn>
-              <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>CSV</Btn>
-              <Btn dm={dm} size="sm" onClick={()=>{setEf(blkE());setEsh("add");}}>+ Expense</Btn>
-            </div>
-          </div>
-          {expenses.length===0?<p style={{color:t.sub}} className="text-sm text-center py-6">No expenses logged yet.</p>
-          :expenses.map(e=>(
-            <Card key={e.id} dm={dm}><div className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>{e.category}</span>
+              {/* Cash flow quick tile */}
+              <div style={{borderTop:`1px solid ${t.border}`,marginTop:10,paddingTop:12}}>
+                <div className="grid grid-cols-2 gap-2">
+                  <div onClick={()=>setFinOvSubModal("cashflow")} onMouseEnter={ev=>{ev.currentTarget.style.transform="scale(1.02)";}} onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
+                    style={{background:"#10b98112",border:"1.5px solid #10b98130",borderRadius:12,padding:"10px 14px",cursor:"pointer",transition:"all .15s"}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>💵 Cash Flow</p>
+                    <p style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(cashCollectedFO)}</p>
+                    <p style={{color:"#ef4444",fontSize:10}}>{inr(cashPendingFO)} pending · tap for detail</p>
                   </div>
-                  <p style={{color:t.sub}} className="text-xs mt-1">📅 {e.date}{e.notes?` · ${e.notes}`:""}</p>
-                  {e.receipt&&<div style={{background:t.inp,border:`1px solid ${t.inpB}`}} className="rounded-lg px-2.5 py-1.5 mt-1.5 text-xs inline-flex items-center gap-1.5"><span className="text-amber-500 font-semibold">🧾</span><span style={{color:t.sub}}>{e.receipt}</span></div>}
-                </div>
-                <div className="flex items-center gap-2 shrink-0 ml-3">
-                  <span className="font-black text-red-500 text-base">{inr(e.amount)}</span>
-                  <button onClick={()=>{setEf({...e,amount:String(e.amount)});setEsh(e);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                  <button onClick={()=>delE(e)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>
+                  <div onClick={()=>setFinOvSubModal("burnrate")} onMouseEnter={ev=>{ev.currentTarget.style.transform="scale(1.02)";}} onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
+                    style={{background:"#ef444412",border:"1.5px solid #ef444430",borderRadius:12,padding:"10px 14px",cursor:"pointer",transition:"all .15s"}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>🔥 Burn Rate</p>
+                    {(()=>{
+                      const mths=[...new Set([...deliveries.map(d=>d.date?.slice(0,7)),...expenses.map(e=>e.date?.slice(0,7)),...supplies.map(s=>s.date?.slice(0,7))].filter(Boolean))];
+                      const br=mths.length>0?Math.round((totalExpOp+totalSupC)/mths.length):0;
+                      const avgRev=mths.length>0?Math.round(totalRev/mths.length):0;
+                      return(<><p style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(br)}/mo</p><p style={{color:t.sub,fontSize:10}}>vs {inr(avgRev)} avg rev · tap for detail</p></>);
+                    })()}
+                  </div>
                 </div>
               </div>
-            </div></Card>
-          ))}
-        </>)}
+              {/* Sub-modals */}
+              {finOvSubModal&&(()=>{
+                const cashC=customers.reduce((a,c)=>a+(c.paid||0),0);
+                const cashP=customers.reduce((a,c)=>a+(c.pending||0),0);
+                const mths2=[...new Set([...deliveries.map(d=>d.date?.slice(0,7)),...expenses.map(e=>e.date?.slice(0,7)),...supplies.map(s=>s.date?.slice(0,7))].filter(Boolean))];
+                const br2=mths2.length>0?Math.round((totalExpOp+totalSupC)/mths2.length):0;
+                const avgR=mths2.length>0?Math.round(totalRev/mths2.length):0;
+                const cashPct=cashC+cashP>0?Math.round(cashC/(cashC+cashP)*100):100;
+                return(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9988,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setFinOvSubModal(null)}>
+                  <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:500,maxHeight:"75vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-4">
+                      <p style={{color:t.text,fontWeight:900,fontSize:15}}>{finOvSubModal==="cashflow"?"💵 Cash Flow Details":"🔥 Burn Rate & Efficiency"}</p>
+                      <button onClick={()=>setFinOvSubModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕</button>
+                    </div>
+                    {finOvSubModal==="cashflow"&&<>
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {[{l:"Total Collected",v:inr(cashC),c:"#10b981"},{l:"Total Pending",v:inr(cashP),c:"#ef4444"},{l:"Collection Rate",v:`${cashPct}%`,c:cashPct>=90?"#10b981":cashPct>=70?"#f59e0b":"#ef4444"},{l:"Total Customers",v:customers.length,c:"#3b82f6"}].map(x=>(
+                          <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}><p style={{color:x.c,fontWeight:900,fontSize:16}}>{x.v}</p><p style={{color:t.sub,fontSize:10,marginTop:2}}>{x.l}</p></div>
+                        ))}
+                      </div>
+                      <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:8}}>
+                        <div style={{width:`${cashPct}%`,background:"#10b981"}}/>
+                        <div style={{width:`${100-cashPct}%`,background:"#ef4444"}}/>
+                      </div>
+                      <div className="flex justify-between mb-4"><span style={{color:"#10b981",fontSize:11,fontWeight:700}}>{cashPct}% collected</span><span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>{100-cashPct}% outstanding</span></div>
+                      <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top Outstanding</p>
+                      {[...customers].filter(c=>c.pending>0).sort((a,b)=>(b.pending||0)-(a.pending||0)).slice(0,5).map(c=>(
+                        <div key={c.id} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                          <span style={{color:t.text,fontSize:12,fontWeight:600}}>{c.name}</span>
+                          <span style={{color:"#ef4444",fontWeight:700,fontSize:12}}>{inr(c.pending)}</span>
+                        </div>
+                      ))}
+                    </>}
+                    {finOvSubModal==="burnrate"&&<>
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {[{l:"Monthly Burn",v:inr(br2),c:br2>avgR?"#ef4444":"#f59e0b"},{l:"Avg Monthly Rev",v:inr(avgR),c:"#10b981"},{l:"Monthly Surplus",v:inr(Math.max(0,avgR-br2)),c:avgR>br2?"#10b981":"#ef4444"},{l:"Net Margin",v:`${totalRev>0?Math.round(netProfit/totalRev*100):0}%`,c:netProfit>=0?"#10b981":"#ef4444"}].map(x=>(
+                          <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}><p style={{color:x.c,fontWeight:900,fontSize:16}}>{x.v}</p><p style={{color:t.sub,fontSize:10,marginTop:2}}>{x.l}</p></div>
+                        ))}
+                      </div>
+                      <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Burn rate is calculated as (expenses + supply costs) / active months ({mths2.length} months).</p>
+                      <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Cost Breakdown</p>
+                      {[["Operating Expenses","#ef4444",totalExpOp],["Supply Costs","#8b5cf6",totalSupC],["Wastage"," #f97316",(wastage||[]).reduce((s,w)=>s+(w.cost||0),0)]].map(([l,c,v])=>(
+                        <div key={l} className="mb-2">
+                          <div className="flex justify-between mb-1"><span style={{color:t.text,fontSize:11}}>{l}</span><span style={{color:c.trim(),fontWeight:700,fontSize:11}}>{inr(v)}</span></div>
+                          <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${(totalExpOp+totalSupC)>0?Math.round(v/(totalExpOp+totalSupC)*100):0}%`,background:c.trim(),height:"100%",borderRadius:5}}/></div>
+                        </div>
+                      ))}
+                    </>}
+                  </div>
+                </div>);
+              })()}
+              </>);
+            })()}
+
+            {/* ── REVENUE DRILL-DOWN ── */}
+            {finView==="revenue"&&(()=>{
+              const collected=customers.reduce((a,c)=>a+(c.paid||0),0);
+              const allMonthRevs=Object.entries(delivByMonth).sort((a,b)=>b[0].localeCompare(a[0]));
+              const maxMonthRev=Math.max(...Object.values(delivByMonth),1);
+              const topCusts=[...customers].map(c=>{const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");return{...c,rev:cd.reduce((s,d)=>s+lineTotal(d.orderLines),0),orders:cd.length};}).sort((a,b)=>b.rev-a.rev).slice(0,5);
+              return(<>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
+                  <span style={{color:t.text}} className="text-sm font-bold">💰 Revenue Breakdown</span>
+                </div>
+                <span style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(totalRev)}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                {[
+                  {l:"Collected",v:inr(collected),c:"#10b981",sub:"from customers"},
+                  {l:"Pending",v:inr(totalDue),c:"#f59e0b",sub:"uncollected"},
+                  {l:"Net Revenue",v:inr(totalRev),c:"#3b82f6",sub:"after adjustments"},
+                  {l:"Avg/Delivery",v:inr(deliveries.filter(d=>d.status==="Delivered").length>0?Math.round(totalRev/deliveries.filter(d=>d.status==="Delivered").length):0),c:"#8b5cf6",sub:"per order"},
+                ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
+                  <p className="font-black text-sm" style={{color:x.c}}>{x.v}</p>
+                  <p style={{color:t.sub}} className="text-[10px] mt-0.5">{x.l}</p>
+                  <p style={{color:t.sub,fontSize:9}}>{x.sub}</p>
+                </div>)}
+              </div>
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">Monthly Revenue — click to see deliveries</p>
+              {allMonthRevs.slice(0,12).map(([m,v])=>{
+                const mDelivs=deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered");
+                const pct=maxMonthRev>0?Math.round(v/maxMonthRev*100):0;
+                const isEx=plMonthExpanded===("rev_"+m);
+                return(<div key={m}>
+                  <div onClick={()=>setPlMonthExpanded(isEx?null:"rev_"+m)}
+                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}}
+                    onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}
+                    style={{cursor:"pointer",borderRadius:8,padding:"8px 6px",transition:"background .15s"}}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span style={{color:t.text,fontSize:12,fontWeight:600}}>{new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"2-digit"})}</span>
+                      <div className="flex items-center gap-2">
+                        <span style={{color:t.sub,fontSize:10}}>{mDelivs.length} orders</span>
+                        <span style={{color:"#10b981",fontWeight:700,fontSize:12}}>{inr(v)}</span>
+                        <span style={{color:t.sub,fontSize:10}}>{isEx?"▲":"▼"}</span>
+                      </div>
+                    </div>
+                    <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${pct}%`,background:"#10b981",height:"100%",borderRadius:5}}/></div>
+                  </div>
+                  {isEx&&<div style={{background:t.inp+"66",borderRadius:10,padding:"10px 12px",marginBottom:4}}>
+                    {mDelivs.length===0?<p style={{color:t.sub,fontSize:11}}>No deliveries this month.</p>
+                    :mDelivs.sort((a,b)=>b.date.localeCompare(a.date)).map((d,di)=>(
+                      <div key={d.id||di} className="flex justify-between items-start py-1.5" style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border}`:"none",cursor:"pointer"}}
+                        onClick={()=>setDetailModal({type:"delivery",data:d})}
+                        onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                        <div>
+                          <p style={{color:t.text,fontSize:11,fontWeight:600,textDecoration:"underline"}}>{d.customer}</p>
+                          <p style={{color:t.sub,fontSize:10}}>📅 <span style={{textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:d.date}});}}>{d.date}</span>{d.createdBy?<span style={{textDecoration:"underline",cursor:"pointer",marginLeft:4}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:d.createdBy}});}}> · {d.createdBy}</span>:""}</p>
+                        </div>
+                        <div className="text-right">
+                          <p style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</p>
+                          {(+d.replacement?.amount||0)>0&&<p style={{color:"#f97316",fontSize:9}}>-{inr(+d.replacement.amount)}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>}
+                </div>);
+              })}
+              {allMonthRevs.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No delivered orders yet.</p>}
+              {topCusts.length>0&&<>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",margin:"12px 0 8px"}}>Top Revenue Customers</p>
+                {topCusts.map((c,ci)=>(
+                  <div key={c.id} className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,cursor:"pointer"}}
+                    onClick={()=>setDetailModal({type:"customer",data:c})}
+                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                    <div className="flex items-center gap-2">
+                      <span style={{color:t.sub,fontSize:11,fontWeight:700,minWidth:18}}>#{ci+1}</span>
+                      <div><p style={{color:t.text,fontSize:12,fontWeight:600,textDecoration:"underline"}}>{c.name}</p><p style={{color:t.sub,fontSize:10}}>{c.orders} deliveries · {inr(c.pending||0)} pending</p></div>
+                    </div>
+                    <span style={{color:"#10b981",fontWeight:700,fontSize:12}}>{inr(c.rev)}</span>
+                  </div>
+                ))}
+              </>}
+              </>);
+            })()}
+
+            {/* ── SUPPLY COST DRILL-DOWN ── */}
+            {finView==="supply"&&(<>
+              <div className="flex items-center gap-2 mb-3">
+                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
+                <span style={{color:t.text}} className="text-sm font-bold">Supply Cost Breakdown</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#8b5cf6"}}>{inr(totalSupC)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total Supply Cost</p></div>
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#8b5cf6"}}>{supplies.length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Supply Entries</p></div>
+              </div>
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Item / Category</p>
+              {supCatBreak.map(([cat,v],i)=>{
+                const pct=totalSupC>0?Math.round(v/totalSupC*100):0;
+                return(<div key={cat} className="mb-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <span style={{color:t.text}} className="text-sm font-semibold">{cat}</span>
+                    <div className="flex items-center gap-2"><span style={{color:t.sub}} className="text-[11px]">{pct}%</span><span style={{color:"#8b5cf6"}} className="font-bold text-sm">{inr(v)}</span></div>
+                  </div>
+                  <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${pct}%`,background:PALETTE[i%7],height:"100%",borderRadius:4}}/></div>
+                </div>);
+              })}
+              {supCatBreak.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No supplies recorded.</p>}
+            </>)}
+
+            {/* ── OPS EXPENSES DRILL-DOWN ── */}
+            {finView==="ops"&&(<>
+              <div className="flex items-center gap-2 mb-3">
+                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
+                <span style={{color:t.text}} className="text-sm font-bold">Operating Expenses Breakdown</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{inr(totalExpOp)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total</p></div>
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{expenses.length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Entries</p></div>
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{totalRev>0?Math.round(totalExpOp/totalRev*100):0}%</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">of Revenue</p></div>
+              </div>
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Category</p>
+              {expCats.map((cat,i)=>{
+                const catTotal=expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0);
+                const catCount=expenses.filter(e=>e.category===cat).length;
+                if(!catTotal)return null;
+                const pct=totalExpOp>0?Math.round(catTotal/totalExpOp*100):0;
+                return(<div key={cat} className="mb-3" style={{cursor:"pointer"}} onClick={()=>setDetailModal({type:"category",data:{cat,catExpenses:expenses.filter(e=>e.category===cat),catTotal}})}
+                  onMouseEnter={ev=>{ev.currentTarget.style.opacity="0.85";}} onMouseLeave={ev=>{ev.currentTarget.style.opacity="1";}}>
+                  <div className="flex justify-between items-center mb-1">
+                    <span style={{color:t.text}} className="text-sm font-semibold">{cat} <span style={{color:"#3b82f6",fontSize:9,fontWeight:700}}>tap →</span></span>
+                    <div className="flex items-center gap-2"><span style={{color:t.sub}} className="text-[11px]">{catCount} entries · {pct}%</span><span style={{color:"#ef4444"}} className="font-bold text-sm">{inr(catTotal)}</span></div>
+                  </div>
+                  <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${pct}%`,background:PALETTE[i%7],height:"100%",borderRadius:4}}/></div>
+                </div>);
+              })}
+              {vendorBreakdown.length>0&&<><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-4 mb-2">By Vendor</p>
+              {vendorBreakdown.map(([vendor,v])=>(
+                <div key={vendor} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <span style={{color:t.text}} className="text-sm">{vendor}</span>
+                  <span style={{color:"#ef4444"}} className="font-bold text-sm">{inr(v)}</span>
+                </div>
+              ))}</>}
+              {Object.keys(pmMap).length>0&&<><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-4 mb-2">By Payment Method</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(pmMap).map(([pm,v])=>(
+                  <div key={pm} style={{background:t.inp,borderRadius:10,padding:"8px 12px"}}>
+                    <p style={{color:t.text}} className="text-sm font-bold">{pm}</p>
+                    <p style={{color:"#ef4444"}} className="text-xs font-semibold">{inr(v)}</p>
+                  </div>
+                ))}
+              </div></>}
+            </>)}
+
+            {/* ── WASTAGE DRILL-DOWN ── */}
+            {finView==="wastage"&&(<>
+              <div className="flex items-center gap-2 mb-3">
+                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
+                <span style={{color:t.text}} className="text-sm font-bold">Wastage Loss Breakdown</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#f97316"}}>{inr(totalWasteCost)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total Loss</p></div>
+                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#f97316"}}>{(wastage||[]).length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Records</p></div>
+              </div>
+              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Product</p>
+              {[...new Set((wastage||[]).map(w=>w.product))].map(p=>{
+                const qty=(wastage||[]).filter(w=>w.product===p).reduce((s,w)=>s+(w.qty||0),0);
+                const cost=(wastage||[]).filter(w=>w.product===p).reduce((s,w)=>s+(w.cost||0),0);
+                return(<div key={p} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div><p style={{color:t.text}} className="text-sm font-semibold">{p}</p><p style={{color:t.sub}} className="text-[11px]">{qty} units wasted</p></div>
+                  <span style={{color:"#f97316"}} className="font-bold text-sm">{inr(cost)}</span>
+                </div>);
+              })}
+              {(wastage||[]).length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No wastage recorded.</p>}
+            </>)}
+
+            {/* ── DAILY SNAPSHOTS ── */}
+            {finView==="daily"&&(<>
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
+                  <span style={{color:t.text}} className="text-sm font-bold">Daily Financial Snapshots</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={finDailyDate} onChange={e=>setFinDailyDate(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12}}/>
+                  <Btn dm={dm} size="sm" onClick={()=>saveFinSnapshot(finDailyDate)}>📸 Save Snapshot</Btn>
+                </div>
+              </div>
+              <p style={{color:t.sub}} className="text-[11px] mb-3">Save a day-end snapshot to lock in that day's P&amp;L figures for future review. Snapshots are stored in Firebase and accessible from any device.</p>
+              {/* Live preview for selected date */}
+              {(()=>{
+                const dayRev=deliveries.filter(d=>d.date===finDailyDate&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                const daySupply=supplies.filter(s=>s.date===finDailyDate).reduce((s,x)=>s+(x.cost||0),0);
+                const dayExp=expenses.filter(e=>e.date===finDailyDate).reduce((s,e)=>s+(e.amount||0),0);
+                const dayWaste=(wastage||[]).filter(w=>w.date===finDailyDate).reduce((s,w)=>s+(w.cost||0),0);
+                const dayProfit=dayRev-daySupply-dayExp-dayWaste;
+                return(<div style={{background:t.inp,borderRadius:12,padding:14,marginBottom:12}}>
+                  <p style={{color:t.text}} className="text-xs font-bold mb-2">📅 Live Data for {finDailyDate}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[["Revenue","#10b981",dayRev],["Supply Cost","#8b5cf6",daySupply],["Op. Expenses","#ef4444",dayExp],["Wastage","#f97316",dayWaste]].map(([l,c,v])=>(
+                      <div key={l}><p style={{color:t.sub}} className="text-[10px]">{l}</p><p className="font-bold text-sm" style={{color:c}}>{inr(v)}</p></div>
+                    ))}
+                  </div>
+                  <div style={{borderTop:`1px solid ${t.border}`,marginTop:10,paddingTop:8}}>
+                    <p style={{color:t.sub}} className="text-[10px]">Net Profit / Loss</p>
+                    <p className="font-black text-base" style={{color:dayProfit>=0?"#10b981":"#ef4444"}}>{inr(dayProfit)}</p>
+                  </div>
+                </div>);
+              })()}
+              {/* Saved snapshots list */}
+              {savedSnaps.length===0?<p style={{color:t.sub}} className="text-sm text-center py-4">No snapshots saved yet. Select a date and tap "Save Snapshot".</p>
+              :savedSnaps.map(snap=>{
+                const isExp=finExpandedDay===snap.date;
+                return(<div key={snap.date} style={{border:`1.5px solid ${isExp?"#3b82f6":t.border}`,borderRadius:12,marginBottom:8,overflow:"hidden"}}>
+                  <button onClick={()=>setFinExpandedDay(isExp?null:snap.date)} className="w-full text-left" style={{background:t.inp,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                    <div className="flex items-center gap-2">
+                      <span style={{color:t.text}} className="text-sm font-bold">📅 {snap.date}</span>
+                      <span style={{color:t.sub,fontSize:10}}>by {snap.savedBy}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-sm" style={{color:snap.netProfit>=0?"#10b981":"#ef4444"}}>{inr(snap.netProfit)}</span>
+                      <span style={{color:t.sub,fontSize:11}}>{isExp?"▲":"▼"}</span>
+                    </div>
+                  </button>
+                  {isExp&&<div style={{background:t.card,padding:"12px 14px"}}>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      {[["💰 Revenue","#10b981",snap.revenue],["📦 Supply Cost","#8b5cf6",snap.supplyCost],["💸 Op. Expenses","#ef4444",snap.opExpenses],["🗑️ Wastage","#f97316",snap.wastageCost]].map(([l,c,v])=>(
+                        <div key={l} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
+                          <p style={{color:t.sub}} className="text-[10px] mb-0.5">{l}</p>
+                          <p className="font-bold text-sm" style={{color:c}}>{inr(v||0)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{background:netProfit>=0?"#10b98118":"#ef444418",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{color:t.text}} className="text-sm font-semibold">Net Profit / Loss</span>
+                      <span className="font-black text-base" style={{color:snap.netProfit>=0?"#10b981":"#ef4444"}}>{inr(snap.netProfit)}</span>
+                    </div>
+                    <p style={{color:t.sub}} className="text-[10px] mt-2 text-right">Saved at {snap.savedAt}</p>
+                  </div>}
+                </div>);
+              })}
+            </>)}
+            </div></>}</div></Card>
+
+          {/* ── Expense Category Bar Chart ── */}
+          {expenses.length>0&&catBreakdown.length>0&&<Card dm={dm}><div className="p-4">
+            <p style={{color:t.text}} className="font-bold text-sm mb-3">Expenses by Category (filtered view)</p>
+            {catBreakdown.map((c,i)=>(
+              <div key={c.cat} className="mb-3 last:mb-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span style={{color:t.text}} className="text-sm font-semibold">{c.cat}</span>
+                  <div className="flex items-center gap-2">
+                    <span style={{color:t.sub}} className="text-[11px]">{c.count} entries</span>
+                    <span className="text-red-500 font-bold text-sm">{inr(c.total)}</span>
+                  </div>
+                </div>
+                <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${Math.round(c.total/maxCatVal*100)}%`,background:PALETTE[i%7],height:"100%",borderRadius:5,transition:"width .3s"}}/></div>
+              </div>
+            ))}
+          </div></Card>}
+
+          {/* ── Filters + Action bar ── */}
+          <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"12px 14px"}}>
+            {/* Top row: search + toggle filters + add */}
+            <div className="flex gap-2 items-center flex-wrap">
+              <input value={expSearch} onChange={e=>setExpSearch(e.target.value)} placeholder="🔍 Search expenses…" style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"7px 12px",fontSize:13,flex:1,minWidth:140,outline:"none"}}/>
+              <button onClick={()=>setExpShowFilters(p=>!p)} style={{background:expShowFilters?"#3b82f620":t.inp,border:`1.5px solid ${expShowFilters?"#3b82f6":t.border}`,color:expShowFilters?"#3b82f6":t.text,borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚙ Filters{(expCatFilter!=="all"||expDateFilter!=="all")?` ●`:""}</button>
+              <Btn dm={dm} size="sm" onClick={()=>{setEf(blkE());setEsh("add");}}>+ Expense</Btn>
+            </div>
+            {/* Expanded filter panel */}
+            {expShowFilters&&<div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">Category</label>
+                <select value={expCatFilter} onChange={e=>setExpCatFilter(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}>
+                  <option value="all">All Categories</option>
+                  {expCats.map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">Date Range</label>
+                <select value={expDateFilter} onChange={e=>setExpDateFilter(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}>
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">This Month</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              {expDateFilter==="custom"&&<>
+                <div><label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">From</label><input type="date" value={expCustomFrom} onChange={e=>setExpCustomFrom(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}/></div>
+                <div><label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">To</label><input type="date" value={expCustomTo} onChange={e=>setExpCustomTo(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}/></div>
+              </>}
+              <div className="flex items-end">
+                <button onClick={()=>{setExpCatFilter("all");setExpDateFilter("all");setExpSearch("");}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",width:"100%"}}>Clear All</button>
+              </div>
+            </div>}
+            {/* Filter summary */}
+            <div className="flex justify-between items-center mt-2">
+              <span style={{color:t.sub}} className="text-[11px]">{filteredExp.length} entries · {inr(filtExpTotal)} total</span>
+              <div className="flex gap-2">
+                <button onClick={()=>exportTabPDF("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Notes",key:"notes"}],settings)} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>📄 PDF</button>
+                <button onClick={()=>exportTabExcel("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Payment",key:"paymentMethod"},{label:"Approved By",key:"approvedBy"},{label:"Receipt",key:"receipt"},{label:"Tags",key:"tags"},{label:"Notes",key:"notes"}],settings)} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>📊 XLS</button>
+                <button onClick={()=>exportCSV(filteredExp,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Payment",key:"paymentMethod"},{label:"Approved By",key:"approvedBy"},{label:"Notes",key:"notes"}])} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>CSV</button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Sort controls ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span style={{color:t.sub,fontSize:11,fontWeight:600}}>Sort by:</span>
+            {[["date","📅 Date"],["amount","💰 Amount"],["category","🏷 Category"],["vendor","🏪 Vendor"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setExpSortMode(v)} style={{background:expSortMode===v?"#ef4444":t.inp,color:expSortMode===v?"#fff":t.sub,border:`1.5px solid ${expSortMode===v?"#ef4444":t.border}`,padding:"4px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{l}</button>
+            ))}
+          </div>
+
+          {/* ── Category Quick-Filter chips (clickable drilldown) ── */}
+          {catBreakdown.length>0&&<div className="flex gap-2 flex-wrap">
+            {catBreakdown.map((c,i)=>(
+              <button key={c.cat} onClick={()=>setExpCatModal(c.cat)} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.04)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}
+                style={{background:PALETTE[i%7]+"18",border:`1.5px solid ${PALETTE[i%7]}40`,borderRadius:10,padding:"6px 12px",cursor:"pointer",transition:"all .15s",textAlign:"left"}}>
+                <p style={{color:PALETTE[i%7],fontSize:10,fontWeight:800}}>{c.cat.toUpperCase()}</p>
+                <p style={{color:t.text,fontSize:12,fontWeight:900}}>{inr(c.total)}</p>
+                <p style={{color:t.sub,fontSize:9}}>{c.count} entries · tap to drill</p>
+              </button>
+            ))}
+          </div>}
+
+          {/* ── Category Drilldown Modal ── */}
+          {expCatModal&&(()=>{
+            const catExps=expenses.filter(e=>e.category===expCatModal).sort((a,b)=>b.date.localeCompare(a.date));
+            const catTotal=catExps.reduce((s,e)=>s+(e.amount||0),0);
+            const catVendors={};catExps.forEach(e=>{if(e.vendor)catVendors[e.vendor]=(catVendors[e.vendor]||0)+(e.amount||0);});
+            const catPMs={};catExps.forEach(e=>{const pm=e.paymentMethod||"Cash";catPMs[pm]=(catPMs[pm]||0)+(e.amount||0);});
+            const catMonths={};catExps.forEach(e=>{const m=e.date?.slice(0,7);if(m)catMonths[m]=(catMonths[m]||0)+(e.amount||0);});
+            return(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9990,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setExpCatModal(null)}>
+              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:600,maxHeight:"88vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p style={{color:t.text,fontWeight:900,fontSize:16}}>🏷 {expCatModal}</p>
+                    <p style={{color:t.sub,fontSize:11}}>{catExps.length} entries · all time</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(catTotal)}</span>
+                    <button onClick={()=>setExpCatModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
+                  </div>
+                </div>
+                {/* Category stats */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[
+                    {l:"Total Spent",v:inr(catTotal),c:"#ef4444"},
+                    {l:"Entries",v:catExps.length,c:"#3b82f6"},
+                    {l:"Avg/Entry",v:inr(catExps.length>0?Math.round(catTotal/catExps.length):0),c:"#f59e0b"},
+                  ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
+                    <p style={{color:x.c,fontWeight:900,fontSize:14}}>{x.v}</p>
+                    <p style={{color:t.sub,fontSize:10}}>{x.l}</p>
+                  </div>)}
+                </div>
+                {/* Vendor breakdown */}
+                {Object.keys(catVendors).length>0&&<div className="mb-4">
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>By Vendor</p>
+                  {Object.entries(catVendors).sort((a,b)=>b[1]-a[1]).map(([v,amt])=>(
+                    <div key={v} className="flex items-center justify-between py-1.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                      <button onClick={()=>{setExpCatModal(null);setExpVendorModal(v);}} style={{color:"#3b82f6",fontSize:12,fontWeight:600,background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>{v} →</button>
+                      <span style={{color:"#ef4444",fontWeight:700,fontSize:12}}>{inr(amt)}</span>
+                    </div>
+                  ))}
+                </div>}
+                {/* Payment method */}
+                {Object.keys(catPMs).length>0&&<div className="mb-4">
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>By Payment Method</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(catPMs).map(([pm,amt])=>(
+                      <div key={pm} style={{background:"#8b5cf618",border:"1px solid #8b5cf640",borderRadius:8,padding:"5px 10px"}}>
+                        <p style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{pm}</p>
+                        <p style={{color:t.sub,fontSize:10}}>{inr(amt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>}
+                {/* Monthly trend */}
+                {Object.keys(catMonths).length>1&&<div className="mb-4">
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Monthly Trend</p>
+                  {Object.entries(catMonths).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([m,amt])=>(
+                    <div key={m} className="mb-2">
+                      <div className="flex justify-between mb-1"><span style={{color:t.text,fontSize:11}}>{m}</span><span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(amt)}</span></div>
+                      <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${catTotal>0?Math.round(amt/catTotal*100):0}%`,background:"#ef4444",height:"100%",borderRadius:4}}/></div>
+                    </div>
+                  ))}
+                </div>}
+                {/* Entries list */}
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>All Entries</p>
+                <div style={{border:`1px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
+                  {catExps.map((e,i)=>(
+                    <div key={e.id||i} style={{padding:"10px 14px",borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"66"}}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span style={{color:t.text,fontSize:12,fontWeight:600}}>{e.vendor||"—"}</span>
+                            {e.tags&&e.tags.split(",").filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:600}}>{tg.trim()}</span>)}
+                          </div>
+                          <p style={{color:t.sub,fontSize:10}}>📅 {e.date}{e.paymentMethod?` · ${e.paymentMethod}`:""}{e.approvedBy?` · ✅ ${e.approvedBy}`:""}</p>
+                          {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{e.notes}</p>}
+                          {e.receipt&&<p style={{color:"#f59e0b",fontSize:9}}>🧾 {e.receipt}</p>}
+                        </div>
+                        <span style={{color:"#ef4444",fontWeight:900,fontSize:14,whiteSpace:"nowrap",marginLeft:8}}>{inr(e.amount)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>);
+          })()}
+
+          {/* ── Vendor Drilldown Modal ── */}
+          {expVendorModal&&(()=>{
+            const vExps=expenses.filter(e=>e.vendor===expVendorModal).sort((a,b)=>b.date.localeCompare(a.date));
+            const vTotal=vExps.reduce((s,e)=>s+(e.amount||0),0);
+            const vCats={};vExps.forEach(e=>{const c=e.category||"Other";vCats[c]=(vCats[c]||0)+(e.amount||0);});
+            return(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9991,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setExpVendorModal(null)}>
+              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:600,maxHeight:"85vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p style={{color:t.text,fontWeight:900,fontSize:16}}>🏪 {expVendorModal}</p>
+                    <p style={{color:t.sub,fontSize:11}}>{vExps.length} transactions</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(vTotal)}</span>
+                    <button onClick={()=>setExpVendorModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[{l:"Total Paid",v:inr(vTotal),c:"#ef4444"},{l:"Transactions",v:vExps.length,c:"#3b82f6"},{l:"Avg",v:inr(vExps.length>0?Math.round(vTotal/vExps.length):0),c:"#f59e0b"}].map(x=>(
+                    <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p style={{color:x.c,fontWeight:900,fontSize:14}}>{x.v}</p><p style={{color:t.sub,fontSize:10}}>{x.l}</p></div>
+                  ))}
+                </div>
+                {Object.keys(vCats).length>0&&<div className="flex flex-wrap gap-2 mb-4">
+                  {Object.entries(vCats).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>(
+                    <div key={cat} style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:"5px 10px"}}>
+                      <p style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{cat}</p><p style={{color:t.sub,fontSize:10}}>{inr(amt)}</p>
+                    </div>
+                  ))}
+                </div>}
+                <div style={{border:`1px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
+                  {vExps.map((e,i)=>(
+                    <div key={e.id||i} style={{padding:"10px 14px",borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"66"}}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span style={{background:"#ef444420",color:"#ef4444",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.category}</span>
+                          <p style={{color:t.sub,fontSize:10,marginTop:2}}>📅 {e.date}{e.paymentMethod?` · ${e.paymentMethod}`:""}</p>
+                          {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{e.notes}</p>}
+                        </div>
+                        <span style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(e.amount)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>);
+          })()}
+
+          {/* ── Expense cards — Interactive ── */}
+          {filteredExp.length===0?<p style={{color:t.sub}} className="text-sm text-center py-6">No expenses match the current filters.</p>
+          :(()=>{
+            const sorted=[...filteredExp].sort((a,b)=>{
+              if(expSortMode==="amount") return (b.amount||0)-(a.amount||0);
+              if(expSortMode==="category") return (a.category||"").localeCompare(b.category||"");
+              if(expSortMode==="vendor") return (a.vendor||"").localeCompare(b.vendor||"");
+              return b.date.localeCompare(a.date);
+            });
+            return sorted.map(e=>{
+              const isExp=expCardExpanded===e.id;
+              const isHov=expHovered===e.id;
+              const catIdx=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).indexOf(e.category);
+              const catColor=PALETTE[catIdx>=0?catIdx%7:0];
+              const catPct=filtExpTotal>0?Math.round((e.amount||0)/filtExpTotal*100):0;
+              return(
+              <div key={e.id}
+                onMouseEnter={()=>setExpHovered(e.id)}
+                onMouseLeave={()=>setExpHovered(null)}
+                onClick={()=>setExpCardExpanded(isExp?null:e.id)}
+                style={{background:t.card,border:`1.5px solid ${isExp?catColor:isHov?t.border+"aa":t.border}`,borderRadius:16,padding:"14px 16px",cursor:"pointer",transition:"all .18s ease",transform:isHov&&!isExp?"translateY(-1px)":"none",boxShadow:isExp?`0 4px 20px ${catColor}22`:isHov?"0 2px 10px rgba(0,0,0,0.1)":"none"}}>
+                {/* Main row */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <button onClick={ev=>{ev.stopPropagation();setExpCatModal(e.category);}} style={{background:catColor+"22",color:catColor,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",border:`1px solid ${catColor}44`,cursor:"pointer"}}>🏷 {e.category}</button>
+                      {e.paymentMethod&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:600}}>{e.paymentMethod}</span>}
+                      {e.tags&&e.tags.split(",").map(tag=>tag.trim()).filter(Boolean).map(tag=><span key={tag} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:600}}>{tag}</span>)}
+                      {e.approvedBy&&<span style={{background:"#10b98120",color:"#10b981",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:600}}>✅ {e.approvedBy}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span style={{color:t.sub}} className="text-xs">📅 {e.date}</span>
+                      {e.vendor&&<button onClick={ev=>{ev.stopPropagation();setExpVendorModal(e.vendor);}} style={{color:"#3b82f6",fontSize:12,fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>🏪 {e.vendor} →</button>}
+                    </div>
+                    {e.notes&&<p style={{color:t.sub}} className="text-xs mt-1 leading-relaxed">{e.notes}</p>}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
+                    <span style={{color:"#ef4444",fontWeight:900,fontSize:16,lineHeight:1}}>{inr(e.amount)}</span>
+                    {catPct>0&&<span style={{color:t.sub,fontSize:9,fontWeight:600}}>{catPct}% of filtered</span>}
+                    <span style={{color:t.sub,fontSize:10,marginTop:2}}>{isExp?"▲ less":"▼ more"}</span>
+                  </div>
+                </div>
+                {/* Cost bar indicator */}
+                {filtExpTotal>0&&<div style={{marginTop:8,height:3,background:t.border,borderRadius:3,overflow:"hidden"}}><div style={{width:`${catPct}%`,background:catColor,height:"100%",borderRadius:3,transition:"width 0.4s"}}/></div>}
+                {/* Expanded detail panel */}
+                {isExp&&<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.border}`}} onClick={ev=>ev.stopPropagation()}>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    {[
+                      {l:"Amount",v:inr(e.amount),c:"#ef4444"},
+                      {l:"Category",v:e.category,c:catColor},
+                      {l:"Payment",v:e.paymentMethod||"Cash",c:"#3b82f6"},
+                      {l:"Date",v:e.date,c:t.text},
+                    ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>{x.l}</p>
+                      <p style={{color:x.c,fontWeight:700,fontSize:12}}>{x.v}</p>
+                    </div>)}
+                  </div>
+                  {e.vendor&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Vendor</p>
+                    <div className="flex items-center justify-between">
+                      <p style={{color:t.text,fontSize:13,fontWeight:700}}>{e.vendor}</p>
+                      <button onClick={()=>setExpVendorModal(e.vendor)} style={{color:"#3b82f6",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>See all vendor expenses →</button>
+                    </div>
+                  </div>}
+                  {e.receipt&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b40",borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Receipt / Reference</p>
+                    <p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>🧾 {e.receipt}</p>
+                  </div>}
+                  {e.notes&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Notes</p>
+                    <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{e.notes}</p>
+                  </div>}
+                  {e.tags&&<div className="flex flex-wrap gap-1.5 mb-3">{e.tags.split(",").filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:600}}>#{tg.trim()}</span>)}</div>}
+                  {/* % of total category */}
+                  {(()=>{
+                    const catTotal2=expenses.filter(ex=>ex.category===e.category).reduce((s,ex)=>s+(ex.amount||0),0);
+                    const pctOfCat=catTotal2>0?Math.round((e.amount||0)/catTotal2*100):0;
+                    return catTotal2>0&&<div style={{background:catColor+"12",border:`1px solid ${catColor}30`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Share of {e.category} category</p>
+                      <div className="flex items-center gap-3">
+                        <p style={{color:catColor,fontWeight:800,fontSize:13}}>{pctOfCat}%</p>
+                        <div style={{flex:1,height:5,background:t.border,borderRadius:5,overflow:"hidden"}}><div style={{width:`${pctOfCat}%`,background:catColor,height:"100%",borderRadius:5}}/></div>
+                        <p style={{color:t.sub,fontSize:10}}>of {inr(catTotal2)}</p>
+                      </div>
+                    </div>;
+                  })()}
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    <button onClick={()=>{setEf({...e,amount:String(e.amount),vendor:e.vendor||"",paymentMethod:e.paymentMethod||"Cash",approvedBy:e.approvedBy||"",tags:e.tags||""});setEsh(e);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,padding:"7px 14px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",flex:1}}>✏️ Edit Expense</button>
+                    <button onClick={()=>delE(e)} style={{background:"#dc2626",color:"#fff",padding:"7px 14px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",flex:1}}>🗑️ Delete</button>
+                  </div>
+                </div>}
+              </div>);
+            });
+          })()}
+        </>);
+        })()}
 
         {/* WASTAGE */}
         {tab==="Wastage"&&(<>
@@ -4810,7 +7118,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     {label:"Total Costs",val:inr(totCost),color:"#ef4444",sub:`avg ${inr(avgMonthlyCost)}/mo`},
                     {label:"Collection Rate",val:`${collectionRate}%`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",sub:`${inr(totDue)} due`},
                     {label:"Avg Monthly Rev",val:inr(avgMonthlyRev),color:"#f59e0b",sub:`avg profit ${inr(avgMonthlyProfit)}/mo`},
-                  ].map(x=><div key={x.label} style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.75)",borderRadius:12,padding:"10px 14px",minWidth:120}}>
+                  ].map(x=><div key={x.label}
+                    onMouseEnter={ev=>{ev.currentTarget.style.transform="scale(1.04)";ev.currentTarget.style.boxShadow=`0 4px 16px ${x.color}30`;}}
+                    onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";ev.currentTarget.style.boxShadow="none";}}
+                    style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.75)",borderRadius:12,padding:"10px 14px",minWidth:120,cursor:"default",transition:"all .18s ease",border:`1px solid ${x.color}20`}}>
                     <p style={{color:x.color}} className="font-black text-base leading-none">{x.val}</p>
                     <p style={{color:t.sub}} className="text-[10px] font-semibold mt-0.5">{x.label}</p>
                     {x.sub&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{x.sub}</p>}
@@ -4834,17 +7145,39 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div>}
             </div>
 
-            {/* ── SMART INSIGHTS ── */}
-            {insights.length>0&&<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-              <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mb-2">💡 Smart Insights</p>
-              <div className="flex flex-col gap-2">
+            {/* ── SMART INSIGHTS — Interactive ── */}
+            {insights.length>0&&<div style={{background:t.card,border:`1.5px solid ${plInsightExpanded?"#3b82f6":t.border}`,borderRadius:16,padding:"14px 16px",cursor:"pointer",transition:"border-color .15s"}} onClick={()=>setPlInsightExpanded(p=>!p)}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">💡 Smart Insights</p>
+                  <span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"1px 7px",fontSize:9,fontWeight:700}}>{insights.length} insights</span>
+                </div>
+                <span style={{color:t.sub,fontSize:13,transition:"transform .2s",display:"inline-block",transform:plInsightExpanded?"rotate(180deg)":"rotate(0deg)"}}>⌄</span>
+              </div>
+              {/* Preview — always show first insight */}
+              {!plInsightExpanded&&<div className="flex items-start gap-2">
+                <span style={{fontSize:14,lineHeight:1.4}}>{insights[0].icon}</span>
+                <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{insights[0].text}</p>
+              </div>}
+              {!plInsightExpanded&&insights.length>1&&<p style={{color:"#3b82f6",fontSize:10,fontWeight:600,marginTop:6}}>+{insights.length-1} more — tap to expand</p>}
+              {/* Full expanded */}
+              {plInsightExpanded&&<div className="flex flex-col gap-3" onClick={e=>e.stopPropagation()}>
                 {insights.map((ins,i)=>(
-                  <div key={i} className="flex items-start gap-2">
-                    <span style={{fontSize:14,lineHeight:1.4}}>{ins.icon}</span>
-                    <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
+                  <div key={i} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex items-start gap-2">
+                    <span style={{fontSize:16,lineHeight:1.3,flexShrink:0}}>{ins.icon}</span>
+                    <div>
+                      <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
+                    </div>
                   </div>
                 ))}
-              </div>
+                {/* Action recommendations */}
+                <div style={{background:"#3b82f612",border:"1px solid #3b82f630",borderRadius:10,padding:"10px 12px"}}>
+                  <p style={{color:"#3b82f6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recommended Actions</p>
+                  {netProfit<0&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Review highest-cost expense categories and identify reduction opportunities.</p>}
+                  {totalDue>totalRev*0.1&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Follow up on outstanding payments — {customers.filter(c=>c.pending>0).length} customers owe {inr(totalDue)}.</p>}
+                  {(wastage||[]).length>0&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Investigate top wastage products to reduce {inr((wastage||[]).reduce((s,w)=>s+(w.cost||0),0))} in losses.</p>}
+                </div>
+              </div>}
             </div>}
 
             {/* ── CASH FLOW + BURN RATE ── */}
@@ -4898,13 +7231,18 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ── MONTH HIGHLIGHTS ── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                {label:"🏆 Best Month",name:bestMonth?.monthFull,val:inr(bestMonth?.profit||0),color:"#10b981",sub:"highest profit"},
-                {label:"📉 Weakest Month",name:worstMonth?.monthFull,val:inr(worstMonth?.profit||0),color:(worstMonth?.profit||0)>=0?"#10b981":"#ef4444",sub:"lowest profit"},
-                {label:"📊 Revenue Trend",name:trendUp?"Growing ▲":"Declining ▼",val:inr(Math.round(recentRevAvg)),color:trendUp?"#10b981":"#ef4444",sub:"recent avg/month"},
-              ].map(x=><div key={x.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                {label:"🏆 Best Month",name:bestMonth?.monthFull,val:inr(bestMonth?.profit||0),color:"#10b981",sub:"highest profit",month:bestMonth?.month},
+                {label:"📉 Weakest Month",name:worstMonth?.monthFull,val:inr(worstMonth?.profit||0),color:(worstMonth?.profit||0)>=0?"#10b981":"#ef4444",sub:"lowest profit",month:worstMonth?.month},
+                {label:"📊 Revenue Trend",name:trendUp?"Growing ▲":"Declining ▼",val:inr(Math.round(recentRevAvg)),color:trendUp?"#10b981":"#ef4444",sub:"recent avg/month",month:null},
+              ].map(x=><div key={x.label}
+                onMouseEnter={ev=>{ev.currentTarget.style.transform="translateY(-2px)";ev.currentTarget.style.boxShadow=`0 6px 20px ${x.color}25`;ev.currentTarget.style.borderColor=x.color+"60";}}
+                onMouseLeave={ev=>{ev.currentTarget.style.transform="translateY(0)";ev.currentTarget.style.boxShadow="none";ev.currentTarget.style.borderColor=t.border;}}
+                onClick={x.month?()=>setPlMonthExpanded(plMonthExpanded===x.month?null:x.month):undefined}
+                style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",cursor:x.month?"pointer":"default",transition:"all .18s ease"}}>
                 <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">{x.label}</p>
-                <p style={{color:t.text}} className="font-black text-base leading-none">{x.name}</p>
+                <p style={{color:t.text}} className="font-black text-base leading-none">{x.name||"—"}</p>
                 <p style={{color:x.color}} className="font-semibold text-sm mt-0.5">{x.val} <span style={{color:t.sub,fontWeight:400,fontSize:10}}>{x.sub}</span></p>
+                {x.month&&<p style={{color:x.color,fontSize:9,marginTop:4}}>tap to view month detail →</p>}
               </div>)}
             </div>
 
@@ -4993,9 +7331,16 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <tbody>
                     {mData.map((m,i)=>{
                       const prev=mData[i-1];
+                      const isRowHov=plMonthHovered===m.month;
+                      const isRowEx=plMonthExpanded===m.month;
                       const arrow=(curr,p)=>{if(!p||p===0||curr===p)return null;const up=curr>p;const pct=Math.round(Math.abs(curr-p)/Math.max(Math.abs(p),1)*100);return <span style={{color:up?"#10b981":"#ef4444",fontSize:9,marginLeft:3,fontWeight:700}}>{up?"▲":"▼"}{pct}%</span>;};
-                      return <tr key={m.month} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?"transparent":dm?"#ffffff04":"#00000003"}}>
-                        <td style={{color:t.text}} className="px-3 py-2.5 font-bold whitespace-nowrap">{m.monthFull}</td>
+                      return [
+                      <tr key={m.month}
+                        onMouseEnter={()=>setPlMonthHovered(m.month)}
+                        onMouseLeave={()=>setPlMonthHovered(null)}
+                        onClick={()=>setPlMonthExpanded(isRowEx?null:m.month)}
+                        style={{borderBottom:isRowEx?"none":`1px solid ${t.border}`,background:isRowEx?(dm?"#1a2a1a":"#f0fff4"):isRowHov?(dm?"#ffffff06":"#00000005"):"transparent",cursor:"pointer",transition:"background .12s"}}>
+                        <td style={{color:isRowEx?"#10b981":t.text}} className="px-3 py-2.5 font-bold whitespace-nowrap">{m.monthFull} {isRowEx?"▲":"▼"}</td>
                         <td style={{color:t.sub}} className="px-3 py-2.5">{m.deliveriesCount}{prev&&arrow(m.deliveriesCount,prev.deliveriesCount)}</td>
                         <td className="px-3 py-2.5 text-emerald-500 font-semibold whitespace-nowrap">{inr(m.revenue)}{prev&&arrow(m.revenue,prev.revenue)}</td>
                         <td className="px-3 py-2.5 text-purple-400 whitespace-nowrap">{inr(m.supplyCost)}</td>
@@ -5006,7 +7351,70 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <span style={{background:m.margin>=30?"#10b98122":m.margin>=15?"#f59e0b22":"#ef444422",color:m.margin>=30?"#10b981":m.margin>=15?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 8px",fontWeight:800,fontSize:10}}>{m.margin}%</span>
                         </td>
-                      </tr>;
+                      </tr>,
+                      isRowEx&&<tr key={m.month+"_exp"} style={{background:dm?"#0a1f0a":"#f0fff4",borderBottom:`2px solid #10b98140`}}>
+                        <td colSpan={9} style={{padding:"0 0 0 0"}}>
+                          {(()=>{
+                            const mKey=mData.find(x=>x.month===m.month);
+                            const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey?.monthFull?m.month:"")&&d.status==="Delivered");
+                            const mExps=expenses.filter(e=>e.date?.startsWith(m.month));
+                            const mSups=supplies.filter(s=>s.date?.startsWith(m.month));
+                            const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(m.month));
+                            return(<div style={{padding:"12px 16px"}}>
+                              <p style={{color:"#10b981",fontWeight:800,fontSize:12,marginBottom:10}}>📋 {m.monthFull} — Full Breakdown</p>
+                              {/* Mini KPIs */}
+                              <div className="grid grid-cols-4 gap-2 mb-3">
+                                {[["Revenue","#10b981",inr(m.revenue),`${m.deliveriesCount} orders`],["Supply","#8b5cf6",inr(m.supplyCost),`${mSups.length} entries`],["Expenses","#ef4444",inr(m.expenses),`${mExps.length} entries`],["Wastage","#f97316",inr(m.wasteCost),`${mWaste.length} records`]].map(([l,c,v,sub])=>(
+                                  <div key={l} style={{background:c+"12",border:`1px solid ${c}30`,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                                    <p style={{color:c,fontWeight:900,fontSize:12}}>{v}</p>
+                                    <p style={{color:t.sub,fontSize:9}}>{l}</p>
+                                    <p style={{color:t.sub,fontSize:8}}>{sub}</p>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Gross margin bar */}
+                              <div className="mb-3">
+                                <div className="flex justify-between mb-1"><span style={{color:t.sub,fontSize:10}}>Revenue allocation</span><span style={{color:m.profit>=0?"#10b981":"#ef4444",fontWeight:700,fontSize:10}}>{m.margin}% margin</span></div>
+                                <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
+                                  <div style={{width:`${Math.max(0,m.margin)}%`,background:"#10b981"}}/>
+                                  <div style={{width:`${m.revenue>0?Math.round(m.supplyCost/m.revenue*100):0}%`,background:"#8b5cf6"}}/>
+                                  <div style={{width:`${m.revenue>0?Math.round(m.expenses/m.revenue*100):0}%`,background:"#ef4444"}}/>
+                                  <div style={{width:`${m.revenue>0?Math.round(m.wasteCost/m.revenue*100):0}%`,background:"#f97316"}}/>
+                                </div>
+                              </div>
+                              {/* Top deliveries */}
+                              {mDelivs.length>0&&<div className="mb-2">
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Deliveries ({mDelivs.length})</p>
+                                <div style={{maxHeight:120,overflowY:"auto"}}>
+                                  {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>(
+                                    <div key={d.id||di} className="flex justify-between items-center py-1" style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
+                                      onClick={()=>setDetailModal({type:"delivery",data:d})}
+                                      onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                                      <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{d.customer}</span>
+                                      <span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>}
+                              {/* Top expenses */}
+                              {mExps.length>0&&<div>
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Expenses ({mExps.length})</p>
+                                <div style={{maxHeight:100,overflowY:"auto"}}>
+                                  {mExps.sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(
+                                    <div key={e.id||ei} className="flex justify-between items-center py-1" style={{borderBottom:ei<mExps.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
+                                      onClick={()=>setDetailModal({type:"expense",data:e})}
+                                      onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                                      <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{e.category}{e.vendor?` · ${e.vendor}`:""}</span>
+                                      <span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(e.amount)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>}
+                            </div>);
+                          })()}
+                        </td>
+                      </tr>
+                      ];
                     })}
                     <tr style={{borderTop:`2px solid ${t.border}`,background:dm?"#1a1a1a":"#fafaf8"}}>
                       <td style={{color:t.text}} className="px-3 py-3 font-black text-[11px] uppercase tracking-wide">Total</td>
@@ -5061,18 +7469,29 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const collPct=cPaid+cPending>0?Math.round(cPaid/(cPaid+cPending)*100):100;
                   const revenueSharePct=totalPortfolioRev>0?Math.round(cRev/totalPortfolioRev*100):0;
                   const medalColor=ci===0?"#f59e0b":ci===1?"#9ca3af":ci===2?"#cd7c3f":"#6b7280";
-                  return <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-4 last:border-0">
+                  const isCustHov=plCustHovered===c.id;
+                  const isCustEx=plCustExpanded===c.id;
+                  const cProducts=products.map(p=>{const qty=cDelivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0),0);const rev=cDelivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);return{...p,qty,rev};}).filter(x=>x.qty>0).sort((a,b)=>b.rev-a.rev);
+                  return <div key={c.id}
+                    onMouseEnter={()=>setPlCustHovered(c.id)}
+                    onMouseLeave={()=>setPlCustHovered(null)}
+                    onClick={()=>setPlCustExpanded(isCustEx?null:c.id)}
+                    style={{borderBottom:`1px solid ${t.border}`,cursor:"pointer",background:isCustEx?(dm?"#1a1500":"#fffbeb"):isCustHov?(dm?"#ffffff04":"#00000003"):"transparent",transition:"background .15s"}}>
+                    <div className="px-4 py-4">
                     <div className="flex items-start justify-between mb-2 gap-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <div style={{background:`${medalColor}22`,color:medalColor,width:30,height:30,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,flexShrink:0}}>{ci+1}</div>
                         <div className="min-w-0">
-                          <p style={{color:t.text}} className="text-sm font-bold truncate">{c.name}</p>
-                          <p style={{color:t.sub}} className="text-[11px]">{cDelivs.length} orders · {cDelivered.length} delivered{lastDeliv?` · Last ${lastDeliv.date}`:""}</p>
+                          <p style={{color:t.text}} className="text-sm font-bold truncate" onClick={ev=>{ev.stopPropagation();setDetailModal({type:"customer",data:c});}}><span style={{textDecoration:"underline",cursor:"pointer"}}>{c.name}</span></p>
+                          <p style={{color:t.sub}} className="text-[11px]">{cDelivs.length} orders · {cDelivered.length} delivered{lastDeliv?` · Last `:""}
+                            {lastDeliv&&<span style={{textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:lastDeliv.date}});}}>{lastDeliv.date}</span>}
+                          </p>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-black text-amber-500 text-base leading-none">{inr(cRev)}</p>
                         <p style={{color:t.sub}} className="text-[10px] mt-0.5">{revenueSharePct}% of portfolio</p>
+                        <p style={{color:t.sub,fontSize:9}}>{isCustEx?"▲ collapse":"▼ expand"}</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-4 gap-2 mb-2">
@@ -5095,6 +7514,55 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <div style={{width:`${collPct}%`,background:"#10b981"}}/>
                       <div style={{width:`${100-collPct}%`,background:"#ef4444"}}/>
                     </div>}
+                    {/* Expanded detail panel */}
+                    {isCustEx&&<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.border}`}} onClick={e=>e.stopPropagation()}>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                        {[
+                          {l:"Total Revenue",v:inr(cRev),c:"#f59e0b"},
+                          {l:"Total Orders",v:cDelivs.length,c:"#3b82f6"},
+                          {l:"Delivered",v:cDelivered.length,c:"#10b981"},
+                          {l:"Cancelled",v:cDelivs.filter(d=>d.status==="Cancelled").length,c:"#ef4444"},
+                          {l:"Highest Order",v:inr(Math.max(...cDelivered.map(d=>lineTotal(d.orderLines)),0)),c:"#8b5cf6"},
+                          {l:"First Order",v:cDelivs.length>0?[...cDelivs].sort((a,b)=>a.date.localeCompare(b.date))[0]?.date:"—",c:t.text},
+                        ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>{x.l}</p>
+                          <p style={{color:x.c,fontWeight:700,fontSize:12}}>{x.v}</p>
+                        </div>)}
+                      </div>
+                      {/* Products ordered */}
+                      {cProducts.length>0&&<div className="mb-3">
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Products Ordered</p>
+                        {cProducts.map(p=>(
+                          <div key={p.id} className="flex items-center justify-between py-1.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                            <div><p style={{color:t.text,fontSize:11,fontWeight:600}}>{p.name}</p><p style={{color:t.sub,fontSize:10}}>{p.qty} units</p></div>
+                            <span style={{color:"#f59e0b",fontWeight:700,fontSize:11}}>{inr(p.rev)}</span>
+                          </div>
+                        ))}
+                      </div>}
+                      {/* Recent deliveries */}
+                      {cDelivered.length>0&&<div>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recent Deliveries</p>
+                        <div style={{maxHeight:130,overflowY:"auto"}}>
+                          {[...cDelivered].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8).map((d,di)=>(
+                            <div key={d.id||di} className="flex justify-between items-center py-1.5" style={{borderBottom:di<Math.min(8,cDelivered.length)-1?`1px solid ${t.border}`:"none",cursor:"pointer"}}
+                              onClick={ev=>{ev.stopPropagation();setDetailModal({type:"delivery",data:d});}}
+                              onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
+                              <div>
+                                <p style={{color:t.sub,fontSize:10,textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:d.date}});}}>📅 {d.date}</p>
+                                {d.orderLines&&Object.values(d.orderLines).filter(l=>l.qty>0).length>0&&<p style={{color:t.sub,fontSize:9}}>{Object.values(d.orderLines).filter(l=>l.qty>0).map(l=>`${l.qty}×${l.name||""}`).join(", ")}</p>}
+                                {d.createdBy&&<p style={{color:t.sub,fontSize:9,textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:d.createdBy}});}}>👤 {d.createdBy}</p>}
+                              </div>
+                              <span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>}
+                      {c.notes&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:8}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Notes</p>
+                        <p style={{color:t.text,fontSize:11}}>{c.notes}</p>
+                      </div>}
+                    </div>}
+                    </div>
                   </div>;
                 });
               })()}
@@ -5123,7 +7591,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </div>
                 <Hr dm={dm}/>
                 {aged.map((c)=>(
-                  <div key={c.id} style={{borderBottom:`1px solid ${t.border}`}} className="px-4 py-3 last:border-0">
+                  <div key={c.id} style={{borderBottom:`1px solid ${t.border}`,cursor:"pointer",transition:"background .12s"}} className="px-4 py-3 last:border-0"
+                    onClick={()=>setDetailModal({type:"customer",data:c})}
+                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p style={{color:t.text}} className="text-sm font-semibold truncate">{c.name}</p>
@@ -5141,17 +7611,35 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           </>;
         })()}
 
+        {/* ANALYTICS EXPORT HELPERS */}
+        {/* These are defined as inline closures inside JSX scope so they can close over live data */}
+
         {/* ANALYTICS TAB */}
         {tab==="Analytics"&&isAdmin&&(()=>{
+          // ── Analytics date filter ──
+          const ANL_PERIODS=[["1d","Daily"],["1w","Weekly"],["1m","Monthly"],["3m","3 Months"],["6m","6 Months"],["12m","12 Months"],["all","All Time"],["custom","Custom Range"],["date","Specific Date"]];
+          const nowD=new Date(); nowD.setHours(23,59,59,999);
+          let anlFrom=null,anlTo=nowD;
+          if(anlPeriod==="1d"){const d=new Date();d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="1w"){const d=new Date();d.setDate(d.getDate()-6);d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="1m"){const d=new Date();d.setMonth(d.getMonth()-1);d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="3m"){const d=new Date();d.setMonth(d.getMonth()-3);d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="6m"){const d=new Date();d.setMonth(d.getMonth()-6);d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="12m"){const d=new Date();d.setFullYear(d.getFullYear()-1);d.setHours(0,0,0,0);anlFrom=d;}
+          else if(anlPeriod==="custom"){anlFrom=anlCustomFrom?new Date(anlCustomFrom):null;anlTo=anlCustomTo?new Date(anlCustomTo):nowD;anlTo.setHours(23,59,59,999);}
+          else if(anlPeriod==="date"){if(anlSpecificDate){anlFrom=new Date(anlSpecificDate);anlFrom.setHours(0,0,0,0);anlTo=new Date(anlSpecificDate);anlTo.setHours(23,59,59,999);}}
+          const inAnlRange=date=>{if(!anlFrom)return true;const d=new Date(date);return d>=anlFrom&&d<=anlTo;};
+          const anlLabel=anlPeriod==="custom"?`${anlCustomFrom||"—"} → ${anlCustomTo}`:anlPeriod==="date"?`${anlSpecificDate||"Pick a date"}`:ANL_PERIODS.find(p=>p[0]===anlPeriod)?.[1]||"All Time";
+
           // ── Core computations ──
-          const delivered=deliveries.filter(d=>d.status==="Delivered");
+          const delivered=deliveries.filter(d=>d.status==="Delivered"&&inAnlRange(d.date));
           const totalDelivered=delivered.length;
-          const totalScheduled=deliveries.length;
+          const totalScheduled=deliveries.filter(d=>inAnlRange(d.date)).length;
           const fulfillmentRate=totalScheduled>0?Math.round(totalDelivered/totalScheduled*100):0;
-          const replCount=deliveries.filter(d=>d.replacement?.done).length;
+          const replCount=deliveries.filter(d=>d.replacement?.done&&inAnlRange(d.date)).length;
           const replRate=totalDelivered>0?Math.round(replCount/totalDelivered*100):0;
           const avgRevPerDeliv=totalDelivered>0?Math.round(delivered.reduce((s,d)=>s+lineTotal(d.orderLines),0)/totalDelivered):0;
-          const cancelCount=deliveries.filter(d=>d.status==="Cancelled").length;
+          const cancelCount=deliveries.filter(d=>d.status==="Cancelled"&&inAnlRange(d.date)).length;
           const cancelRate=totalScheduled>0?Math.round(cancelCount/totalScheduled*100):0;
 
           // ── Product sales ──
@@ -5176,9 +7664,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
           // ── Customer revenue ──
           const custRev=customers.map(c=>{
-            const cDelivs=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");
-            const totalRev=cDelivs.reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);
-            return {...c,totalOrders:deliveries.filter(d=>d.customerId===c.id).length,totalRev:Math.max(0,totalRev)};
+            const cDelivs=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered"&&inAnlRange(d.date));
+            const grossRev=cDelivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+            const replDeducted=cDelivs.reduce((s,d)=>s+(+(d.replacement?.amount)||0),0);
+            const totalRev=Math.max(0,grossRev-replDeducted);
+            const partialCollected=cDelivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0);
+            const outstandingBalance=Math.max(0,(c.pending||0));
+            return {...c,totalOrders:deliveries.filter(d=>d.customerId===c.id&&inAnlRange(d.date)).length,totalRev,grossRev,replDeducted,partialCollected,outstandingBalance};
           }).sort((a,b)=>b.totalRev-a.totalRev);
           const totalPortfolioRev=custRev.reduce((s,c)=>s+c.totalRev,0);
           // Revenue concentration: top 20% of customers
@@ -5217,19 +7709,43 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const bestDow=dowData.reduce((b,d)=>d.revenue>b.revenue?d:b,dowData[0]);
 
           // ── Expense categories ──
-          const expCatData=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).map(cat=>({
-            category:cat,
-            amount:expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),
-            count:expenses.filter(e=>e.category===cat).length,
-          })).filter(x=>x.amount>0).sort((a,b)=>b.amount-a.amount);
+          const expCatData=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).map(cat=>({category:cat,amount:expenses.filter(e=>e.category===cat&&inAnlRange(e.date)).reduce((s,e)=>s+(e.amount||0),0),count:expenses.filter(e=>e.category===cat&&inAnlRange(e.date)).length,})).filter(x=>x.amount>0).sort((a,b)=>b.amount-a.amount);
+
           const totalExpenses=expCatData.reduce((s,e)=>s+e.amount,0);
 
           // ── Wastage ──
           const wastageByType=(settings?.wastageTypes||["Other"]).map(type=>({
-            type,qty:wastage.filter(w=>w.type===type).reduce((s,w)=>s+(w.qty||0),0),
-            cost:wastage.filter(w=>w.type===type).reduce((s,w)=>s+(w.cost||0),0),
+            type,qty:wastage.filter(w=>w.type===type&&inAnlRange(w.date)).reduce((s,w)=>s+(w.qty||0),0),
+            cost:wastage.filter(w=>w.type===type&&inAnlRange(w.date)).reduce((s,w)=>s+(w.cost||0),0),
           })).filter(x=>x.qty>0);
           const totalWasteCost=wastageByType.reduce((s,w)=>s+w.cost,0);
+
+          // ── Production analytics ──
+          const filtProd=(prodTargets||[]).filter(p=>inAnlRange(p.date));
+          const prodTotalActual=filtProd.reduce((s,p)=>s+(+p.actual||0),0);
+          const prodTotalTarget=filtProd.reduce((s,p)=>s+(+p.target||0),0);
+          const prodEfficiency=prodTotalTarget>0?Math.round(prodTotalActual/prodTotalTarget*100):0;
+          const prodByProduct=[...new Set(filtProd.map(p=>p.product).filter(Boolean))].map(prod=>({
+            product:prod,
+            actual:filtProd.filter(p=>p.product===prod).reduce((s,p)=>s+(+p.actual||0),0),
+            target:filtProd.filter(p=>p.product===prod).reduce((s,p)=>s+(+p.target||0),0),
+            batches:filtProd.filter(p=>p.product===prod).length,
+          })).sort((a,b)=>b.actual-a.actual);
+          const filtQC=(qcLogs||[]).filter(q=>inAnlRange(q.date));
+          const qcPassRate=filtQC.length>0?Math.round(filtQC.filter(q=>q.grade!=="F").length/filtQC.length*100):0;
+          const qcGradeBreak=["A","B","C","F"].map(g=>({grade:g,count:filtQC.filter(q=>q.grade===g).length})).filter(x=>x.count>0);
+
+          // ── Supply analytics ──
+          const filtSup=supplies.filter(s=>inAnlRange(s.date));
+          const totalSupplyCost=filtSup.reduce((s,x)=>s+(x.cost||0),0);
+          const supByCategory=[...new Set(filtSup.map(s=>s.category||s.item||"Other"))].map(cat=>({
+            cat,total:filtSup.filter(s=>(s.category||s.item||"Other")===cat).reduce((s,x)=>s+(x.cost||0),0),count:filtSup.filter(s=>(s.category||s.item||"Other")===cat).length,
+          })).sort((a,b)=>b.total-a.total).slice(0,6);
+
+          // ── Replacement analytics ──
+          const filtRepl=deliveries.filter(d=>d.replacement?.done&&inAnlRange(d.date));
+          const totalReplAmt=filtRepl.reduce((s,d)=>s+(+(d.replacement?.amount)||0),0);
+          const replByItem=[...new Set(filtRepl.map(d=>d.replacement?.item).filter(Boolean))].map(item=>({item,count:filtRepl.filter(d=>d.replacement?.item===item).length,amount:filtRepl.filter(d=>d.replacement?.item===item).reduce((s,d)=>s+(+(d.replacement?.amount)||0),0)})).sort((a,b)=>b.count-a.count);
 
           // ── Customer retention / activity ──
           const now=new Date();
@@ -5240,7 +7756,20 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           }).length;
           const retentionRate=customers.filter(c=>c.active).length>0?Math.round(activeRecently/customers.filter(c=>c.active).length*100):0;
 
+          // eslint-disable-next-line no-unused-vars
           const PIE_COLORS=["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"];
+          // ── Invoicing & payment analytics ──
+          const issuedInvoices=Object.keys(invRegistry?.issued||{});
+          const invoicedDeliveries=delivered.filter(d=>issuedInvoices.includes(d.id));
+          const invoicedCount=invoicedDeliveries.length; void invoicedCount;
+          const totalPartialCollected=delivered.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0);
+          const totalGrossRevenue=delivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+          const totalReplDeductions=delivered.reduce((s,d)=>s+(+(d.replacement?.amount)||0),0);
+          const totalNetRevenue=Math.max(0,totalGrossRevenue-totalReplDeductions);
+          const totalOutstanding=customers.reduce((s,c)=>s+(c.pending||0),0);
+          const totalCustPaid=customers.reduce((s,c)=>s+(c.paid||0),0);
+          const deliveriesWithBalance=delivered.filter(d=>{const repl=+(d.replacement?.amount)||0;const net=Math.max(0,lineTotal(d.orderLines)-repl);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;return coll>0&&coll<net;});
+          const deliveriesFullySettled=delivered.filter(d=>{const repl=+(d.replacement?.amount)||0;const net=Math.max(0,lineTotal(d.orderLines)-repl);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;return net>0&&coll>=net;});
 
           // ── Smart Analytics Insights ──
           const analyticsInsights=[];
@@ -5253,6 +7782,45 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           if(prodSales.filter(p=>p.totalQty>0).length<products.length*0.5&&products.length>2) analyticsInsights.push({icon:"📦",color:"#8b5cf6",text:`${products.length-prodSales.filter(p=>p.totalQty>0).length} products have zero sales. Consider rationalising catalogue.`});
 
           return <>
+            {/* ── DATE FILTER BAR ── */}
+            <div style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:14,padding:"12px 16px"}}>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div>
+                  <p style={{color:t.text}} className="font-black text-base">Analytics</p>
+                  <p style={{color:t.sub}} className="text-xs">{anlLabel}</p>
+                </div>
+              </div>
+              <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2,flexWrap:"wrap"}}>
+                {ANL_PERIODS.map(([v,l])=>(
+                  <button key={v} onClick={()=>setAnlPeriod(v)}
+                    style={anlPeriod===v
+                      ?{background:dm?"#8b5cf6":"#7c3aed",color:"#fff",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}
+                      :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,border:"none",cursor:"pointer",touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}}>{l}</button>
+                ))}
+              </div>
+              {anlPeriod==="custom"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginTop:10}}>
+                <span style={{color:t.sub,fontSize:12,fontWeight:600}}>From</span>
+                <input type="date" value={anlCustomFrom} onChange={e=>setAnlCustomFrom(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                <span style={{color:t.sub,fontSize:12,fontWeight:600}}>To</span>
+                <input type="date" value={anlCustomTo} max={today()} onChange={e=>setAnlCustomTo(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                {anlCustomFrom&&anlCustomTo&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ {Math.round((new Date(anlCustomTo)-new Date(anlCustomFrom))/86400000)+1} days</span>}
+              </div>}
+              {anlPeriod==="date"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginTop:10}}>
+                <span style={{color:t.sub,fontSize:12,fontWeight:600}}>Date</span>
+                <input type="date" value={anlSpecificDate} max={today()} onChange={e=>setAnlSpecificDate(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                {anlSpecificDate&&<span style={{color:"#8b5cf6",fontSize:11,fontWeight:700}}>📅 {new Date(anlSpecificDate).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short",year:"numeric"})}</span>}
+              </div>}
+            </div>
+
+            {/* ── SECTION TABS ── */}
+            <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",gap:2,overflowX:"auto"}}>
+              {[["overview","📊 Overview"],["customers","👥 Customers"],["products","📦 Products"],["operations","🏭 Operations"],["financials","💰 Financials"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setAnlActiveSection(k)}
+                  style={anlActiveSection===k
+                    ?{background:dm?"#1e1e2e":t.card,color:t.text,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:`1px solid ${t.border}`,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
+                    :{background:"transparent",color:t.sub,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>{l}</button>
+              ))}
+            </div>
 
             {/* ── SMART ANALYTICS INSIGHTS ── */}
             {analyticsInsights.length>0&&<div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:16,padding:"14px 18px"}}>
@@ -5267,6 +7835,24 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div>
             </div>}
 
+            {/* ══════════ OVERVIEW SECTION ══════════ */}
+            {anlActiveSection==="overview"&&<>
+            {/* Export dropdown */}
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap",marginBottom:4}}>
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setAnlExportOpen(anlExportOpen==="overview"?null:"overview")} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export ▾</button>
+                {anlExportOpen==="overview"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:140,boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
+                  {[["CSV",()=>exportCSV([{revenue:totalNetRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,outstanding:inr(totalOutstanding),avgOrder:inr(avgRevPerDeliv)}],"overview_summary",[{label:"Revenue",key:"revenue"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Outstanding",key:"outstanding"},{label:"Avg Order",key:"avgOrder"}])],].map(([lbl,fn])=>
+                    <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none"}}>{lbl}</button>
+                  )}
+                </div>}
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {[["revenue","Revenue"],["deliveries","Deliveries"],["fulfillment","Fulfillment"]].map(([v,lbl])=>
+                  <button key={v} onClick={()=>setAnlOverviewMetric(v)} style={{background:anlOverviewMetric===v?"#f59e0b":t.inp,color:anlOverviewMetric===v?"#fff":t.sub,border:`1px solid ${anlOverviewMetric===v?"#f59e0b":t.border}`,borderRadius:16,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{lbl}</button>
+                )}
+              </div>
+            </div>
             <div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:20,padding:"18px 20px"}}>
               <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>📊 30-Day Performance vs Prior Period</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -5301,7 +7887,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ── DELIVERY PERFORMANCE ── */}
             {totalScheduled>0&&<Card dm={dm} className="p-4">
               <p style={{color:t.text}} className="font-bold text-sm mb-1">🚚 Delivery Performance</p>
-              <p style={{color:t.sub}} className="text-[11px] mb-4">All-time delivery health metrics</p>
+              <p style={{color:t.sub}} className="text-[11px] mb-4">Delivery health for selected period</p>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
                   {label:"On-Time Delivery",val:`${fulfillmentRate}%`,color:fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444",sub:`${totalDelivered} of ${totalScheduled}`,bar:fulfillmentRate},
@@ -5318,22 +7904,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div>
               <div style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)",borderRadius:10,padding:"10px 14px",border:`1px solid ${t.border}`}}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <div style={{width:10,height:10,borderRadius:2,background:"#10b981"}}/>
-                    <span style={{color:t.sub,fontSize:10}}>Delivered: {totalDelivered}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div style={{width:10,height:10,borderRadius:2,background:"#ef4444"}}/>
-                    <span style={{color:t.sub,fontSize:10}}>Cancelled: {cancelCount}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div style={{width:10,height:10,borderRadius:2,background:"#f59e0b"}}/>
-                    <span style={{color:t.sub,fontSize:10}}>Pending: {deliveries.filter(d=>d.status==="Pending").length}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div style={{width:10,height:10,borderRadius:2,background:"#8b5cf6"}}/>
-                    <span style={{color:t.sub,fontSize:10}}>Replacements: {replCount}</span>
-                  </div>
+                  {[["#10b981","Delivered",totalDelivered],["#ef4444","Cancelled",cancelCount],["#f59e0b","Pending",deliveries.filter(d=>d.status==="Pending").length],["#8b5cf6","Replacements",replCount]].map(([c,l,v])=>(
+                    <div key={l} className="flex items-center gap-2"><div style={{width:10,height:10,borderRadius:2,background:c}}/><span style={{color:t.sub,fontSize:10}}>{l}: {v}</span></div>
+                  ))}
                 </div>
                 <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",gap:1,marginTop:10}}>
                   <div style={{flex:totalDelivered,background:"#10b981"}}/>
@@ -5367,7 +7940,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </ResponsiveContainer>
             </Card>
 
-            {/* ── DAY OF WEEK PERFORMANCE ── */}
+            {/* ── DAY OF WEEK ── */}
             <Card dm={dm} className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -5387,58 +7960,227 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </BarChart>
               </ResponsiveContainer>
             </Card>
+            </>}
 
-            {/* ── PRODUCT PERFORMANCE + EXPENSE BREAKDOWN ── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Product performance */}
+            {/* ══════════ CUSTOMERS SECTION ══════════ */}
+            {anlActiveSection==="customers"&&(()=>{
+              const filtCust2=(()=>{
+                let fc=[...custRev];
+                if(anlCustSearch){const q=anlCustSearch.toLowerCase();fc=fc.filter(c=>c.name?.toLowerCase().includes(q)||c.phone?.toLowerCase().includes(q));}
+                if(anlCustFilter==="owing") fc=fc.filter(c=>(c.outstandingBalance||0)>0);
+                else if(anlCustFilter==="clear") fc=fc.filter(c=>!((c.outstandingBalance||0)>0));
+                else if(anlCustFilter==="partial") fc=fc.filter(c=>(c.partialCollected||0)>0);
+                if(anlCustSort==="revenue") fc.sort((a,b)=>b.totalRev-a.totalRev);
+                else if(anlCustSort==="orders") fc.sort((a,b)=>b.totalOrders-a.totalOrders);
+                else if(anlCustSort==="outstanding") fc.sort((a,b)=>(b.outstandingBalance||0)-(a.outstandingBalance||0));
+                else if(anlCustSort==="name") fc.sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+                return fc;
+              })();
+              return <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard dm={dm} label="Total Revenue" value={inr(totalNetRevenue)} sub={`${totalDelivered} deliveries`} accent="#10b981"/>
+                <StatCard dm={dm} label="Outstanding Balance" value={inr(totalOutstanding)} sub={`${customers.filter(c=>(c.pending||0)>0).length} customers owing`} accent="#ef4444"/>
+                <StatCard dm={dm} label="Partial Collected" value={inr(totalPartialCollected)} sub={`${deliveriesWithBalance.length} deliveries`} accent="#f59e0b"/>
+                <StatCard dm={dm} label="Fully Settled" value={deliveriesFullySettled.length} sub="deliveries paid in full" accent="#8b5cf6"/>
+              </div>
               <Card dm={dm} className="overflow-hidden">
-                <div className="p-4 pb-2 flex items-center justify-between">
-                  <div>
-                    <p style={{color:t.text}} className="font-bold text-sm">Product Performance</p>
-                    <p style={{color:t.sub}} className="text-[11px]">By revenue · share of total</p>
+                <div className="p-4 pb-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                    <div>
+                      <p style={{color:t.text}} className="font-bold text-sm">Customer Analytics</p>
+                      <p style={{color:t.sub}} className="text-[11px]">Top {top20pct} customers · {top20share}% of revenue{top20share>=80?" — concentration risk":""}</p>
+                    </div>
+                    <button onClick={()=>exportCSV(filtCust2,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Partial Collected",key:"partialCollected"},{label:"Outstanding",key:"outstandingBalance"},{label:"Paid",key:"paid"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                   </div>
-                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(prodSales,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])}>CSV</Btn>
+                  <div className="flex gap-2 flex-wrap">
+                    <input value={anlCustSearch} onChange={e=>setAnlCustSearch(e.target.value)} placeholder="Search customer…" style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:12,flex:1,minWidth:120,outline:"none"}}/>
+                    <select value={anlCustSort} onChange={e=>setAnlCustSort(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,cursor:"pointer"}}>
+                      <option value="revenue">Sort: Revenue ↓</option>
+                      <option value="orders">Sort: Orders ↓</option>
+                      <option value="outstanding">Sort: Outstanding ↓</option>
+                      <option value="name">Sort: Name A–Z</option>
+                    </select>
+                    <select value={anlCustFilter} onChange={e=>setAnlCustFilter(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,cursor:"pointer"}}>
+                      <option value="all">All Customers</option>
+                      <option value="owing">Owing Only</option>
+                      <option value="clear">Clear Only</option>
+                      <option value="partial">Has Partial</option>
+                    </select>
+                  </div>
+                  <p style={{color:t.sub,fontSize:11,marginTop:6}}>{filtCust2.length} customers shown</p>
                 </div>
-                {prodSales.map((p,i)=>{
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr style={{borderBottom:`1px solid ${t.border}`,background:dm?"#111":"#f9f9f8"}}>
+                      <th style={{color:t.sub}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]">#</th>
+                      <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("name")}>Customer{anlCustSort==="name"?" ↑":""}</th>
+                      <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("orders")}>Orders{anlCustSort==="orders"?" ↓":""}</th>
+                      <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("revenue")}>Revenue{anlCustSort==="revenue"?" ↓":""}</th>
+                      <th style={{color:t.sub}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]">Part.Paid</th>
+                      <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("outstanding")}>Outstanding{anlCustSort==="outstanding"?" ↓":""}</th>
+                      <th style={{color:t.sub}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Share</th>
+                      <th style={{color:t.sub}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Status</th>
+                    </tr></thead>
+                    <tbody>
+                      {filtCust2.map((c,i)=>{
+                        const share=totalPortfolioRev>0?Math.round(c.totalRev/totalPortfolioRev*100):0;
+                        const hasOutstanding=(c.outstandingBalance||0)>0;
+                        const hasPartial=(c.partialCollected||0)>0;
+                        const isExp=anlCustExpanded===c.id;
+                        const custDelivs=delivered.filter(d=>d.customerId===c.id||d.customer===c.name);
+                        return <><tr key={c.id} onClick={()=>setAnlCustExpanded(isExp?null:c.id)} style={{borderBottom:`1px solid ${t.border}`,background:isExp?(dm?"rgba(99,102,241,0.08)":"rgba(99,102,241,0.04)"):hasOutstanding?(dm?"rgba(239,68,68,0.04)":"rgba(239,68,68,0.02)"):undefined,cursor:"pointer"}}>
+                            <td style={{color:t.sub}} className="px-3 py-2.5 font-black">{i+1}</td>
+                            <td className="px-3 py-2.5">
+                              <p style={{color:t.text}} className="font-semibold">{c.name}</p>
+                              {c.phone&&<p style={{color:t.sub}} className="text-[10px]">{c.phone}</p>}
+                            </td>
+                            <td style={{color:t.sub}} className="px-3 py-2.5">{c.totalOrders}</td>
+                            <td className="px-3 py-2.5 font-bold text-amber-500 text-right">{inr(c.totalRev)}</td>
+                            <td className="px-3 py-2.5 text-right">{hasPartial?<span style={{color:"#f59e0b",fontWeight:700}}>{inr(c.partialCollected)}</span>:<span style={{color:t.sub}}>—</span>}</td>
+                            <td className="px-3 py-2.5 text-right"><span style={{color:hasOutstanding?"#ef4444":"#10b981",fontWeight:700}}>{hasOutstanding?inr(c.outstandingBalance):"✓ Clear"}</span></td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <div style={{width:32,height:4,background:t.border,borderRadius:4,overflow:"hidden"}}>
+                                  <div style={{width:`${share}%`,height:"100%",background:"#f59e0b",borderRadius:4}}/>
+                                </div>
+                                <span style={{color:t.sub,fontSize:10}}>{share}%</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span style={{background:hasOutstanding?"#ef444420":"#10b98120",color:hasOutstanding?"#ef4444":"#10b981",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:10}}>{hasOutstanding?"OWING":"CLEAR"}</span>
+                              <span style={{color:t.sub,fontSize:10,marginLeft:4}}>{isExp?"▲":"▼"}</span>
+                            </td>
+                          </tr>
+                          {isExp&&<tr style={{background:dm?"rgba(99,102,241,0.06)":"rgba(99,102,241,0.03)"}}>
+                            <td colSpan={8} className="px-4 py-3">
+                              <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>Recent deliveries · {c.name}</p>
+                              {custDelivs.length===0?<p style={{color:t.sub,fontSize:11}}>No deliveries in this period.</p>
+                              :custDelivs.slice(0,5).map(d=>{
+                                const net=Math.max(0,lineTotal(d.orderLines)-(+(d.replacement?.amount)||0));
+                                return <div key={d.id} style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                  <div>
+                                    <p style={{color:t.text,fontSize:11,fontWeight:600}}>{d.date} · <span style={{color:d.status==="Delivered"?"#10b981":"#f59e0b"}}>{d.status}</span></p>
+                                    {d.orderLines&&Object.values(d.orderLines).filter(l=>l.qty>0).map((l,li)=><span key={li} style={{color:t.sub,fontSize:10,marginRight:6}}>{l.name||l.product||""} ×{l.qty}</span>)}
+                                  </div>
+                                  <p style={{color:"#f59e0b",fontWeight:700,fontSize:12}}>{inr(net)}</p>
+                                </div>;
+                              })}
+                            </td>
+                          </tr>}
+                        </>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+              <Card dm={dm} className="p-4">
+                <p style={{color:t.text}} className="font-bold text-sm mb-3">👤 Customer Retention</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                    <p style={{color:"#10b981",fontWeight:900,fontSize:22}}>{activeRecently}</p>
+                    <p style={{color:t.text,fontSize:11,fontWeight:600,marginTop:4}}>Active (30d)</p>
+                  </div>
+                  <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                    <p style={{color:"#f59e0b",fontWeight:900,fontSize:22}}>{customers.filter(c=>c.active).length-activeRecently}</p>
+                    <p style={{color:t.text,fontSize:11,fontWeight:600,marginTop:4}}>Inactive</p>
+                  </div>
+                  <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                    <p style={{color:retentionRate>=80?"#10b981":retentionRate>=50?"#f59e0b":"#ef4444",fontWeight:900,fontSize:22}}>{retentionRate}%</p>
+                    <p style={{color:t.text,fontSize:11,fontWeight:600,marginTop:4}}>Retention Rate</p>
+                  </div>
+                </div>
+              </Card>
+              </>;
+            })()}
+
+            {/* ══════════ PRODUCTS SECTION ══════════ */}
+            {anlActiveSection==="products"&&(()=>{
+              const sortedProds=(()=>{
+                let sp=[...prodSales];
+                if(anlProdSort==="qty") sp.sort((a,b)=>b.totalQty-a.totalQty);
+                else if(anlProdSort==="deliveries") sp.sort((a,b)=>b.deliveryCount-a.deliveryCount);
+                else sp.sort((a,b)=>b.totalRev-a.totalRev);
+                return sp;
+              })();
+              return <>
+              <Card dm={dm} className="overflow-hidden">
+                <div className="p-4 pb-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                    <div>
+                      <p style={{color:t.text}} className="font-bold text-sm">Product Performance</p>
+                      <p style={{color:t.sub}} className="text-[11px]">Click a product to expand delivery breakdown</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <select value={anlProdSort} onChange={e=>setAnlProdSort(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 8px",fontSize:11,cursor:"pointer"}}>
+                        <option value="revenue">Sort: Revenue</option>
+                        <option value="qty">Sort: Quantity</option>
+                        <option value="deliveries">Sort: Deliveries</option>
+                      </select>
+                      <button onClick={()=>exportCSV(sortedProds,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                    </div>
+                  </div>
+                </div>
+                {sortedProds.map((p,i)=>{
                   const revShare=totalProductRev>0?Math.round(p.totalRev/totalProductRev*100):0;
-                  return <div key={p.id} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
-                    <div className="flex items-start justify-between mb-1.5 gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span style={{color:t.sub,width:18,textAlign:"center",fontWeight:800,fontSize:11,flexShrink:0}}>{i+1}</span>
-                        <div className="min-w-0">
-                          <p style={{color:t.text,fontSize:12,fontWeight:600}} className="truncate">{p.name}</p>
-                          <p style={{color:t.sub,fontSize:10}}>{p.totalQty} {p.unit} · {p.deliveryCount} deliveries</p>
+                  const isExp=anlProdExpanded===p.id;
+                  const prodDelivs=delivered.filter(d=>d.orderLines&&Object.values(d.orderLines).some(l=>(l.name===p.name||l.product===p.name)&&l.qty>0));
+                  return <div key={p.id}>
+                    <div onClick={()=>setAnlProdExpanded(isExp?null:p.id)} style={{borderTop:`1px solid ${t.border}`,cursor:"pointer",background:isExp?(dm?"rgba(139,92,246,0.07)":"rgba(139,92,246,0.03)"):undefined}} className="px-4 py-3">
+                      <div className="flex items-start justify-between mb-1.5 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span style={{color:t.sub,width:18,textAlign:"center",fontWeight:800,fontSize:11,flexShrink:0}}>{i+1}</span>
+                          <div className="min-w-0">
+                            <p style={{color:t.text,fontSize:12,fontWeight:600}} className="truncate">{p.name}</p>
+                            <p style={{color:t.sub,fontSize:10}}>{p.totalQty} {p.unit} · {p.deliveryCount} deliveries</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 flex items-center gap-2">
+                          <div>
+                            <p className="font-black text-amber-500 text-sm leading-none">{inr(p.totalRev)}</p>
+                            <p style={{color:t.sub,fontSize:9}}>{revShare}% of sales</p>
+                          </div>
+                          <span style={{color:t.sub,fontSize:10}}>{isExp?"▲":"▼"}</span>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-black text-amber-500 text-sm leading-none">{inr(p.totalRev)}</p>
-                        <p style={{color:t.sub,fontSize:9}}>{revShare}% of sales</p>
+                      <div className="flex gap-2 items-center">
+                        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
+                          <div className="h-full rounded-full" style={{width:`${revShare}%`,background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7],transition:"width 0.5s ease"}}/>
+                        </div>
+                        <span style={{color:t.sub,fontSize:10,fontWeight:700,minWidth:28,textAlign:"right"}}>{revShare}%</span>
                       </div>
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
-                        <div className="h-full rounded-full" style={{width:`${revShare}%`,background:PIE_COLORS[i%PIE_COLORS.length],transition:"width 0.5s ease"}}/>
-                      </div>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,minWidth:28,textAlign:"right"}}>{revShare}%</span>
-                    </div>
+                    {isExp&&<div style={{background:dm?"rgba(139,92,246,0.05)":"rgba(139,92,246,0.02)",borderTop:`1px solid ${t.border}`,padding:"10px 16px"}}>
+                      <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>Recent deliveries with {p.name}</p>
+                      {prodDelivs.length===0?<p style={{color:t.sub,fontSize:11}}>No deliveries found.</p>
+                      :prodDelivs.slice(0,5).map(d=>{
+                        const qty=d.orderLines?Object.values(d.orderLines).find(l=>(l.name===p.name||l.product===p.name))?.qty||0:0;
+                        return <div key={d.id} style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <p style={{color:t.text,fontSize:11,fontWeight:600}}>{d.customer} · {d.date}</p>
+                            <p style={{color:t.sub,fontSize:10}}>{qty} {p.unit} · {d.status}</p>
+                          </div>
+                          <p style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{inr(qty*(p.totalRev/Math.max(1,p.totalQty)))}</p>
+                        </div>;
+                      })}
+                    </div>}
                   </div>;
                 })}
               </Card>
 
-              {/* Expense breakdown */}
               {expCatData.length>0?<Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-2 flex items-center justify-between">
                   <div>
                     <p style={{color:t.text}} className="font-bold text-sm">Expense Breakdown</p>
                     <p style={{color:t.sub}} className="text-[11px]">{inr(totalExpenses)} total · {expCatData.length} categories</p>
                   </div>
+                  <button onClick={()=>exportCSV(expCatData,"expense_breakdown",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Count",key:"count"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                 </div>
                 {expCatData.map((e,i)=>{
                   const pct=totalExpenses>0?Math.round(e.amount/totalExpenses*100):0;
                   return <div key={e.category} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
-                        <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i%PIE_COLORS.length],flexShrink:0}}/>
+                        <div style={{width:8,height:8,borderRadius:2,background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7],flexShrink:0}}/>
                         <p style={{color:t.text,fontSize:12,fontWeight:600}}>{e.category}</p>
                       </div>
                       <div className="text-right">
@@ -5447,91 +8189,267 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       </div>
                     </div>
                     <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
-                      <div className="h-full rounded-full" style={{width:`${pct}%`,background:PIE_COLORS[i%PIE_COLORS.length]}}/>
+                      <div className="h-full rounded-full" style={{width:`${pct}%`,background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7]}}/>
                     </div>
                   </div>;
                 })}
               </Card>:<Card dm={dm} className="p-4 flex items-center justify-center" style={{minHeight:200}}>
                 <p style={{color:t.sub,fontSize:13}}>No expense data recorded yet.</p>
               </Card>}
-            </div>
 
-            {/* ── TOP CUSTOMERS TABLE ── */}
-            <Card dm={dm} className="overflow-hidden">
-              <div className="p-4 pb-2 flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Top Customers by Revenue</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Top {top20pct} customers hold {top20share}% of revenue{top20share>=80?" — high concentration risk":""}</p>
+              {filtRepl.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">🔄 Replacement Analytics</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{filtRepl.length} replacements · {inr(totalReplAmt)} deducted</p>
+                  </div>
+                  <button onClick={()=>exportCSV(replByItem,"replacements_by_item",[{label:"Item",key:"item"},{label:"Count",key:"count"},{label:"Amount",key:"amount"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                 </div>
-                <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(custRev,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Pending",key:"pending"}])}>CSV</Btn>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead><tr style={{borderBottom:`1px solid ${t.border}`,background:dm?"#111":"#f9f9f8"}}>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">#</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Customer</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Orders</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Revenue</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Share</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Collected</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Pending</th>
-                    <th style={{color:t.sub}} className="px-4 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Status</th>
-                  </tr></thead>
-                  <tbody>
-                    {custRev.map((c,i)=>{
-                      const share=totalPortfolioRev>0?Math.round(c.totalRev/totalPortfolioRev*100):0;
-                      return <tr key={c.id} style={{borderBottom:`1px solid ${t.border}`}}>
-                        <td style={{color:t.sub}} className="px-4 py-2.5 font-black">{i+1}</td>
-                        <td className="px-4 py-2.5">
-                          <p style={{color:t.text}} className="font-semibold">{c.name}</p>
-                          {c.phone&&<p style={{color:t.sub}} className="text-[10px]">{c.phone}</p>}
-                        </td>
-                        <td style={{color:t.sub}} className="px-4 py-2.5">{c.totalOrders}</td>
-                        <td className="px-4 py-2.5 font-bold text-amber-500">{inr(c.totalRev)}</td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <div style={{width:32,height:4,background:t.border,borderRadius:4,overflow:"hidden"}}>
-                              <div style={{width:`${share}%`,height:"100%",background:"#f59e0b",borderRadius:4}}/>
-                            </div>
-                            <span style={{color:t.sub,fontSize:10}}>{share}%</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 font-semibold text-emerald-500">{inr(c.paid||0)}</td>
-                        <td className={`px-4 py-2.5 font-semibold ${(c.pending||0)>0?"text-red-500":"text-emerald-500"}`}>{inr(c.pending||0)}</td>
-                        <td className="px-4 py-2.5">
-                          <span style={{background:(c.pending||0)>0?"#ef444420":"#10b98120",color:(c.pending||0)>0?"#ef4444":"#10b981",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:10}}>{(c.pending||0)>0?"OWING":"CLEAR"}</span>
-                        </td>
-                      </tr>;
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                {replByItem.length>0&&<div className="flex flex-col gap-2">
+                  {replByItem.map((r,i)=>(
+                    <div key={r.item} style={{background:t.inp,borderRadius:10,padding:"10px 14px"}}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p style={{color:t.text,fontWeight:600,fontSize:12}}>{r.item}</p>
+                        <div className="text-right">
+                          <p style={{color:"#f97316",fontWeight:700,fontSize:12}}>{r.count}×</p>
+                          {r.amount>0&&<p style={{color:t.sub,fontSize:10}}>−{inr(r.amount)}</p>}
+                        </div>
+                      </div>
+                      <div style={{height:4,borderRadius:4,background:t.border,overflow:"hidden"}}>
+                        <div style={{width:`${totalReplAmt>0?Math.round(r.amount/totalReplAmt*100):100}%`,height:"100%",background:"#f97316",borderRadius:4}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>}
+              </Card>}
 
-            {/* ── WASTAGE ANALYTICS ── */}
-            {wastageByType.length>0&&<Card dm={dm} className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Wastage Analysis</p>
-                  <p style={{color:t.sub}} className="text-[11px]">{inr(totalWasteCost)} in losses · {wastageByType.reduce((s,w)=>s+w.qty,0)} units wasted</p>
+              {wastageByType.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">Wastage Analysis</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{inr(totalWasteCost)} in losses · {wastageByType.reduce((s,w)=>s+w.qty,0)} units wasted</p>
+                  </div>
+                  <button onClick={()=>exportCSV(wastageByType,"wastage_analysis",[{label:"Type",key:"type"},{label:"Qty",key:"qty"},{label:"Cost",key:"cost"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                 </div>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {wastageByType.map((w,i)=>{
+                    const pct=totalWasteCost>0?Math.round(w.cost/totalWasteCost*100):0;
+                    return <div key={w.type} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderLeft:`3px solid ${["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7]}`}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{w.type}</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{w.qty} units</p>
+                      {w.cost>0&&<>
+                        <p className="text-red-400 font-bold text-xs mt-1">{inr(w.cost)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{pct}% of waste losses</p>
+                      </>}
+                    </div>;
+                  })}
+                </div>
+              </Card>}
+              </>;
+            })()}
+
+            {/* ══════════ OPERATIONS SECTION ══════════ */}
+            {anlActiveSection==="operations"&&(()=>{
+              const opsViews=[["production","🏭 Production"],["qc","🔬 QC"],["supply","📦 Supply"],["wastage","🗑️ Wastage"]];
+              return <>
+              <div className="flex gap-2 flex-wrap mb-1">
+                {opsViews.map(([v,label])=><button key={v} onClick={()=>setAnlOpsView(v)} style={{background:anlOpsView===v?"#8b5cf6":t.inp,color:anlOpsView===v?"#fff":t.sub,border:`1px solid ${anlOpsView===v?"#8b5cf6":t.border}`,borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>{label}</button>)}
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                {wastageByType.map((w,i)=>{
-                  const pct=totalWasteCost>0?Math.round(w.cost/totalWasteCost*100):0;
-                  return <div key={w.type} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderLeft:`3px solid ${PIE_COLORS[i%PIE_COLORS.length]}`}}>
-                    <p style={{color:t.text,fontWeight:700,fontSize:13}}>{w.type}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:2}}>{w.qty} units</p>
-                    {w.cost>0&&<>
-                      <p className="text-red-400 font-bold text-xs mt-1">{inr(w.cost)}</p>
-                      <p style={{color:t.sub,fontSize:9}}>{pct}% of waste losses</p>
-                    </>}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard dm={dm} label="Units Produced" value={prodTotalActual.toLocaleString("en-IN")} sub={`of ${prodTotalTarget} targeted`} accent="#8b5cf6"/>
+                <StatCard dm={dm} label="Production Efficiency" value={`${prodEfficiency}%`} sub="actual vs target" accent={prodEfficiency>=90?"#10b981":prodEfficiency>=70?"#f59e0b":"#ef4444"}/>
+                <StatCard dm={dm} label="QC Pass Rate" value={`${qcPassRate}%`} sub={`${filtQC.length} checks done`} accent={qcPassRate>=90?"#10b981":qcPassRate>=75?"#f59e0b":"#ef4444"}/>
+                <StatCard dm={dm} label="Supply Cost" value={inr(totalSupplyCost)} sub={`${filtSup.length} supply entries`} accent="#6366f1"/>
+              </div>
+
+              {anlOpsView==="production"&&<>
+              {prodByProduct.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">🏭 Production by Product</p>
+                  </div>
+                  <button onClick={()=>exportCSV(prodByProduct,"production_by_product",[{label:"Product",key:"product"},{label:"Batches",key:"batches"},{label:"Actual",key:"actual"},{label:"Target",key:"target"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {prodByProduct.map((p,i)=>{
+                    const eff=p.target>0?Math.round(p.actual/p.target*100):100;
+                    return <div key={p.product} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{p.product}</p>
+                          <p style={{color:t.sub,fontSize:10}}>{p.batches} batches · {p.actual} units produced</p>
+                        </div>
+                        <div className="text-right">
+                          <p style={{color:eff>=90?"#10b981":eff>=70?"#f59e0b":"#ef4444",fontWeight:800,fontSize:16}}>{eff}%</p>
+                          <p style={{color:t.sub,fontSize:9}}>efficiency</p>
+                        </div>
+                      </div>
+                      <div style={{height:6,borderRadius:6,background:t.border,overflow:"hidden"}}>
+                        <div style={{width:`${Math.min(100,eff)}%`,height:"100%",background:eff>=90?"#10b981":eff>=70?"#f59e0b":"#ef4444",borderRadius:6,transition:"width 0.5s"}}/>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </Card>}
+              </>}
+
+              {anlOpsView==="qc"&&<>
+              {qcGradeBreak.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.text}} className="font-bold text-sm">🔬 QC Grade Distribution</p>
+                  <button onClick={()=>exportCSV(filtQC,"qc_checks",[{label:"Date",key:"date"},{label:"Product",key:"product"},{label:"Grade",key:"grade"},{label:"Batch",key:"batchLabel"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[{g:"A",c:"#10b981",l:"Grade A — Pass"},{g:"B",c:"#f59e0b",l:"Grade B — Pass"},{g:"C",c:"#f97316",l:"Grade C — Marginal"},{g:"F",c:"#ef4444",l:"Fail — Reject"}].map(({g,c,l})=>{
+                    const cnt=filtQC.filter(q=>q.grade===g).length;
+                    const pct=filtQC.length>0?Math.round(cnt/filtQC.length*100):0;
+                    return <div key={g} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderTop:`3px solid ${c}`}}>
+                      <p style={{color:c,fontWeight:900,fontSize:22}}>{cnt}</p>
+                      <p style={{color:t.text,fontSize:11,fontWeight:600}}>{l}</p>
+                      <p style={{color:t.sub,fontSize:10}}>{pct}% of checks</p>
+                    </div>;
+                  })}
+                </div>
+              </Card>}
+              </>}
+
+              {anlOpsView==="supply"&&<>
+              {supByCategory.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.text}} className="font-bold text-sm">📦 Supply Cost by Category</p>
+                  <button onClick={()=>exportCSV(supByCategory,"supply_by_category",[{label:"Category",key:"cat"},{label:"Total",key:"total"},{label:"Count",key:"count"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {supByCategory.map((s,i)=>{
+                    const pct=totalSupplyCost>0?Math.round(s.total/totalSupplyCost*100):0;
+                    return <div key={s.cat} style={{background:t.inp,borderRadius:10,padding:"10px 14px"}}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p style={{color:t.text,fontWeight:600,fontSize:12}}>{s.cat}</p>
+                        <div className="text-right">
+                          <p style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{inr(s.total)}</p>
+                          <p style={{color:t.sub,fontSize:10}}>{s.count} entries · {pct}%</p>
+                        </div>
+                      </div>
+                      <div style={{height:4,borderRadius:4,background:t.border,overflow:"hidden"}}>
+                        <div style={{width:`${pct}%`,height:"100%",background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7],borderRadius:4}}/>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </Card>}
+              </>}
+
+              {anlOpsView==="wastage"&&<>
+              {wastageByType.length>0&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">🗑️ Wastage by Type</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{inr(totalWasteCost)} total loss</p>
+                  </div>
+                  <button onClick={()=>exportCSV(wastageByType,"wastage_by_type",[{label:"Type",key:"type"},{label:"Qty",key:"qty"},{label:"Cost",key:"cost"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {wastageByType.map((w,i)=>(
+                    <div key={w.type} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderLeft:`3px solid ${["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7]}`}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{w.type}</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{w.qty} units</p>
+                      {w.cost>0&&<p className="text-red-400 font-bold text-xs mt-1">{inr(w.cost)}</p>}
+                    </div>
+                  ))}
+                </div>
+              </Card>}
+              </>}
+              </>;
+            })()}
+
+            {/* ══════════ FINANCIALS SECTION ══════════ */}
+            {anlActiveSection==="financials"&&(()=>{
+              const finViews=[["summary","📊 Summary"],["chart","📈 Chart"],["expenses","💸 Expenses"]];
+              return <>
+              <div className="flex gap-2 flex-wrap mb-1">
+                {finViews.map(([v,label])=><button key={v} onClick={()=>setAnlFinView(v)} style={{background:anlFinView===v?"#10b981":t.inp,color:anlFinView===v?"#fff":t.sub,border:`1px solid ${anlFinView===v?"#10b981":t.border}`,borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>{label}</button>)}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard dm={dm} label="Gross Revenue" value={inr(totalGrossRevenue)} sub="before deductions" accent="#10b981"/>
+                <StatCard dm={dm} label="Net Revenue" value={inr(totalNetRevenue)} sub={`−${inr(totalReplDeductions)} replacements`} accent="#3b82f6"/>
+                <StatCard dm={dm} label="Total Outstanding" value={inr(totalOutstanding)} sub={`${customers.filter(c=>(c.pending||0)>0).length} customers owing`} accent="#ef4444"/>
+                <StatCard dm={dm} label="Total Collected" value={inr(totalCustPaid)} sub="all time" accent="#8b5cf6"/>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard dm={dm} label="Supply Cost" value={inr(totalSupplyCost)} sub={`${filtSup.length} entries`} accent="#6366f1"/>
+                <StatCard dm={dm} label="Total Expenses" value={inr(totalExpenses)} sub={`${expCatData.length} categories`} accent="#f97316"/>
+                <StatCard dm={dm} label="Wastage Loss" value={inr(totalWasteCost)} sub="estimated cost" accent="#f59e0b"/>
+                <StatCard dm={dm} label="Partial Collected" value={inr(totalPartialCollected)} sub={`${deliveriesWithBalance.length} pending balance`} accent="#0ea5e9"/>
+              </div>
+
+              {anlFinView==="summary"&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.text}} className="font-bold text-sm">💰 Financial Summary</p>
+                  <button onClick={()=>exportCSV([{gross:totalGrossRevenue,net:totalNetRevenue,outstanding:totalOutstanding,collected:totalCustPaid,supply:totalSupplyCost,expenses:totalExpenses,wastage:totalWasteCost,partial:totalPartialCollected}],"financial_summary",[{label:"Gross Revenue",key:"gross"},{label:"Net Revenue",key:"net"},{label:"Outstanding",key:"outstanding"},{label:"Collected",key:"collected"},{label:"Supply Cost",key:"supply"},{label:"Expenses",key:"expenses"},{label:"Wastage",key:"wastage"},{label:"Partial Collected",key:"partial"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {[{label:"Gross Revenue",val:totalGrossRevenue,c:"#10b981"},{label:"Replacement Deductions",val:-totalReplDeductions,c:"#f97316"},{label:"Net Revenue",val:totalNetRevenue,c:"#3b82f6"},{label:"Supply Cost",val:-totalSupplyCost,c:"#8b5cf6"},{label:"Expenses",val:-totalExpenses,c:"#ef4444"},{label:"Wastage Loss",val:-totalWasteCost,c:"#f59e0b"}].map(row=>(
+                    <div key={row.label} style={{background:t.inp,borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <p style={{color:t.text,fontSize:12,fontWeight:600}}>{row.label}</p>
+                      <p style={{color:row.val>=0?"#10b981":"#ef4444",fontWeight:700,fontSize:13}}>{row.val>=0?"+":""}{inr(Math.abs(row.val))}</p>
+                    </div>
+                  ))}
+                  <div style={{background:"rgba(59,130,246,0.1)",borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderLeft:"3px solid #3b82f6"}}>
+                    <p style={{color:t.text,fontSize:13,fontWeight:800}}>Estimated Profit/Loss</p>
+                    <p style={{color:totalNetRevenue-totalSupplyCost-totalExpenses-totalWasteCost>=0?"#10b981":"#ef4444",fontWeight:900,fontSize:15}}>{inr(Math.abs(totalNetRevenue-totalSupplyCost-totalExpenses-totalWasteCost))}</p>
+                  </div>
+                </div>
+              </Card>}
+
+              {anlFinView==="chart"&&<Card dm={dm} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.text}} className="font-bold text-sm">💰 Revenue vs Costs — 14 Days</p>
+                  <button onClick={()=>exportCSV(dailyData,"revenue_vs_costs_14d",[{label:"Date",key:"date"},{label:"Revenue",key:"revenue"},{label:"Expenses",key:"expenses"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={dailyData} margin={{top:4,right:4,left:-10,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
+                    <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
+                    <YAxis tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
+                    <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v)=>[inr(v)]}/>
+                    <Legend wrapperStyle={{fontSize:10,paddingTop:6}}/>
+                    <Bar dataKey="revenue" name="Revenue" fill="#10b981" radius={[3,3,0,0]}/>
+                    <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[3,3,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>}
+
+              {anlFinView==="expenses"&&expCatData.length>0&&<Card dm={dm} className="overflow-hidden">
+                <div className="p-4 pb-2 flex items-center justify-between">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">Expense Breakdown</p>
+                    <p style={{color:t.sub}} className="text-[11px]">{inr(totalExpenses)} total</p>
+                  </div>
+                  <button onClick={()=>exportCSV(expCatData,"expense_categories",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Count",key:"count"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
+                {expCatData.map((e,i)=>{
+                  const pct=totalExpenses>0?Math.round(e.amount/totalExpenses*100):0;
+                  return <div key={e.category} style={{borderTop:`1px solid ${t.border}`}} className="px-4 py-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div style={{width:8,height:8,borderRadius:2,background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7]}}/>
+                        <p style={{color:t.text,fontSize:12,fontWeight:600}}>{e.category}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-red-400">{inr(e.amount)}</p>
+                        <p style={{color:t.sub,fontSize:9}}>{pct}% · {e.count} entries</p>
+                      </div>
+                    </div>
+                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{background:t.border}}>
+                      <div className="h-full rounded-full" style={{width:`${pct}%`,background:["#f59e0b","#10b981","#8b5cf6","#ef4444","#0ea5e9","#f97316","#ec4899"][i%7]}}/>
+                    </div>
                   </div>;
                 })}
-              </div>
-            </Card>}
+              </Card>}
+              </>;
+            })()}
 
-            {/* ── ACTIVITY LOG ── */}
+            {/* ── ACTIVITY LOG ── always visible ── */}
             <Card dm={dm} className="overflow-hidden">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                 <p style={{color:t.text}} className="font-bold text-sm">Recent Activity Log</p>
@@ -5563,14 +8481,14 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const last7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
           const last30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
           const filterDates=ptDateFilter==="today"?[todayStr]:ptDateFilter==="yesterday"?[yesterdayStr]:ptDateFilter==="week"?last7:ptDateFilter==="month"?last30:ptDateFilter==="custom"&&ptCustomFrom?Array.from({length:Math.min(365,Math.ceil((new Date(ptCustomTo||todayStr)-new Date(ptCustomFrom))/86400000)+1)},(_,i)=>{const d=new Date(ptCustomFrom);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);}):null;
-          const filteredPT=(filterDates?prodTargets.filter(x=>filterDates.includes(x.date)):prodTargets).filter(x=>!ptSearch||x.product?.toLowerCase().includes(ptSearch.toLowerCase())||x.shift?.toLowerCase().includes(ptSearch.toLowerCase())||x.notes?.toLowerCase().includes(ptSearch.toLowerCase())||x.batchLabel?.toLowerCase().includes(ptSearch.toLowerCase()));
+          const filteredPT=(filterDates?prodTargets.filter(x=>filterDates.includes(x.date)):prodTargets).filter(x=>!ptSearch||x.product?.toLowerCase().includes(ptSearch.toLowerCase())||x.shift?.toLowerCase().includes(ptSearch.toLowerCase())||x.notes?.toLowerCase().includes(ptSearch.toLowerCase())||x.batchLabel?.toLowerCase().includes(ptSearch.toLowerCase())).filter(x=>ptShiftFilter==="all"||(!x.shift&&ptShiftFilter==="none")||(x.shift&&x.shift===ptShiftFilter)).filter(x=>ptProductFilter==="all"||x.product===ptProductFilter).filter(x=>{if(ptHandoverFilter==="all")return true;const hasHV=(handovers||[]).some(h=>h.batchId===x.batchId);return ptHandoverFilter==="with"?hasHV:!hasHV;});
           const todayPT=prodTargets.filter(x=>x.date===todayStr);
           const allQty=prodTargets.reduce((s,x)=>s+(+x.actual||0),0);
           const GRADES=[{g:"A",color:"#10b981",label:"Pass — Grade A"},{g:"B",color:"#f59e0b",label:"Pass — Grade B"},{g:"C",color:"#f97316",label:"Marginal — Grade C"},{g:"F",color:"#ef4444",label:"Fail — Reject"}];
           const gradeColor=g=>GRADES.find(x=>x.g===g)?.color||"#6b7280";
           const uniqueDates=[...new Set(filteredPT.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
-          const filteredWaste=(filterDates?(wastage||[]).filter(w=>filterDates.includes(w.date)):(wastage||[])).filter(w=>!ptSearch||w.product?.toLowerCase().includes(ptSearch.toLowerCase())||w.type?.toLowerCase().includes(ptSearch.toLowerCase()));
-          const filteredQC=(filterDates?(qcLogs||[]).filter(q=>filterDates.includes(q.date)):(qcLogs||[])).filter(q=>!ptSearch||q.product?.toLowerCase().includes(ptSearch.toLowerCase())||q.grade?.toLowerCase().includes(ptSearch.toLowerCase()));
+          const filteredWaste=(filterDates?(wastage||[]).filter(w=>filterDates.includes(w.date)):(wastage||[])).filter(w=>!ptSearch||w.product?.toLowerCase().includes(ptSearch.toLowerCase())||w.type?.toLowerCase().includes(ptSearch.toLowerCase())).filter(w=>ptWasteTypeFilter==="all"||w.type===ptWasteTypeFilter).filter(w=>ptShiftFilter==="all"||(!w.shift&&ptShiftFilter==="none")||(w.shift&&w.shift===ptShiftFilter));
+          const filteredQC=(filterDates?(qcLogs||[]).filter(q=>filterDates.includes(q.date)):(qcLogs||[])).filter(q=>!ptSearch||q.product?.toLowerCase().includes(ptSearch.toLowerCase())||q.grade?.toLowerCase().includes(ptSearch.toLowerCase())).filter(q=>ptQcGradeFilter==="all"||q.grade===ptQcGradeFilter).filter(q=>ptShiftFilter==="all"||(!q.shift&&ptShiftFilter==="none")||(q.shift&&q.shift===ptShiftFilter));
           return <>
             {/* KPI strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -5579,40 +8497,99 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <StatCard dm={dm} label="QC Checks" value={(qcLogs||[]).length} sub={`${Math.round((qcLogs||[]).filter(q=>q.grade!=="F").length/Math.max((qcLogs||[]).length,1)*100)}% pass rate`} accent="#14b8a6"/>
               <StatCard dm={dm} label="Wastage Records" value={(wastage||[]).length} sub={`${inr((wastage||[]).reduce((s,w)=>s+(w.cost||0),0))} total cost`} accent="#f97316"/>
             </div>
-            {/* Sub-tab nav */}
-            <div className="flex gap-2 overflow-x-auto pb-0.5">
-              {[["batches","🏭 Batches"],["wastage","🗑️ Wastage"],["qc","✅ QC"],["handover","📋 Handovers"]].map(([id,label])=>(
-                <button key={id} onClick={()=>setProdSubTab(id)}
-                  style={{background:prodSubTab===id?(dm?"#f59e0b":"#1c1917"):t.inp,color:prodSubTab===id?(dm?"#000":"#fff"):t.sub,borderRadius:99,padding:"7px 16px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
-                  {label}
+            {/* ── Filter Bar ── */}
+            <div style={{background:t.card,border:`1.5px solid ${t.inpB}`,borderRadius:14,overflow:"hidden"}}>
+              {/* Search row */}
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 14px",minHeight:50,borderBottom:ptShowFilters?`1px solid ${t.border}`:"none"}}>
+                <span style={{color:t.sub,fontSize:14,flexShrink:0}}>🔍</span>
+                <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search batch, product, notes…"
+                  style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:14,padding:"10px 0"}}/>
+                {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:18,background:"none",border:"none",cursor:"pointer",minWidth:28,padding:0}}>×</button>}
+                <button onClick={()=>setPtShowFilters(f=>!f)}
+                  style={{display:"flex",alignItems:"center",gap:5,background:ptShowFilters?(dm?"#f59e0b":"#1c1917"):t.inp,color:ptShowFilters?(dm?"#000":"#fff"):t.sub,border:"none",borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",flexShrink:0,whiteSpace:"nowrap"}}>
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M4 7h6M6 10h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  Filters{(ptShiftFilter!=="all"||ptDateFilter!=="today"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all")&&<span style={{background:"#ef4444",color:"#fff",borderRadius:99,width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,marginLeft:2}}>{[ptShiftFilter!=="all",ptDateFilter!=="today",ptProductFilter!=="all",ptWasteTypeFilter!=="all",ptQcGradeFilter!=="all",ptHandoverFilter!=="all"].filter(Boolean).length}</span>}
                 </button>
-              ))}
-            </div>
-            {/* Shared search + date filter */}
-            <div style={{background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:12,display:"flex",alignItems:"center",gap:8,padding:"0 12px",minHeight:48}}>
-              <span style={{color:t.sub,fontSize:14}}>🔍</span>
-              <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Search product, batch, notes…"
-                style={{flex:1,background:"transparent",border:"none",outline:"none",color:t.text,fontSize:15,padding:"10px 0"}}/>
-              {ptSearch&&<button onClick={()=>setPtSearch("")} style={{color:t.sub,fontSize:16,background:"none",border:"none",cursor:"pointer",minWidth:28,minHeight:28}}>×</button>}
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-              {[["today","Today"],["yesterday","Yesterday"],["week","7 Days"],["month","30 Days"],["all","All"],["custom","📅"]].map(([val,label])=>(
-                <button key={val} onClick={()=>setPtDateFilter(val)}
-                  style={ptDateFilter===val?{background:dm?"#f59e0b":"#1c1917",color:dm?"#000":"#fff"}:{background:t.inp,color:t.sub}}
-                  className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0">{label}</button>
-              ))}
-            </div>
-            {ptDateFilter==="custom"&&<div className="flex gap-2 items-center flex-wrap">
-              <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
-                <span style={{color:t.sub,fontSize:11,fontWeight:600}}>From</span>
-                <input type="date" value={ptCustomFrom} onChange={e=>setPtCustomFrom(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
               </div>
-              <span style={{color:t.sub,fontSize:12}}>→</span>
-              <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
-                <span style={{color:t.sub,fontSize:11,fontWeight:600}}>To</span>
-                <input type="date" value={ptCustomTo} onChange={e=>setPtCustomTo(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
-              </div>
-            </div>}
+              {/* Expanded filter panel */}
+              {ptShowFilters&&<div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+                {/* Date range */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Date Range</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["today","Today"],["yesterday","Yesterday"],["week","7 Days"],["month","30 Days"],["all","All Time"],["custom","Custom"]].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtDateFilter(val)}
+                        style={{background:ptDateFilter===val?(dm?"#f59e0b":"#1c1917"):t.inp,color:ptDateFilter===val?(dm?"#000":"#fff"):t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                  {ptDateFilter==="custom"&&<div className="flex gap-2 items-center mt-2 flex-wrap">
+                    <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:9,padding:"5px 11px",display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:600}}>From</span>
+                      <input type="date" value={ptCustomFrom} onChange={e=>setPtCustomFrom(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+                    </div>
+                    <span style={{color:t.sub}}>→</span>
+                    <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:9,padding:"5px 11px",display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:t.sub,fontSize:10,fontWeight:600}}>To</span>
+                      <input type="date" value={ptCustomTo} onChange={e=>setPtCustomTo(e.target.value)} style={{background:"transparent",border:"none",outline:"none",color:t.text,fontSize:12}}/>
+                    </div>
+                  </div>}
+                </div>
+                {/* Shift */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Shift</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["all","All"],["none","No Shift"],...(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=>[s,s])].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtShiftFilter(val)}
+                        style={{background:ptShiftFilter===val?"#f59e0b":t.inp,color:ptShiftFilter===val?"#000":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Product */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Product</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["all","All Products"],...products.map(p=>[p.name,p.name])].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtProductFilter(val)}
+                        style={{background:ptProductFilter===val?"#8b5cf6":t.inp,color:ptProductFilter===val?"#fff":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Wastage type */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Wastage Type</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["all","All"],...(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(wt=>[wt,wt])].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtWasteTypeFilter(val)}
+                        style={{background:ptWasteTypeFilter===val?"#f97316":t.inp,color:ptWasteTypeFilter===val?"#fff":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* QC Grade */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>QC Grade</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["all","All"],["A","A — Pass"],["B","B — Pass"],["C","C — Marginal"],["F","F — Fail"]].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtQcGradeFilter(val)}
+                        style={{background:ptQcGradeFilter===val?"#14b8a6":t.inp,color:ptQcGradeFilter===val?"#fff":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Handover */}
+                <div>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Handover</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[["all","All Batches"],["with","Has Handover 🤝"],["without","No Handover"]].map(([val,label])=>(
+                      <button key={val} onClick={()=>setPtHandoverFilter(val)}
+                        style={{background:ptHandoverFilter===val?"#6366f1":t.inp,color:ptHandoverFilter===val?"#fff":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Reset */}
+                {(ptShiftFilter!=="all"||ptDateFilter!=="today"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all"||ptSearch)&&
+                  <button onClick={()=>{setPtShiftFilter("all");setPtDateFilter("today");setPtProductFilter("all");setPtWasteTypeFilter("all");setPtQcGradeFilter("all");setPtHandoverFilter("all");setPtSearch("");}}
+                    style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"7px 0",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%"}}>✕ Clear All Filters</button>}
+              </div>}
+            </div>
 
             {/* ── BATCHES ── */}
             {prodSubTab==="batches"&&<>
@@ -5623,7 +8600,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <Btn dm={dm} size="sm" onClick={()=>{
                     const todayBatches=[...new Set(prodTargets.filter(x=>x.date===todayStr&&x.batchId).map(x=>x.batchId))];
                     const nextNum=todayBatches.length+1;
-                    setPtF({date:todayStr,shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:""});
+                    setPtF({date:todayStr,shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
                     setPtSh("add");
                   }}>+ New Batch</Btn>
                 </div>
@@ -5644,15 +8621,25 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   </div>
                   {dayRecs.map((r,ri)=>{
                     const rWaste=(wastage||[]).filter(w=>w.batchId===r.batchId);
+                    const rQC=(qcLogs||[]).filter(q=>q.batchId===r.batchId);
+                    const rHV=(handovers||[]).filter(h=>h.batchId===r.batchId);
                     const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
                     return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?12:0,marginTop:ri>0?12:0}}>
                       <div className="flex items-start justify-between gap-2">
                         <div style={{flex:1}}>
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:800}}>{r.batchLabel||"Batch"}</span>
-                            <span style={{color:t.text,fontWeight:700,fontSize:13}}>{r.product}</span>
-                            {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{r.shift}</span>}
-                            {r.qcGrade&&<span style={{background:gradeColor(r.qcGrade)+"20",color:gradeColor(r.qcGrade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>QC: {r.qcGrade}</span>}
+                          {/* Batch number + identity header */}
+                          <div style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",border:`1px solid rgba(139,92,246,0.3)`,borderRadius:10,padding:"6px 10px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span style={{background:"#8b5cf6",color:"#fff",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.01em"}}>{r.batchLabel||"Batch"}</span>
+                              <span style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{r.product}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                              {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🕐 {r.shift}</span>}
+                              {r.qcGrade&&<span style={{background:gradeColor(r.qcGrade)+"20",color:gradeColor(r.qcGrade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>QC:{r.qcGrade}</span>}
+                              {rWaste.length>0&&<span style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>🗑️ {rWaste.length}</span>}
+                              {rQC.length>0&&<span style={{background:"#14b8a618",color:"#14b8a6",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>✅ {rQC.length}</span>}
+                              {rHV.length>0&&<span style={{background:"#6366f118",color:"#6366f1",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>📋 {rHV.length}</span>}
+                            </div>
                           </div>
                           <p style={{color:"#8b5cf6",fontWeight:900,fontSize:22,lineHeight:1,marginBottom:4}}>{r.actual||0}<span style={{color:t.sub,fontSize:12,fontWeight:400}}> units</span></p>
                           {r.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic"}}>"{r.notes}"</p>}
@@ -5667,9 +8654,21 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           {rWaste.length>0&&<div className="flex flex-wrap gap-1.5 mt-2">
                             {rWaste.map(w=><span key={w.id} style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🗑️ {w.qty} {w.unit} {w.product} — {w.type}</span>)}
                           </div>}
+                          {rQC.length>0&&<div className="flex flex-wrap gap-1.5 mt-1">
+                            {rQC.map(q=><span key={q.id} style={{background:gradeColor(q.grade)+"18",color:gradeColor(q.grade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>✅ QC {q.grade} — {q.product}{q.checker?" by "+q.checker:""}</span>)}
+                          </div>}
+                          {rHV.length>0&&<div className="flex flex-wrap gap-1.5 mt-1">
+                            {rHV.map(h=><span key={h.id} style={{background:"#6366f118",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>📋 {h.shift||"Handover"}{h.nextShift?" → "+h.nextShift:""}</span>)}
+                          </div>}
                         </div>
                         <div className="flex gap-1.5 shrink-0">
-                          <button onClick={()=>{setPtF({...r,actual:String(r.actual)});setPtSh(r);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                          <button onClick={()=>{
+                            const existingWaste=(wastage||[]).filter(w=>w.batchId===r.batchId);
+                            const existingQC=(qcLogs||[]).filter(q=>q.batchId===r.batchId);
+                            const existingHV=(handovers||[]).filter(h=>h.batchId===r.batchId);
+                            setPtF({...r,actual:String(r.actual),embWastage:existingWaste.map(w=>({...w})),embQC:existingQC.map(q=>({...q})),embHandover:existingHV.map(h=>({...h}))});
+                            setPtSh(r);
+                          }} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"}}>Edit</button>
                           {can("prod_delete")&&<button onClick={()=>delPT(r)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",border:"none"}}>Del</button>}
                         </div>
                       </div>
@@ -5679,8 +8678,113 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {(()=>{
                     const dayDelivs=deliveries.filter(d=>d.date===date&&d.status==="Delivered");
                     if(dayDelivs.length===0)return null;
+                    const totalUnits=dayRecs.reduce((s,x)=>s+(+x.actual||0),0);
+                    const exportTrailPDF=()=>{
+                      const co=settings?.companyName||"TAS Healthy World";
+                      const cosub=settings?.companySubtitle||"Malabar Paratha Factory · Goa, India";
+                      const now=new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+                      const dateLabel=new Date(date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+                      const totalOrderVal=dayDelivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                      const totalReplAmt=dayDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                      const totalNet=totalOrderVal-totalReplAmt;
+                      const totalCollected=dayDelivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
+                      const totalBalance=Math.max(0,totalNet-totalCollected);
+                      const batchRows=dayRecs.map(r=>{
+                        const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
+                        const ingredientStr=recipeIngrs.length>0&&+r.actual>0?recipeIngrs.map(ing=>`${(+ing.qtyPerUnit*(+r.actual)).toFixed(2)} ${ing.unit} ${ing.supply}`).join(", "):"—";
+                        return `<tr><td><b>${r.batchLabel||"Batch"}</b></td><td>${r.product}</td><td>${r.shift||"—"}</td><td style="text-align:right;font-weight:700;color:#7c3aed">${r.actual||0}</td><td style="background:${r.qcGrade==="A"?"#f0fdf4":r.qcGrade==="B"?"#fefce8":r.qcGrade==="F"?"#fef2f2":"#fff7ed"};color:${r.qcGrade==="A"?"#15803d":r.qcGrade==="B"?"#92400e":r.qcGrade==="F"?"#b91c1c":"#9a3412"};font-weight:700;text-align:center">${r.qcGrade||"—"}</td><td style="font-size:10px;color:#64748b">${ingredientStr}</td><td style="font-size:11px;color:#64748b">${r.qcNotes||r.notes||"—"}</td></tr>`;
+                      }).join("");
+                      const delivRows=dayDelivs.map((d,i)=>{
+                        const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}× ${p?p.name:(l.name||pid)}`;}).join(", ");
+                        const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;const bal=Math.max(0,net-collected);
+                        const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":d.status==="Cancelled"?"#dc2626":"#d97706";
+                        return `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+                          <td><b>${d.customer}</b>${d.address?`<br><span style="font-size:10px;color:#94a3b8">📍 ${d.address}</span>`:""}${d.agent?`<br><span style="font-size:10px;color:#94a3b8">👤 ${d.agent}</span>`:""}</td>
+                          <td style="font-size:11px;color:#475569">${items||"—"}</td>
+                          <td style="text-align:right;font-weight:700">₹${tot.toLocaleString("en-IN")}</td>
+                          <td>${d.replacement?.done?`<span style="color:#f97316;font-weight:700;font-size:11px">🔄 ${d.replacement.item||"—"}${d.replacement.qty?" ("+d.replacement.qty+")":""}</span>${d.replacement.reason?`<br><span style="font-size:10px;color:#94a3b8">${d.replacement.reason}</span>`:""}${repl>0?`<br><span style="color:#f97316;font-size:11px">−₹${repl.toLocaleString("en-IN")}</span>`:""}`:`<span style="color:#94a3b8">—</span>`}</td>
+                          <td style="text-align:right;font-weight:700">₹${net.toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;color:#059669;font-weight:700">${collected>0?"₹"+collected.toLocaleString("en-IN"):"—"}</td>
+                          <td style="text-align:right;font-weight:800;color:${bal===0?"#059669":"#d97706"}">${bal===0?"✓ Paid":"₹"+bal.toLocaleString("en-IN")}</td>
+                          <td><span style="background:${sc}18;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700">${d.status}</span></td>
+                        </tr>`;
+                      }).join("");
+                      const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Batch Paper Trail — ${dateLabel}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;color:#1c1917;padding:32px;max-width:900px;margin:0 auto}
+.cover{background:linear-gradient(135deg,#0f1923 0%,#1e3a5f 100%);color:#fff;padding:28px 32px;border-radius:12px;margin-bottom:24px}
+.co-name{font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.6;margin-bottom:8px}
+.title{font-size:28px;font-weight:900;letter-spacing:-0.02em;line-height:1.1}
+.meta{font-size:11px;opacity:0.5;margin-top:8px}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin:24px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:4px}
+.stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
+.stat-val{font-size:20px;font-weight:900;color:#0f172a;line-height:1}
+.stat-lbl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#94a3b8;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+thead tr{background:#f1f5f9}
+th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0}
+td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+.footer{margin-top:32px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:16px}
+.print-bar{position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.4);gap:12px}
+.print-bar a{background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}
+@media print{@page{size:A4 landscape;margin:1cm}.print-bar{display:none!important}body{padding:0}}
+</style></head><body>
+<div class="cover">
+  <div class="co-name">🫓 ${co} · Production</div>
+  <div class="title">Batch Paper Trail</div>
+  <div class="title" style="font-size:18px;opacity:0.8;margin-top:4px">${dateLabel}</div>
+  <div class="meta">Exported on ${now} · ${dayRecs.length} batch${dayRecs.length!==1?"es":""} · ${totalUnits} units produced · ${dayDelivs.length} customers served</div>
+</div>
+
+<div class="section-title">📊 Day Summary</div>
+<div class="stats">
+  <div class="stat"><div class="stat-val" style="color:#7c3aed">${totalUnits}</div><div class="stat-lbl">Units Produced</div></div>
+  <div class="stat"><div class="stat-val">${dayRecs.length}</div><div class="stat-lbl">Batches</div></div>
+  <div class="stat"><div class="stat-val">${dayDelivs.length}</div><div class="stat-lbl">Customers Served</div></div>
+  <div class="stat"><div class="stat-val" style="color:#059669">₹${totalOrderVal.toLocaleString("en-IN")}</div><div class="stat-lbl">Order Value</div></div>
+  ${totalReplAmt>0?`<div class="stat"><div class="stat-val" style="color:#f97316">−₹${totalReplAmt.toLocaleString("en-IN")}</div><div class="stat-lbl">Replacements</div></div>`:""}
+  <div class="stat"><div class="stat-val" style="color:#0f172a">₹${totalNet.toLocaleString("en-IN")}</div><div class="stat-lbl">Net Billed</div></div>
+  ${totalCollected>0?`<div class="stat"><div class="stat-val" style="color:#059669">₹${totalCollected.toLocaleString("en-IN")}</div><div class="stat-lbl">Collected</div></div>`:""}
+  <div class="stat"><div class="stat-val" style="color:${totalBalance===0?"#059669":"#d97706"}">${totalBalance===0?"✓ All Paid":"₹"+totalBalance.toLocaleString("en-IN")}</div><div class="stat-lbl">Balance Due</div></div>
+</div>
+
+<div class="section-title">🏭 Batches Produced</div>
+<table>
+  <thead><tr><th>Batch</th><th>Product</th><th>Shift</th><th style="text-align:right">Qty</th><th style="text-align:center">QC</th><th>Ingredients Used</th><th>Notes</th></tr></thead>
+  <tbody>${batchRows}</tbody>
+</table>
+
+<div class="section-title" style="margin-top:28px">📦 Customer Delivery Breakdown</div>
+<table>
+  <thead><tr><th>Customer</th><th>Items</th><th style="text-align:right">Order Total</th><th>Replacement</th><th style="text-align:right">Net Payable</th><th style="text-align:right">Collected</th><th style="text-align:right">Balance Due</th><th>Status</th></tr></thead>
+  <tbody>${delivRows}</tbody>
+  <tr style="background:#f1f5f9;font-weight:800;font-size:13px">
+    <td colspan="2">TOTAL (${dayDelivs.length} customers)</td>
+    <td style="text-align:right">₹${totalOrderVal.toLocaleString("en-IN")}</td>
+    <td style="color:#f97316">${totalReplAmt>0?"−₹"+totalReplAmt.toLocaleString("en-IN"):"—"}</td>
+    <td style="text-align:right">₹${totalNet.toLocaleString("en-IN")}</td>
+    <td style="text-align:right;color:#059669">${totalCollected>0?"₹"+totalCollected.toLocaleString("en-IN"):"—"}</td>
+    <td style="text-align:right;color:${totalBalance===0?"#059669":"#d97706"}">${totalBalance===0?"✓ All Paid":"₹"+totalBalance.toLocaleString("en-IN")}</td>
+    <td></td>
+  </tr>
+</table>
+
+<div class="footer">${co} · ${cosub} · Batch Paper Trail for ${dateLabel} · Exported ${now}</div>
+<div class="print-bar"><span>📋 Batch Paper Trail — ${dateLabel}</span><a href="#" onclick="window.print();return false;">🖨 Print / Save PDF</a></div>
+<script>window.addEventListener("load",function(){window.print();});</script>
+</body></html>`;
+                      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+                      const url=URL.createObjectURL(blob);
+                      const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
+                      document.body.appendChild(a);a.click();
+                      setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+                    };
                     return <div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:12}}>
-                      <p style={{color:t.sub,fontSize:10,fontWeight:700,marginBottom:6}}>📦 Customers served {dayLabel}:</p>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,gap:8}}>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700}}>📦 Customers served {dayLabel}:</p>
+                        <button onClick={exportTrailPDF} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:7,padding:"4px 11px",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>📄 PDF Trail</button>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {dayDelivs.map(d=>{
                           const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ");
@@ -7093,11 +10197,45 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     <span style={{background:statusColor+"20",color:statusColor,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99}}>{d.status}</span>
                   </div>
                   {dItems&&<p style={{color:t.sub,fontSize:12,marginBottom:4}}>📦 {dItems}</p>}
-                  {canSeePrices&&dTot>0&&<p style={{color:"#f59e0b",fontWeight:700,fontSize:12}}>Total: {inr(dTot)}</p>}
-                  {d.replacement?.done&&<div style={{background:"#f9731615",borderRadius:8,padding:"6px 8px",marginTop:6,border:"1px solid #f9731630"}}>
+                  {canSeePrices&&(()=>{
+                    const replAmt=+d.replacement?.amount||0;
+                    const netAmt=dTot-replAmt;
+                    const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+                    const balanceDue=Math.max(0,netAmt-collected);
+                    return <>
+                      {dTot>0&&<div style={{marginTop:6,borderTop:`1px solid ${t.border}`,paddingTop:6}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
+                          <span style={{color:t.sub}}>Order Total</span>
+                          <span style={{color:t.text,fontWeight:600}}>{inr(dTot)}</span>
+                        </div>
+                        {d.replacement?.done&&<>
+                          <div style={{background:"#f9731615",borderRadius:8,padding:"5px 8px",margin:"4px 0",border:"1px solid #f9731625"}}>
+                            <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 {d.replacement.item||"Replacement"}{d.replacement.qty?` (${d.replacement.qty})`:""}</p>
+                            {d.replacement.reason&&<p style={{color:t.sub,fontSize:10}}>{d.replacement.reason}</p>}
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:2}}>
+                              <span style={{color:"#f97316"}}>− Replacement</span>
+                              <span style={{color:"#f97316",fontWeight:700}}>−{inr(replAmt)}</span>
+                            </div>
+                          </div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
+                            <span style={{color:t.sub}}>= Net Payable</span>
+                            <span style={{color:t.text,fontWeight:700}}>{inr(netAmt)}</span>
+                          </div>
+                        </>}
+                        {collected>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
+                          <span style={{color:"#10b981"}}>− Collected</span>
+                          <span style={{color:"#10b981",fontWeight:700}}>{inr(collected)}</span>
+                        </div>}
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,borderTop:`1.5px solid ${t.border}`,paddingTop:4,marginTop:2}}>
+                          <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{balanceDue===0?"✓ Settled":"Balance Due"}</span>
+                          <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{inr(balanceDue)}</span>
+                        </div>
+                      </div>}
+                    </>;
+                  })()}
+                  {!canSeePrices&&d.replacement?.done&&<div style={{background:"#f9731615",borderRadius:8,padding:"5px 8px",marginTop:6,border:"1px solid #f9731625"}}>
                     <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 Replacement: {d.replacement.item||"—"}{d.replacement.qty?` (${d.replacement.qty})`:""}</p>
-                    {d.replacement.reason&&<p style={{color:t.sub,fontSize:11}}>Reason: {d.replacement.reason}</p>}
-                    {d.replacement.amount&&canSeePrices&&<p style={{color:"#f97316",fontSize:11,fontWeight:600}}>Deducted: −{inr(d.replacement.amount)}</p>}
+                    {d.replacement.reason&&<p style={{color:t.sub,fontSize:10}}>{d.replacement.reason}</p>}
                   </div>}
                   {d.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic",marginTop:4}}>"{d.notes}"</p>}
                 </div>;
@@ -7484,17 +10622,33 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
       {/* Production Sheet */}
       <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"Log New Batch":"Edit Batch"}>
+        {/* ── Batch Identity Header ── */}
+        <div style={{background:dm?"rgba(139,92,246,0.18)":"rgba(139,92,246,0.1)",border:"1.5px solid rgba(139,92,246,0.4)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div>
+            <p style={{color:"#8b5cf6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>Batch ID</p>
+            <p style={{color:T(dm).text,fontWeight:900,fontSize:20,lineHeight:1}}>{ptF.batchLabel||"Batch —"}</p>
+          </div>
+          <div style={{background:"#8b5cf6",color:"#fff",borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:800,letterSpacing:"0.02em"}}>{ptF.batchLabel||"—"}</div>
+        </div>
+        <Inp dm={dm} label="Batch Label" value={ptF.batchLabel||""} onChange={e=>setPtF({...ptF,batchLabel:e.target.value})} placeholder="e.g. Batch 1, Morning Run A…"/>
+        <Inp dm={dm} label="Date" type="date" value={ptF.date||today()} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
         <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>setPtF({...ptF,product:e.target.value})}>
           {products.map(p=><option key={p.id}>{p.name}</option>)}
           <option value="__custom__">Other / Custom</option>
         </Sel>
         {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name" value={ptF.customProduct||""} onChange={e=>setPtF({...ptF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
-        <Sel dm={dm} label="Shift" value={ptF.shift} onChange={e=>setPtF({...ptF,shift:e.target.value})}>
+        <Sel dm={dm} label="Shift (optional)" value={ptF.shift||""} onChange={e=>setPtF({...ptF,shift:e.target.value})}>
+          <option value="">— No Shift —</option>
           {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
         </Sel>
         <div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="Target (units) *" type="number" value={ptF.target} onChange={e=>setPtF({...ptF,target:e.target.value})} placeholder="e.g. 200"/>
           <Inp dm={dm} label="Actual (units)" type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="Fill after shift"/>
+          <Sel dm={dm} label="QC Grade" value={ptF.qcGrade||"A"} onChange={e=>setPtF({...ptF,qcGrade:e.target.value})}>
+            <option value="A">A — Pass</option>
+            <option value="B">B — Pass</option>
+            <option value="C">C — Marginal</option>
+            <option value="F">F — Fail</option>
+          </Sel>
         </div>
         <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff…"/>
         {ptAutoDeduct&&+ptF.actual>0&&(()=>{
@@ -7508,7 +10662,113 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <p style={{color:"#10b981",fontSize:11,fontWeight:700}}>📦 Auto-deduct: {+ptF.actual} from "{match.item}" → {afterQty} {match.unit} remaining</p>
           </div>;
         })()}
-        <Btn dm={dm} onClick={savePT} className="w-full">Save Batch</Btn>
+
+        {/* ── Embedded Wastage Section ── */}
+        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div>
+              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>🗑️ Wastage</p>
+              <p style={{color:T(dm).sub,fontSize:10}}>Log wastage for this batch</p>
+            </div>
+            <button onClick={()=>setPtF(f=>({...f,embWastage:[...(f.embWastage||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,qty:"",unit:"pcs",type:(settings?.wastageTypes||["Other"])[0],reason:"",cost:"",shift:f.shift||"",date:f.date||today(),loggedBy:sess?.name||displayName}]}))}
+              style={{background:"#f9731620",color:"#f97316",border:"1px solid #f9731640",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>
+          </div>
+          {(ptF.embWastage||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No wastage entries for this batch.</p>}
+          {(ptF.embWastage||[]).map((w,wi)=>(
+            <div key={w.id||wi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>Entry {wi+1}</span>
+                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).filter((_,i)=>i!==wi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Inp dm={dm} label="Product" value={w.product} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
+                <div className="grid grid-cols-2 gap-1">
+                  <Inp dm={dm} label="Qty" type="number" value={w.qty} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,qty:e.target.value}:x)}))} placeholder="0"/>
+                  <Sel dm={dm} label="Unit" value={w.unit} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,unit:e.target.value}:x)}))}>
+                    {(settings?.supplyUnits||["pcs","kg","g","L","mL","bags","boxes","dozen"]).map(u=><option key={u}>{u}</option>)}
+                  </Sel>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <Sel dm={dm} label="Type" value={w.type} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,type:e.target.value}:x)}))}>
+                  {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t2=><option key={t2}>{t2}</option>)}
+                </Sel>
+                {can("waste_logCost")&&<Inp dm={dm} label="Cost (₹)" type="number" value={w.cost||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,cost:e.target.value}:x)}))} placeholder="0"/>}
+              </div>
+              <Inp dm={dm} label="Reason" value={w.reason||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,reason:e.target.value}:x)}))} placeholder="e.g. Overcooked, dropped…"/>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Embedded QC Section ── */}
+        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div>
+              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>✅ QC Checks</p>
+              <p style={{color:T(dm).sub,fontSize:10}}>Quality checks for this batch</p>
+            </div>
+            <button onClick={()=>setPtF(f=>({...f,embQC:[...(f.embQC||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,grade:"A",checker:sess?.name||displayName,notes:"",shift:f.shift||"",date:f.date||today()}]}))}
+              style={{background:"#14b8a620",color:"#14b8a6",border:"1px solid #14b8a640",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>
+          </div>
+          {(ptF.embQC||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No QC entries for this batch.</p>}
+          {(ptF.embQC||[]).map((q,qi)=>(
+            <div key={q.id||qi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>QC Check {qi+1}</span>
+                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).filter((_,i)=>i!==qi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+              </div>
+              <Inp dm={dm} label="Product" value={q.product} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                {[{g:"A",color:"#10b981"},{g:"B",color:"#f59e0b"},{g:"C",color:"#f97316"},{g:"F",color:"#ef4444"}].map(({g,color})=>(
+                  <button key={g} onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,grade:g}:x)}))}
+                    style={{background:q.grade===g?color+"25":T(dm).card,border:`2px solid ${q.grade===g?color:T(dm).inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
+                    <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{g}</p>
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <Inp dm={dm} label="Checker" value={q.checker||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,checker:e.target.value}:x)}))} placeholder="Inspector"/>
+                <Inp dm={dm} label="Notes" value={q.notes||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,notes:e.target.value}:x)}))} placeholder="Observations…"/>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Embedded Handover Section ── */}
+        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div>
+              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>📋 Handovers</p>
+              <p style={{color:T(dm).sub,fontSize:10}}>Shift handover notes for this batch</p>
+            </div>
+            {can("prod_handover")&&<button onClick={()=>setPtF(f=>({...f,embHandover:[...(f.embHandover||[]),{id:uid(),shift:f.shift||"",nextShift:"",note:"",issues:"",loggedBy:sess?.name||displayName,date:f.date||today()}]}))}
+              style={{background:"#6366f120",color:"#6366f1",border:"1px solid #6366f140",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>}
+          </div>
+          {(ptF.embHandover||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No handover notes for this batch.</p>}
+          {(ptF.embHandover||[]).map((h,hi)=>(
+            <div key={h.id||hi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>Handover {hi+1}</span>
+                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).filter((_,i)=>i!==hi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Sel dm={dm} label="Current Shift" value={h.shift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,shift:e.target.value}:x)}))}>
+                  <option value="">—</option>
+                  {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                </Sel>
+                <Sel dm={dm} label="Next Shift" value={h.nextShift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,nextShift:e.target.value}:x)}))}>
+                  <option value="">—</option>
+                  {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                </Sel>
+              </div>
+              <Inp dm={dm} label="Handover Note *" value={h.note||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,note:e.target.value}:x)}))} placeholder="e.g. Machine needs servicing, batch came out well…"/>
+              <Inp dm={dm} label="Issues / Flags" value={h.issues||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,issues:e.target.value}:x)}))} placeholder="e.g. Low gas, 2 staff absent…"/>
+              <Inp dm={dm} label="Logged By" value={h.loggedBy||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,loggedBy:e.target.value}:x)}))} placeholder="Name"/>
+            </div>
+          ))}
+        </div>
+
+        <Btn dm={dm} onClick={savePT} className="w-full" style={{marginTop:8}}>💾 Save Batch</Btn>
       </Sheet>
 
       {/* QC Sheet */}
@@ -7636,7 +10896,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 // Show inline receipt card on phone
                 setLastReceiptData({delivery:upd,amt,note:collectNote,customer:d.customer,ts:ts()});
                 // Auto-print receipt only if admin has it enabled
-                if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportAgentReceipt(upd,products,settings);
+                if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportDeliveryReceipt(upd,products,settings,getOrCreateInvNo(upd.id));
                 setCollectSh(null);setCollectAmt("");setCollectNote("");
               }}>Confirm Collection</Btn>
             </div>
@@ -7656,6 +10916,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const rows=lineRows(rd.orderLines,products).filter(r=>r.qty>0);
           const statusColor=rd.status==="Delivered"?"#10b981":rd.status==="In Transit"?"#3b82f6":rd.status==="Cancelled"?"#ef4444":"#f59e0b";
           const showReceiptPrices=settings?.agentInvoiceShowPrices!==false; // syncs with admin setting
+          const rcptInvNo=(invRegistry.issued||{})[rd.id];
+          const rcptNo=rcptInvNo?`RCP-${rcptInvNo.replace("TAS-","")}`:`RCP-${(rd.id||"").slice(-8).toUpperCase()}`;
           return <>
             {/* Header banner */}
             {viewOnly
@@ -7665,6 +10927,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     <p style={{color:statusColor,fontWeight:900,fontSize:16}}>{rd.customer}</p>
                     <p style={{color:t.sub,fontSize:11,marginTop:3}}>📅 {rd.date}{rd.deliveryDate&&rd.deliveryDate!==rd.date?` · Deliver by: ${rd.deliveryDate}`:""}</p>
                     {rd.agent&&<p style={{color:t.sub,fontSize:11}}>👤 {rd.agent}</p>}
+                    <p style={{color:t.sub,fontSize:10,marginTop:2,fontFamily:"monospace"}}>{rcptInvNo?`Invoice: ${rcptInvNo} · `:""}Receipt: {rcptNo}</p>
                   </div>
                   <span style={{background:statusColor+"22",color:statusColor,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99}}>{rd.status}</span>
                 </div>
@@ -7713,9 +10976,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
             {(note||(viewOnly&&rd.partialPayment?.note))&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",textAlign:"center"}}>📝 "{note||(rd.partialPayment?.note)}"</p>}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setLastReceiptData(null)}>Close</Btn>
-              {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportAgentReceipt(rd,products,settings)}>🖨 Print Receipt</Btn>}
+              {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportDeliveryReceipt(rd,products,settings,getOrCreateInvNo(rd.id))}>🧾 Receipt</Btn>}
+              {isAdmin&&<Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportDeliveryInvoice(rd,products,settings,getOrCreateInvNo(rd.id))}>📄 Invoice</Btn>}
             </div>
           </>;
         })()}
@@ -7784,6 +11048,27 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           </Btn>
         </div>
       </Sheet>
+
+      {/* ── UNIVERSAL DETAIL MODAL ── */}
+      {detailModal&&<DetailModal
+        modal={detailModal}
+        invRegistry={invRegistry}
+        onClose={closeDetail}
+        dm={dm}
+        customers={customers}
+        deliveries={deliveries}
+        expenses={expenses}
+        supplies={supplies}
+        wastage={wastage}
+        products={products}
+        settings={settings}
+        setDetailModal={setDetailModal}
+        setEsh={setEsh} setEf={setEf}
+        setDsh={setDsh} setDf={setDf}
+        delE={delE} delD={delD}
+        setPaySh={setPaySh} setPayAmt={setPayAmt}
+        isAdmin={isAdmin} sess={sess}
+      />}
     </>
   );
 }
