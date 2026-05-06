@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
@@ -123,7 +123,7 @@ function lineRows(lines, prods) {
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Supplies","Expenses","P&L","Analytics","Production","GPS","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Payments","Supplies","Expenses","P&L","Analytics","Production","GPS","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
   factory: ["Dashboard","Customers","Deliveries","Supplies","Production"],
@@ -281,6 +281,35 @@ const D_SETTINGS = {
   weatherLng: 73.8278,
   weatherLabel: "Goa",
   ablyKey: "",
+  // ── Invoice Numbering ──
+  invoicePrefix: "TAS",
+  invoiceStartSeq: 1,
+  invoiceYearReset: true,
+  invoiceShowOnReports: true,
+  invoiceShowOnPnL: true,
+  invoiceShowOnAnalytics: true,
+  // ── Feature Flags (centralized) ──
+  featureSmartDeduction: true,
+  featureBulkOrders: true,
+  featureShiftManagement: true,
+  featureOrderDateOverride: false,
+  featureCreditLimit: false,
+  featureTaxCalc: false,
+  featureRouteOpt: false,
+  featureMultiCurrency: false,
+  // ── Alerts ──
+  alertLowStock: true,
+  alertOverdueDelivery: true,
+  alertChurnRisk: true,
+  alertPaymentReceived: true,
+  alertNewOrder: false,
+  alertDailyReport: false,
+  // ── Branding extended ──
+  brandAccentColor: "#1e3a5f",
+  brandTagline: "",
+  companyAddress: "",
+  // ── Backup ──
+  autoBackupReminder: 7,
 };
 
 // Default wastage data
@@ -301,7 +330,7 @@ function exportPDF(record, products, type, settings, deliveries) {
   const cosub  = settings?.companySubtitle|| "Malabar Paratha Factory · Goa, India";
   const gst    = settings?.companyGST     || "";
   const coPhone= settings?.companyPhone   || "";
-  const invoiceNo=`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
+  const invoiceNo=record.invNo||`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
 
   // ── Customer delivery history (only for customer type) ──
   let historyHtml = "";
@@ -345,7 +374,7 @@ function exportPDF(record, products, type, settings, deliveries) {
     <div class="section-title" style="margin-top:24px">📦 Delivery History (${cDelivs.length} orders)</div>
     <table>
       <thead><tr>
-        <th>Date</th><th>Status</th><th>Items</th><th>Order Total</th><th>Replacement</th><th>Repl. Amount</th><th>Net Payable</th><th>Collected</th><th>Balance Due</th><th>Notes</th>
+        <th>Invoice No</th><th>Receipt No</th><th>Date</th><th>Status</th><th>Items</th><th>Order Total</th><th>Replacement</th><th>Repl. Amount</th><th>Net Payable</th><th>Collected</th><th>Balance Due</th><th>Notes</th>
       </tr></thead>
       <tbody>
         ${cDelivs.map((d,i)=>{
@@ -357,7 +386,11 @@ function exportPDF(record, products, type, settings, deliveries) {
           const dNetAmt=dTotal-dReplAmt;
           const dCollected=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
           const dBalance=Math.max(0,dNetAmt-dCollected);
+          const dInvNo=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+          const dRcptNo=`RCP-${dInvNo.replace(/^[A-Z]+-/,"")}`;
           return `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+            <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#7c3aed;font-weight:700">${dInvNo}</td>
+            <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#0ea5e9;font-weight:700">${dRcptNo}</td>
             <td style="white-space:nowrap">${d.date||"—"}</td>
             <td><span style="background:${statusColor}18;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">${d.status||"Pending"}</span></td>
             <td style="font-size:11px;color:#475569">${itemsStr||"—"}</td>
@@ -1079,7 +1112,7 @@ function exportWord(record, products, type, settings) {
   const cosub= settings?.companySubtitle||"Malabar Paratha Factory · Goa, India";
   const gst  = settings?.companyGST||"";
   const coPhone=settings?.companyPhone||"";
-  const invoiceNo=`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
+  const invoiceNo=record.invNo||`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
   const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
 <head><meta charset='utf-8'><title>Invoice — ${name}</title>
 <style>
@@ -1463,6 +1496,11 @@ function exportPnLCSV({mData,filtD,filtE,filtS,filtW,customers,deliveries,expens
   rows.push(row(["=== CUSTOMER REVENUE & COLLECTION ==="]));
   rows.push(row(["Customer","Total Orders","Delivered","Revenue","Collected","Pending","Avg Order Value","Collection Rate %"]));
   [...customers].map(c=>{const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");const rev=cd.reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);return{name:c.name,orders:deliveries.filter(d=>d.customerId===c.id).length,delivered:cd.length,revenue:Math.max(0,rev),collected:c.paid||0,pending:c.pending||0,avg:cd.length>0?Math.round(Math.max(0,rev)/cd.length):0,rate:c.paid+c.pending>0?Math.round(c.paid/(c.paid+c.pending)*100):100};}).sort((a,b)=>b.revenue-a.revenue).forEach(c=>rows.push(row([c.name,c.orders,c.delivered,c.revenue,c.collected,c.pending,c.avg,c.rate+"%"])));
+  rows.push([""]);
+  // Section: Delivery paper trail
+  rows.push(row(["=== DELIVERY PAPER TRAIL ==="]));
+  rows.push(row(["Invoice No","Receipt No","Date","Customer","Status","Order Total","Repl Amount","Net Amount","Collected","Balance Due","Replacement Item","Notes"]));
+  [...filtD].sort((a,b)=>a.date.localeCompare(b.date)).forEach(d=>{const inv=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;const rcp=`RCP-${inv.replace(/^[A-Z]+-/,"")}`;const tot=lineTotal(d.orderLines);const repl=+(d.replacement?.amount)||0;const net=Math.max(0,tot-repl);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;const bal=Math.max(0,net-coll);rows.push(row([inv,rcp,d.date,d.customer,d.status,tot,repl,net,coll,bal,d.replacement?.done?(d.replacement.item||""):"",d.notes||""]));});
   rows.push([""]);
   // Section: Expenses paper trail
   rows.push(row(["=== EXPENSE PAPER TRAIL ==="]));
@@ -2321,8 +2359,8 @@ function MorningBriefing({ dm, onDismiss, onUnpin, pinned, data }) {
       <div style={{ background: dm ? "linear-gradient(135deg,#0d1421,#111820)" : "linear-gradient(135deg,#f0f4f8,#e8edf5)", padding: "16px 18px", borderBottom: `1px solid ${t.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ color: "#3b82f6", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>📅 Morning Briefing</p>
-            <p style={{ color: t.text, fontWeight: 800, fontSize: 15 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+            <p style={{ color: "#3b82f6", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>📋 Today's Briefing</p>
+            <p style={{ color: t.sub, fontSize: 12 }}>Here's what needs your attention</p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={onUnpin} style={{ background: t.inp, border: `1px solid ${t.border}`, color: t.sub, borderRadius: 10, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{pinned ? "Unpin" : "Pin"}</button>
@@ -2969,12 +3007,37 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // ── INVOICE SEQUENCE COUNTER (persisted in Firebase) ──
   // Format: {seq: N, issued: {deliveryId: "TAS-YYYY-NNNN", ...}}
   const [invRegistry, setInvRegistry] = useStore("tas9_inv_registry", {seq:0, issued:{}});
+  // ── PAYMENT LEDGER ── stores manual payment events per customer ──────────
+  const [paymentLedger, setPaymentLedger] = useStore("tas9_payment_ledger", []);
+  const [payLedgerSh, setPayLedgerSh] = useState(false);   // manual payment entry sheet
+  const [payLedgerCust, setPayLedgerCust] = useState(null); // customer being paid
+  const [payLedgerAmt, setPayLedgerAmt] = useState("");
+  const [payLedgerNote, setPayLedgerNote] = useState("");
+  const [payLedgerMethod, setPayLedgerMethod] = useState("Cash");
+  // Payments tab state
+  const [paymentsSubTab, setPaymentsSubTab] = useState("ledger"); // "ledger" | "outstanding" | "daily"
+  const [paymentsSearch, setPaymentsSearch] = useState("");
+  const [paymentsDateFilter, setPaymentsDateFilter] = useState("all"); // "all"|"today"|"week"|"month"
+  // eslint-disable-next-line no-unused-vars
+  const [paymentsStatusFilter, setPaymentsStatusFilter] = useState("all"); // "all"|"partial"|"pending"|"settled"
+  function recordPaymentLedger(customerId, customerName, amount, note, method){
+    const entry = {id:uid(), customerId, customerName, amount:+amount, note:note||"", method:method||"Cash", recordedBy:displayName, date:today(), ts:ts()};
+    setPaymentLedger(p=>[entry,...(p||[])]);
+    setCust(p=>p.map(c=>c.id===customerId?{...c,paid:(c.paid||0)+(+amount),pending:Math.max(0,(c.pending||0)-(+amount))}:c));
+    addLog("Manual payment recorded",`${customerName} — ${inr(amount)}${note?" · "+note:""}`);
+    addNotif("Payment Recorded",`${inr(amount)} from ${customerName}`,"success","payment");
+    notify(`${inr(amount)} recorded ✓`);
+  }
   function getOrCreateInvNo(deliveryId) {
     const existing = (invRegistry.issued||{})[deliveryId];
     if(existing) return existing;
     const newSeq = (invRegistry.seq||0) + 1;
+    const prefix = settings?.invoicePrefix||"TAS";
+    const yearReset = settings?.invoiceYearReset!==false;
     const year = new Date().getFullYear();
-    const invNo = `TAS-${year}-${String(newSeq).padStart(4,"0")}`;
+    const invNo = yearReset
+      ? `${prefix}-${year}-${String(newSeq).padStart(4,"0")}`
+      : `${prefix}-${String(newSeq).padStart(4,"0")}`;
     setInvRegistry(prev => ({
       seq: newSeq,
       issued: {...(prev.issued||{}), [deliveryId]: invNo}
@@ -2984,7 +3047,8 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // eslint-disable-next-line no-unused-vars
   function getReceiptNo(deliveryId) {
     const invNo = (invRegistry.issued||{})[deliveryId];
-    if(invNo) return `RCP-${invNo.replace("TAS-","")}`;
+    const prefix = settings?.invoicePrefix||"TAS";
+    if(invNo) return `RCP-${invNo.replace(prefix+"-","")}`;
     return `RCP-${(deliveryId||"").slice(-8).toUpperCase()}`;
   }
   const [notifOpen, setNotifOpen]=useState(false);
@@ -3208,6 +3272,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [hvF,setHvF]=useState({shift:"Morning",date:today(),note:"",nextShift:"",issues:"",loggedBy:""});
   const [bulkSelect,setBulkSelect]=useState(false);
   const [bulkSelected,setBulkSelected]=useState(new Set());
+  const [expandedDeliveryCust,setExpandedDeliveryCust]=useState(null);
+  const [expandedCustCard,setExpandedCustCard]=useState(null);
+  const [custSortField,setCustSortField]=useState("name");
+  const [custStatusFilter,setCustStatusFilter]=useState("all");
   const [auditUserFilter,setAuditUserFilter]=useState("all");
   const [auditRoleFilter,setAuditRoleFilter]=useState("all");
   const [auditActionFilter,setAuditActionFilter]=useState("");
@@ -3328,7 +3396,34 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       setCust(p=>p.map(c=>c.id===dF.customerId?{...c,paid:(c.paid||0)+partialAmt,pending:Math.max(0,(c.pending||0)-partialAmt)}:c));
       addLog("Partial payment on delivery",`${dF.customer} — ${inr(partialAmt)} collected`);
     }
-    if(dSh==="add"){setDeliv(p=>[...p,{...dF,id:uid(),partialPayment:{...dF.partialPayment,amount:partialAmt}}]);addLog("Added delivery",dF.customer);notify("Delivery added ✓");addNotif("Delivery Added",`New delivery for ${dF.customer}`,"success");captureGPS("delivery_saved",dF.customer);}
+    if(dSh==="add"){
+      const newId=uid();
+      // ── Auto-assign invoice number immediately on creation ──
+      const newSeq=(invRegistry.seq||0)+1;
+      const prefix=settings?.invoicePrefix||"TAS";
+      const yearReset=settings?.invoiceYearReset!==false;
+      const year=new Date().getFullYear();
+      const newInvNo=yearReset?`${prefix}-${year}-${String(newSeq).padStart(4,"0")}`:`${prefix}-${String(newSeq).padStart(4,"0")}`;
+      setInvRegistry(prev=>({seq:newSeq,issued:{...(prev.issued||{}),[newId]:newInvNo}}));
+      // ── Link invoice to any production batch for the same date+product ──
+      const delivDate=dF.date||today();
+      const delivItems=Object.values(safeO(dF.orderLines)).filter(l=>(l.qty||0)>0).map(l=>l.name||"");
+      if(delivItems.length>0){
+        setProdTargets(prev=>prev.map(pt=>{
+          if(pt.date!==delivDate) return pt;
+          const matches=delivItems.some(item=>pt.product&&(pt.product===item||item.toLowerCase().includes(pt.product.toLowerCase())||pt.product.toLowerCase().includes(item.toLowerCase())));
+          if(!matches) return pt;
+          const existing=pt.linkedInvoices||[];
+          if(existing.includes(newInvNo)) return pt;
+          return {...pt,linkedInvoices:[...existing,newInvNo]};
+        }));
+      }
+      setDeliv(p=>[...p,{...dF,id:newId,invNo:newInvNo,partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
+      addLog("Added delivery",`${dF.customer} [${newInvNo}]`);
+      notify(`Delivery added · ${newInvNo} ✓`);
+      addNotif("Delivery Added",`${dF.customer} — ${newInvNo}`,"success");
+      captureGPS("delivery_saved",dF.customer);
+    }
     else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id,partialPayment:{...dF.partialPayment,amount:partialAmt}}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
     setDsh(null);
   }
@@ -3346,10 +3441,22 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function saveBulkOrders(){
     const toAdd=bulkOrderRows.filter(r=>r.include&&r.customer&&Object.values(safeO(r.orderLines)).some(l=>(l.qty||0)>0));
     if(!toAdd.length){notify("Select at least one customer with items");return;}
+    const prefix=settings?.invoicePrefix||"TAS";
+    const yearReset=settings?.invoiceYearReset!==false;
+    const year=new Date().getFullYear();
+    let seq=invRegistry.seq||0;
+    const newIssuedMap={...(invRegistry.issued||{})};
     // eslint-disable-next-line no-unused-vars
-    const newDelivs=toAdd.map(({include,...r})=>({...r,id:uid(),date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}}));
+    const newDelivs=toAdd.map(({include,...r})=>{
+      const newId=uid();
+      seq+=1;
+      const invNo=yearReset?`${prefix}-${year}-${String(seq).padStart(4,"0")}`:`${prefix}-${String(seq).padStart(4,"0")}`;
+      newIssuedMap[newId]=invNo;
+      return {...r,id:newId,invNo,date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}};
+    });
+    setInvRegistry(prev=>({seq,issued:{...(prev.issued||{}),...newIssuedMap}}));
     setDeliv(p=>[...p,...newDelivs]);
-    addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate}`);
+    addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate} · ${newDelivs[0]?.invNo}…`);
     notify(`${newDelivs.length} orders created ✓`);
     setBulkOrderSh(false);
   }
@@ -3464,8 +3571,14 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
     if(ptSh==="add"){
       const deduction=runAutoDeduct(productName,rec.actual,null);
-      const saved={...rec,id:uid(),createdAt:ts(),deduction:deduction||null};
-      setProdTargets(p=>[saved,...p]);
+      // ── Link any same-date deliveries for this product to this batch ──
+      const matchingInvNos=deliveries
+        .filter(d=>d.date===rec.date)
+        .filter(d=>Object.values(safeO(d.orderLines)).some(l=>(l.qty||0)>0&&l.name&&(l.name===productName||l.name.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(l.name.toLowerCase()))))
+        .map(d=>(invRegistry?.issued||{})[d.id]||d.invNo)
+        .filter(Boolean);
+      const savedRec={...rec,id:uid(),createdAt:ts(),deduction:deduction||null,linkedInvoices:[...new Set(matchingInvNos)]};
+      setProdTargets(p=>[savedRec,...p]);
       // Save embedded records linked to this batch
       if(embW.length>0) setWaste(p=>[...embW.map(w=>({...w,batchId:batchIdFinal,id:w.id||uid(),createdAt:w.createdAt||ts()})),...p]);
       if(embQ.length>0) setQcLogs(p=>[...embQ.map(q=>({...q,batchId:batchIdFinal,id:q.id||uid(),createdAt:q.createdAt||ts()})),...p]);
@@ -3573,8 +3686,8 @@ ${customers.map(c=>`<tr><td><b>${c.name}</b></td><td>${c.phone||"—"}</td><td>$
   <div class="stat"><div class="val ${totalRemAll>0?"red":"green"}">₹${totalRemAll.toLocaleString("en-IN")}</div><div class="lbl">Total Remaining</div></div>
   <div class="stat"><div class="val amber">${delivWithRepl.length}</div><div class="lbl">Deliveries With Replacements</div></div>
 </div>
-<table><tr><th>Customer</th><th>Date</th><th>Status</th><th>Total Order</th><th>Repl Deducted</th><th>Net Amt</th><th>Paid</th><th>Remaining</th><th>By</th></tr>
-${deliveries.map(d=>{const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;const rem=Math.max(0,net-paid);return`<tr><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td><td>${d.createdBy||"—"}</td></tr>`;}).join("")}
+<table><tr><th>Invoice No</th><th>Receipt No</th><th>Customer</th><th>Date</th><th>Status</th><th>Total Order</th><th>Repl Deducted</th><th>Net Amt</th><th>Paid</th><th>Remaining</th><th>By</th></tr>
+${deliveries.map(d=>{const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;const rem=Math.max(0,net-paid);const inv=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;const rcp=`RCP-${inv.replace(/^[A-Z]+-/,"")}`;return`<tr><td style="font-family:monospace;font-size:9px;color:#7c3aed">${inv}</td><td style="font-family:monospace;font-size:9px;color:#0ea5e9">${rcp}</td><td><b>${d.customer}</b></td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td><td>${d.createdBy||"—"}</td></tr>`;}).join("")}
 </table>
 
 <h2>Deliveries by Customer</h2>
@@ -3591,7 +3704,7 @@ ${custGroups.map(cg=>{
   <span class="green">Paid: <b>₹${cPaid.toLocaleString("en-IN")}</b></span>
   <span class="${cRem>0?"red":"green"}">Remaining: <b>₹${cRem.toLocaleString("en-IN")}</b></span>
 </div>
-<table><tr><th>Date</th><th>Status</th><th>Items</th><th>Total Order</th><th>Repl</th><th>Net</th><th>Paid</th><th>Remaining</th></tr>
+<table><tr><th>Invoice No</th><th>Receipt No</th><th>Date</th><th>Status</th><th>Items</th><th>Total Order</th><th>Repl</th><th>Net</th><th>Paid</th><th>Remaining</th></tr>
 ${cg.delivs.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
   const tot=lineTotal(d.orderLines);
   const repl=+d.replacement?.amount||0;
@@ -3599,7 +3712,9 @@ ${cg.delivs.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
   const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
   const rem=Math.max(0,net-paid);
   const items=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty}×${products.find(p=>p.id===Object.keys(safeO(d.orderLines)).find(k=>safeO(d.orderLines)[k]===l))?.name||"?"}`).join(", ") || Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>`${l.qty} items`).join(", ") || "—";
-  return`<tr><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td style="font-size:10px">${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"replaced"}</span> `:""}${items}</td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td></tr>`;
+  const inv=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+  const rcp=`RCP-${inv.replace(/^[A-Z]+-/,"")}`;
+  return`<tr><td style="font-family:monospace;font-size:9px;color:#7c3aed">${inv}</td><td style="font-family:monospace;font-size:9px;color:#0ea5e9">${rcp}</td><td>${d.date}</td><td><span class="badge ${d.status==="Delivered"?"bg":d.status==="In Transit"?"bb":"by"}">${d.status}</span></td><td style="font-size:10px">${d.replacement?.done?`<span class="badge bo">🔄 ${d.replacement.item||"replaced"}</span> `:""}${items}</td><td>₹${tot.toLocaleString("en-IN")}</td><td class="orange">${repl>0?`₹${repl.toLocaleString("en-IN")}`:"—"}</td><td>₹${net.toLocaleString("en-IN")}</td><td class="green">₹${paid.toLocaleString("en-IN")}</td><td class="${rem>0?"red":"green"}">₹${rem.toLocaleString("en-IN")}</td></tr>`;
 }).join("")}
 </table>`;
 }).join("")}
@@ -3644,7 +3759,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const supUnits=settings?.supplyUnits||["kg","g","L","mL","pcs","bags","boxes","dozen"];
 
   // Tab icons for nav
-  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","GPS":"📍","Settings":"⚙️"};
+  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Payments":"💳","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","GPS":"📍","Settings":"⚙️"};
 
   if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
@@ -3790,997 +3905,468 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
-          {/* WEATHER WIDGET */}
-          {widgets.includes("weather")&&<WeatherWidget dm={dm} settings={settings}/>}
+          {/* ══════════════════════════════════════════
+              PHASE 12 — DASHBOARD (Redesigned)
+          ══════════════════════════════════════════ */}
+          {(()=>{
+            const todayStr = today();
+            const todayDelivs = deliveries.filter(d => d.date === todayStr);
+            const todayDone   = todayDelivs.filter(d => d.status === "Delivered");
+            const todayPend   = todayDelivs.filter(d => d.status === "Pending");
+            const todayTransit= todayDelivs.filter(d => d.status === "In Transit");
+            const todayCancl  = todayDelivs.filter(d => d.status === "Cancelled");
+            const todayRev    = todayDone.reduce((s,d) => s + lineTotal(d.orderLines), 0);
 
-          {/* QUICK ACTIONS */}
-          {widgets.includes("quickActions")&&(()=>{
-            const ALL_QA=[
-              {key:"newDelivery",  icon:"🚚",label:"New Delivery",   color:"#0ea5e9", action:()=>{setDf(blkD());setDsh("add");setTab("Deliveries");}},
-              {key:"newCustomer",  icon:"👤",label:"New Customer",   color:"#d97706", action:()=>{setCf(blkC());setCsh("add");setTab("Customers");}},
-              {key:"markDone",     icon:"✅",label:"Mark Delivered", color:"#10b981", action:()=>{setTab("Deliveries");}},
-              {key:"logWastage",   icon:"🗑️",label:"Log Wastage",    color:"#f97316", action:()=>{setWF(blkW());setWSh("add");setTab("Wastage");}},
-              {key:"addExpense",   icon:"💸",label:"Add Expense",    color:"#ef4444", action:()=>{setEf(blkE());setEsh("add");setTab("Expenses");}},
-              {key:"logSupply",    icon:"📦",label:"Log Supply",     color:"#8b5cf6", action:()=>{setSf(blkS());setSsh("add");setTab("Supplies");}},
-              {key:"logProduction",icon:"🏭",label:"Log Production", color:"#6366f1", action:()=>{const nextNum=(prodTargets.filter(x=>x.date===today()).length)+1;setPtF({date:today(),shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});setPtSh("add");setTab("Production");}},
-              {key:"qcCheck",      icon:"✅",label:"QC Check",       color:"#14b8a6", action:()=>{setQcF({product:"",shift:"Morning",date:today(),grade:"A",notes:"",checker:displayName});setQcSh("add");setTab("Production");}},
-            ];
-            const activeKeys=settings?.quickActions||["newDelivery","markDone","logWastage","addExpense"];
-            const visibleQA=ALL_QA.filter(q=>activeKeys.includes(q.key));
-            if(visibleQA.length===0)return null;
-            return <div>
-              <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest mb-2">⚡ Quick Actions</p>
-              <div className="grid grid-cols-4 gap-2">
-                {visibleQA.map(q=>(
+            const startOfWeek = (() => { const d=new Date(); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
+            const startOfMonth= (() => { const d=new Date(); d.setDate(1); return d.toISOString().slice(0,10); })();
+            const weekDelivs  = deliveries.filter(d => d.date >= startOfWeek && d.status === "Delivered");
+            const monthDelivs = deliveries.filter(d => d.date >= startOfMonth && d.status === "Delivered");
+            const weekRev     = weekDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
+            const monthRev    = monthDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
+
+            const allDue      = customers.filter(c => c.pending > 0);
+            const totalDueAmt = allDue.reduce((s,c) => s + (c.pending||0), 0);
+
+            const todayPT     = prodTargets.filter(p => p.date === todayStr);
+            const totalTarget = todayPT.reduce((s,p) => s + (p.target||0), 0);
+            const totalActual = todayPT.reduce((s,p) => s + (p.actual||0), 0);
+            const prodPct     = totalTarget > 0 ? Math.round(totalActual / totalTarget * 100) : null;
+
+            const overdueD    = deliveries.filter(d => d.status === "Pending" && d.date < todayStr);
+            const todayWastage= wastage.filter(w => w.date === todayStr);
+            const todayWasteCost = todayWastage.reduce((s,w) => s + (w.cost||0), 0);
+
+            const greetHour = new Date().getHours();
+            const greeting = greetHour < 12 ? "Good morning" : greetHour < 17 ? "Good afternoon" : "Good evening";
+            const greetEmoji = greetHour < 12 ? "🌅" : greetHour < 17 ? "☀️" : "🌙";
+
+            // shared card style helpers
+            const card = (extra={}) => ({background:t.card, border:`1px solid ${t.border}`, borderRadius:20, ...extra});
+            const sectionLabel = {color:t.sub, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.09em", marginBottom:6};
+            const bigNum = (color="#fff") => ({color, fontWeight:900, fontSize:26, lineHeight:1, letterSpacing:"-0.02em"});
+
+            return <>
+
+            {/* ── GREETING HEADER ── */}
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:2,flexWrap:"wrap",gap:10}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:20}}>{greetEmoji}</span>
+                  <div>
+                    <p style={{color:t.text,fontWeight:800,fontSize:20,lineHeight:1.15,letterSpacing:"-0.02em"}}>
+                      {greeting}, {sess.name.split(" ")[0]}
+                    </p>
+                    <p style={{color:t.sub,fontSize:12,marginTop:2}}>{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                {isAdmin&&<button onClick={()=>{setDsh("add");setDf(blkD());}}
+                  style={{background:t.accent,color:t.accentFg,border:"none",borderRadius:14,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:`0 2px 8px ${t.accent}55`}}>
+                  <span style={{fontSize:15}}>＋</span> New Order
+                </button>}
+              </div>
+            </div>
+
+            {/* ── MORNING BRIEFING ── */}
+            {can("dash_seeBriefing")&&(briefingPinned||(!briefingDismissed||(briefingDismissed!==todayStr)))&&(()=>{
+              const data={pendingCount:todayPend.length+todayTransit.length,todayRev,lowStockCount:lowStockItems.length,overdueCount:overdueD.length,churnCount:churnedCustomers.length,noticeCount:(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id)).length,churnDays};
+              return <MorningBriefing dm={dm} onDismiss={()=>setBriefingDismissed(todayStr)} onUnpin={()=>setBriefingPinned(p=>!p)} pinned={briefingPinned} data={data}/>;
+            })()}
+
+            {/* ── TODAY AT A GLANCE — delivery status card ── */}
+            <div style={card({padding:"18px 20px"})}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                <div>
+                  <p style={sectionLabel}>📦 Today's Deliveries</p>
+                  <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                    <p style={{...bigNum(t.text),fontSize:32}}>{todayDelivs.length}</p>
+                    <p style={{color:t.sub,fontSize:13}}>orders today</p>
+                  </div>
+                </div>
+                <button onClick={()=>setTab("Deliveries")}
+                  style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:12,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  View all →
+                </button>
+              </div>
+
+              {todayDelivs.length > 0 ? (()=>{
+                const total = todayDelivs.length;
+                const segments = [
+                  {label:"Delivered", val:todayDone.length,    color:"#10b981", bg: dm?"#10b98118":"#f0fdf4"},
+                  {label:"In Transit",val:todayTransit.length, color:"#3b82f6", bg: dm?"#3b82f618":"#eff6ff"},
+                  {label:"Pending",   val:todayPend.length,    color:"#f59e0b", bg: dm?"#f59e0b18":"#fffbeb"},
+                  {label:"Cancelled", val:todayCancl.length,   color:"#ef4444", bg: dm?"#ef444418":"#fef2f2"},
+                ];
+                return <>
+                  {/* Segmented progress bar */}
+                  <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",gap:2,marginBottom:14,background:t.border}}>
+                    {segments.map(s => s.val > 0 &&
+                      <div key={s.label} style={{width:`${Math.round(s.val/total*100)}%`,background:s.color,transition:"width 0.7s ease",borderRadius:10}}/>
+                    )}
+                  </div>
+                  {/* Status tiles */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                    {segments.map(({label,val,color,bg})=>(
+                      <div key={label} style={{background:bg,borderRadius:14,padding:"10px 8px",textAlign:"center",border:`1px solid ${color}22`}}>
+                        <p style={{color,fontWeight:900,fontSize:22,lineHeight:1}}>{val}</p>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginTop:4,lineHeight:1.3}}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>;
+              })() : (
+                <div style={{background:t.inp,borderRadius:14,padding:"20px",textAlign:"center"}}>
+                  <p style={{fontSize:28,marginBottom:6}}>🗓️</p>
+                  <p style={{color:t.sub,fontSize:13}}>No deliveries scheduled for today</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── REVENUE STATS — Today / Week / Month ── */}
+            {canSeeFinancials&&<div style={card({padding:"18px 20px"})}>
+              <p style={sectionLabel}>💰 Revenue</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:0,marginBottom:16}}>
+                {[
+                  {label:"Today",     val:todayRev,  sub:`${todayDone.length} orders`,   color:"#10b981", borderR:true},
+                  {label:"This Week", val:weekRev,   sub:`${weekDelivs.length} orders`,  color:"#3b82f6", borderR:true},
+                  {label:"This Month",val:monthRev,  sub:`${monthDelivs.length} orders`, color:"#8b5cf6", borderR:false},
+                ].map(({label,val,sub,color,borderR})=>(
+                  <div key={label} style={{textAlign:"center",paddingBottom:4,borderRight:borderR?`1px solid ${t.border}`:"none"}}>
+                    <p style={{color,fontWeight:900,fontSize:22,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(val)}</p>
+                    <p style={{color:t.text,fontSize:11,fontWeight:700,marginTop:4}}>{label}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:1}}>{sub}</p>
+                  </div>
+                ))}
+              </div>
+              <ResponsiveContainer width="100%" height={100}>
+                <BarChart data={chartData} margin={{top:0,right:0,left:-28,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
+                  <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:9,fill:t.sub}} axisLine={false} tickLine={false}/>
+                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v)=>inr(v)}/>
+                  <Bar dataKey="Revenue" fill="#10b981" radius={[4,4,0,0]}/>
+                  <Bar dataKey="Expenses" fill="#ef4444" radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:6}}>
+                {[{c:"#10b981",l:"Revenue"},{c:"#ef4444",l:"Expenses"}].map(({c,l})=>(
+                  <span key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:t.sub}}>
+                    <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>{l}
+                  </span>
+                ))}
+              </div>
+            </div>}
+
+            {/* ── OUTSTANDING PAYMENTS ── */}
+            {canSeeFinancials&&allDue.length>0&&(()=>{
+              const totalBilled = customers.reduce((s,c)=>(s+(c.paid||0)+(c.pending||0)),0);
+              const collPct = totalBilled>0?Math.round(customers.reduce((s,c)=>s+(c.paid||0),0)/totalBilled*100):100;
+              return <div style={{...card(), border:`1.5px solid ${dm?"rgba(239,68,68,0.35)":"rgba(239,68,68,0.2)"}`, padding:"18px 20px"}}>
+                {/* Header */}
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <p style={sectionLabel}>💳 Outstanding Payments</p>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                      <p style={{color:"#ef4444",fontWeight:900,fontSize:26,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(totalDueAmt)}</p>
+                      <p style={{color:t.sub,fontSize:12}}>from {allDue.length} customer{allDue.length!==1?"s":""}</p>
+                    </div>
+                  </div>
+                  {isAdmin&&<button onClick={()=>setTab("Payments")}
+                    style={{background:"#ef444412",color:"#ef4444",border:"1px solid #ef444430",borderRadius:12,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                    Full Ledger →
+                  </button>}
+                </div>
+
+                {/* Collection rate bar */}
+                <div style={{marginBottom:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:5}}>
+                    <span style={{fontWeight:600}}>Collection Rate</span>
+                    <span style={{fontWeight:800,color:collPct>=90?"#10b981":collPct>=70?"#f59e0b":"#ef4444"}}>{collPct}%</span>
+                  </div>
+                  <div style={{height:7,borderRadius:8,overflow:"hidden",background:t.border}}>
+                    <div style={{width:`${collPct}%`,background:collPct>=90?"#10b981":collPct>=70?"#f59e0b":"#ef4444",transition:"width 0.7s",height:"100%",borderRadius:8}}/>
+                  </div>
+                </div>
+
+                {/* Debtor rows */}
+                <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                  {allDue.sort((a,b)=>b.pending-a.pending).slice(0,5).map((c,i,arr)=>{
+                    const billed=(c.paid||0)+(c.pending||0);
+                    const pct=billed>0?Math.round((c.paid||0)/billed*100):0;
+                    const isLast = i >= Math.min(allDue.length,5)-1;
+                    return <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:!isLast?`1px solid ${t.border}`:"none"}}>
+                      {/* Rank badge */}
+                      <div style={{width:26,height:26,borderRadius:8,background:i===0?"#ef444418":t.inp,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <span style={{color:i===0?"#ef4444":t.sub,fontWeight:800,fontSize:12}}>{i+1}</span>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{c.name}</p>
+                          <p style={{color:"#ef4444",fontWeight:800,fontSize:13,flexShrink:0,marginLeft:10}}>{inr(c.pending)}</p>
+                        </div>
+                        <div style={{height:4,borderRadius:4,overflow:"hidden",background:t.border}}>
+                          <div style={{width:`${pct}%`,background:"#10b981",height:"100%",transition:"width 0.5s"}}/>
+                        </div>
+                      </div>
+                      {can("cust_markPaid")&&<button
+                        onClick={()=>{if(isAdmin){setPayLedgerCust(c);setPayLedgerAmt(String(c.pending||""));setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}else{setPaySh(c);setPayAmt("");}}}
+                        style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:10,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                        Collect
+                      </button>}
+                    </div>;
+                  })}
+                </div>
+                {allDue.length>5&&<p style={{color:t.sub,fontSize:11,textAlign:"center",paddingTop:8,fontWeight:600}}>+{allDue.length-5} more customers with outstanding dues</p>}
+              </div>;
+            })()}
+
+            {/* ── TODAY'S DELIVERY LIST (pending/transit) ── */}
+            {(todayPend.length>0||todayTransit.length>0)&&<div style={card({overflow:"hidden"})}>
+              <div style={{padding:"14px 20px 12px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <p style={sectionLabel}>🚚 Needs Action Today</p>
+                  <p style={{color:t.text,fontWeight:700,fontSize:15}}>
+                    {todayPend.length+todayTransit.length} order{todayPend.length+todayTransit.length!==1?"s":""} pending
+                  </p>
+                </div>
+                <button onClick={()=>setTab("Deliveries")}
+                  style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  All →
+                </button>
+              </div>
+              {[...todayTransit,...todayPend].slice(0,8).map((d,i,arr)=>{
+                const tot=lineTotal(d.orderLines);
+                const items=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0);
+                const isTransit=d.status==="In Transit";
+                return <div key={d.id} style={{
+                  padding:"12px 20px",
+                  borderBottom:i<arr.length-1?`1px solid ${t.border}`:"none",
+                  display:"flex",alignItems:"center",gap:12,
+                  background:isTransit?(dm?"rgba(59,130,246,0.04)":"rgba(59,130,246,0.02)"):"transparent"
+                }}>
+                  <div style={{width:38,height:38,borderRadius:12,background:isTransit?"#3b82f615":"#f59e0b15",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                    {isTransit?"🚚":"⏳"}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
+                      {isTransit&&<span style={{background:"#3b82f615",color:"#3b82f6",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700,flexShrink:0}}>EN ROUTE</span>}
+                    </div>
+                    <p style={{color:t.sub,fontSize:11}}>
+                      {items.slice(0,2).map(l=>`${l.qty}×${l.name||""}`).join(", ")}{items.length>2?` +${items.length-2} more`:""}
+                      {canSeePrices&&tot>0?<span style={{color:t.text,fontWeight:600}}> · {inr(tot)}</span>:""}
+                    </p>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer"
+                      style={{background:"#0ea5e912",color:"#0ea5e9",borderRadius:9,padding:"7px 11px",fontSize:13,fontWeight:700,textDecoration:"none",lineHeight:1}}>📍</a>}
+                    {can("deliv_markDone")&&<button onClick={()=>tglD(d)}
+                      style={{background:"#10b981",color:"#fff",border:"none",borderRadius:10,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Done</button>}
+                  </div>
+                </div>;
+              })}
+              {todayPend.length+todayTransit.length>8&&<div style={{padding:"10px 20px",textAlign:"center",borderTop:`1px solid ${t.border}`,background:t.inp}}>
+                <button onClick={()=>setTab("Deliveries")} style={{color:t.accent,background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  +{todayPend.length+todayTransit.length-8} more — view all →
+                </button>
+              </div>}
+            </div>}
+
+            {/* ── PRODUCTION STATUS ── */}
+            {(isAdmin||isFactory)&&(()=>{
+              if(todayPT.length===0) return null;
+              const byProduct = products.map(p=>{
+                const pts=todayPT.filter(x=>x.product===p.name||x.product===p.id);
+                const act=pts.reduce((s,x)=>s+(x.actual||0),0);
+                const tgt=pts.reduce((s,x)=>s+(x.target||0),0);
+                return {name:p.name,actual:act,target:tgt,pct:tgt>0?Math.round(act/tgt*100):null};
+              }).filter(x=>x.actual>0||x.target>0);
+              const prodColor = prodPct===null?"#6366f1":prodPct>=100?"#10b981":prodPct>=70?"#f59e0b":"#ef4444";
+              return <div style={card({padding:"18px 20px"})}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <div>
+                    <p style={sectionLabel}>🏭 Today's Production</p>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                      <p style={{color:t.text,fontWeight:900,fontSize:26,lineHeight:1,letterSpacing:"-0.02em"}}>{totalActual.toLocaleString("en-IN")}</p>
+                      {totalTarget>0&&<p style={{color:t.sub,fontSize:13}}>/ {totalTarget.toLocaleString("en-IN")} target</p>}
+                    </div>
+                  </div>
+                  {prodPct!==null&&(
+                    <div style={{textAlign:"center"}}>
+                      <div style={{width:56,height:56,borderRadius:"50%",background:`${prodColor}18`,border:`3px solid ${prodColor}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <p style={{color:prodColor,fontWeight:900,fontSize:14,lineHeight:1}}>{prodPct}%</p>
+                      </div>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:700,marginTop:4,textTransform:"uppercase"}}>Efficiency</p>
+                    </div>
+                  )}
+                </div>
+
+                {totalTarget>0&&<div style={{height:8,borderRadius:8,overflow:"hidden",background:t.border,marginBottom:14}}>
+                  <div style={{width:`${Math.min(prodPct||0,100)}%`,background:prodColor,transition:"width 0.8s ease",height:"100%",borderRadius:8}}/>
+                </div>}
+
+                {byProduct.length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:4}}>
+                  {byProduct.map(p=>(
+                    <div key={p.name} style={{display:"flex",alignItems:"center",gap:10}}>
+                      <p style={{color:t.sub,fontSize:12,minWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
+                      <div style={{flex:1,height:6,borderRadius:6,overflow:"hidden",background:t.border}}>
+                        <div style={{width:`${Math.min(p.pct||0,100)}%`,background:"#6366f1",height:"100%",transition:"width 0.5s"}}/>
+                      </div>
+                      <p style={{color:t.text,fontSize:12,fontWeight:700,minWidth:56,textAlign:"right"}}>
+                        {p.actual}{p.target>0&&<span style={{color:t.sub,fontWeight:400}}>/{p.target}</span>}
+                      </p>
+                    </div>
+                  ))}
+                </div>}
+
+                {todayWastage.length>0&&<div style={{marginTop:10,padding:"9px 14px",background:"#f9731610",border:"1px solid #f9731630",borderRadius:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <p style={{color:"#f97316",fontSize:12,fontWeight:700}}>🗑 Wastage today: {todayWastage.length} record{todayWastage.length!==1?"s":""}</p>
+                  {can("waste_seeCost")&&todayWasteCost>0&&<p style={{color:"#ef4444",fontSize:12,fontWeight:800}}>{inr(todayWasteCost)}</p>}
+                </div>}
+
+                <button onClick={()=>setTab("Production")}
+                  style={{marginTop:12,width:"100%",background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:12,padding:"9px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  View Production Log →
+                </button>
+              </div>;
+            })()}
+
+            {/* ── OVERDUE DELIVERIES ── */}
+            {isAdmin&&overdueD.length>0&&<div style={{...card(),border:`1.5px solid rgba(239,68,68,0.3)`,background:dm?"rgba(239,68,68,0.04)":"#fff8f8",padding:"16px 20px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div>
+                  <p style={{...sectionLabel,color:"#ef4444"}}>🔴 Overdue Deliveries</p>
+                  <p style={{color:t.text,fontWeight:700,fontSize:15}}>{overdueD.length} order{overdueD.length!==1?"s":""} past due</p>
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {overdueD.slice(0,4).map(d=>{
+                  const cust=customers.find(c=>c.id===d.customerId);
+                  const daysAgo=Math.round((new Date()-new Date(d.date))/86400000);
+                  return <div key={d.id} style={{background:dm?"rgba(239,68,68,0.07)":"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:14,padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
+                      <p style={{color:"#ef4444",fontSize:11,fontWeight:600,marginTop:2}}>{daysAgo} day{daysAgo!==1?"s":""} overdue · {d.date}</p>
+                    </div>
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      {cust?.phone&&<a href={`tel:${cust.phone}`} style={{background:"#10b98115",color:"#10b981",borderRadius:9,padding:"6px 11px",fontSize:12,fontWeight:700,textDecoration:"none"}}>📞</a>}
+                      {can("deliv_markDone")&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered",deliveryDate:today()}:x));addLog("Marked overdue delivered",d.customer);notify(`${d.customer} ✓`);captureGPS("marked_delivered",d.customer);}}
+                        style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:9,padding:"6px 11px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Done</button>}
+                    </div>
+                  </div>;
+                })}
+                {overdueD.length>4&&<div style={{textAlign:"center",paddingTop:2}}>
+                  <button onClick={()=>setTab("Deliveries")} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:11}}>
+                    +{overdueD.length-4} more →
+                  </button>
+                </div>}
+              </div>
+            </div>}
+
+            {/* ── WEATHER ── */}
+            {widgets.includes("weather")&&<WeatherWidget dm={dm} lat={settings?.weatherLat||15.4909} lng={settings?.weatherLng||73.8278} locLabel={settings?.weatherLabel||"Goa"}/>}
+
+            {/* ── TODAY'S WASTAGE (standalone) ── */}
+            {widgets.includes("wastageToday")&&can("dash_seeWastage")&&todayWastage.length>0&&!(isAdmin||isFactory)&&<div style={card({padding:"14px 18px"})}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <p style={{color:t.text,fontWeight:700,fontSize:13}}>🗑 Today's Wastage</p>
+                <span style={{color:"#f97316",fontWeight:800,fontSize:13}}>{todayWastage.reduce((s,w)=>s+(w.qty||0),0)} units</span>
+              </div>
+              {todayWastage.slice(0,3).map((w,i)=>(
+                <div key={w.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:i>0?`1px solid ${t.border}`:"none"}}>
+                  <div><p style={{color:t.text,fontSize:12,fontWeight:600}}>{w.product}</p><p style={{color:t.sub,fontSize:11}}>{w.type} · {w.shift}</p></div>
+                  <p style={{color:t.text,fontWeight:700,fontSize:12}}>{w.qty} {w.unit}</p>
+                </div>
+              ))}
+            </div>}
+
+            {/* ── QUICK ACTIONS ── */}
+            {widgets.includes("quickActions")&&(settings?.quickActions||[]).length>0&&<div>
+              <p style={{...sectionLabel,marginBottom:10}}>⚡ Quick Actions</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}} className="crm-quick-grid">
+                {[
+                  {key:"newDelivery",icon:"🚚",label:"New Delivery",action:()=>{setDsh("add");setDf(blkD());}},
+                  {key:"newCustomer",icon:"👤",label:"New Customer",action:()=>{setCsh("add");setCf(blkC());}},
+                  {key:"markDone",icon:"✅",label:"Mark Delivered",action:()=>setTab("Deliveries")},
+                  {key:"logWastage",icon:"🗑️",label:"Log Wastage",action:()=>{setWSh("add");setWF(blkW());}},
+                  {key:"addExpense",icon:"💸",label:"Add Expense",action:()=>{setEsh("add");setEf(blkE());}},
+                  {key:"logSupply",icon:"📦",label:"Log Supply",action:()=>{setSsh("add");setSf(blkS());}},
+                  {key:"logProduction",icon:"🏭",label:"Log Production",action:()=>setTab("Production")},
+                  {key:"qcCheck",icon:"🔬",label:"QC Check",action:()=>setTab("Production")},
+                ].filter(q=>(settings?.quickActions||[]).includes(q.key)).map(q=>(
                   <button key={q.key} onClick={q.action}
-                    style={{background:q.color+"15",border:`1.5px solid ${q.color}30`,borderRadius:16,padding:"12px 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer"}}
+                    style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:7,cursor:"pointer",transition:"all 0.15s"}}
                     className="crm-quick-action">
-                    <span style={{fontSize:22,lineHeight:1}}>{q.icon}</span>
-                    <p style={{color:q.color,fontSize:10,fontWeight:700,lineHeight:1.2,textAlign:"center"}}>{q.label}</p>
+                    <span style={{fontSize:24}}>{q.icon}</span>
+                    <span style={{color:t.text,fontSize:10,fontWeight:700,textAlign:"center",lineHeight:1.3}}>{q.label}</span>
                   </button>
                 ))}
               </div>
-            </div>;
-          })()}
-
-          {/* DAILY PRODUCTION PROGRESS BAR */}
-          {widgets.includes("productionBar")&&(()=>{
-            const todayPT=prodTargets.filter(x=>x.date===today());
-            if(todayPT.length===0)return null;
-            const totalTarget=todayPT.reduce((s,x)=>s+x.target,0);
-            const totalActual=todayPT.reduce((s,x)=>s+x.actual,0);
-            const pct=totalTarget>0?Math.min(Math.round(totalActual/totalTarget*100),100):0;
-            const pctColor=pct>=100?"#10b981":pct>=75?"#f59e0b":"#ef4444";
-            return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest">🏭 Today's Production</p>
-                  <p style={{color:t.text}} className="font-bold text-sm mt-0.5">{totalActual} <span style={{color:t.sub}} className="font-normal text-xs">/ {totalTarget} units target</span></p>
-                </div>
-                <p style={{color:pctColor}} className="font-black text-2xl">{pct}%</p>
-              </div>
-              <div style={{background:t.border,height:8,borderRadius:8,overflow:"hidden"}}>
-                <div style={{width:`${pct}%`,background:pct>=100?"linear-gradient(90deg,#10b981,#059669)":pct>=75?"linear-gradient(90deg,#f59e0b,#d97706)":"linear-gradient(90deg,#ef4444,#dc2626)",height:"100%",borderRadius:8,transition:"width 1s ease"}}/>
-              </div>
-              <div className="flex gap-3 mt-2">
-                {todayPT.slice(0,3).map(r=>{
-                  const rPct=r.target>0?Math.min(Math.round(r.actual/r.target*100),100):0;
-                  return <div key={r.id} className="flex-1 min-w-0">
-                    <p style={{color:t.sub}} className="text-[10px] truncate">{r.product} · {r.shift}</p>
-                    <p style={{color:rPct>=100?"#10b981":rPct>=75?"#f59e0b":"#ef4444"}} className="text-[11px] font-bold">{r.actual}/{r.target}</p>
-                  </div>;
-                })}
-                {todayPT.length>3&&<div className="flex-1 min-w-0 flex items-end"><p style={{color:t.sub}} className="text-[10px]">+{todayPT.length-3} more</p></div>}
-              </div>
-            </div>;
-          })()}
-          {can("dash_seeBriefing")&&(briefingPinned||briefingDismissed!==today())&&<MorningBriefing
-            dm={dm}
-            pinned={briefingPinned}
-            onDismiss={()=>{setBriefingDismissed(today());}}
-            onUnpin={()=>{const v=!briefingPinned;setBriefingPinned(v);}}
-            data={{
-              pendingCount:pendingD.length,
-              todayRev:deliveries.filter(d=>d.date===today()&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),
-              lowStockCount:lowStockItems.length,
-              overdueCount:deliveries.filter(d=>d.status==="Pending"&&d.date<today()).length,
-              churnCount:churnedCustomers.length,
-              churnDays,
-              noticeCount:(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id)).length,
-            }}
-          />}
-          {/* LOW STOCK ALERT CARD */}
-          {lowStockItems.filter(s=>s.minStock).length>0&&(isAdmin||isFactory)&&(
-            <div style={{background:dm?"#1a0e0e":"#fff7f7",border:"1.5px solid #ef444430",borderRadius:20,padding:"14px 18px"}}>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p style={{color:"#ef4444"}} className="text-[10px] font-bold uppercase tracking-widest mb-0.5">⚠️ Low Stock Alert</p>
-                  <p style={{color:t.text}} className="font-bold text-sm">{lowStockItems.filter(s=>s.minStock).length} item{lowStockItems.filter(s=>s.minStock).length!==1?"s":""} need restocking</p>
-                </div>
-                <Btn dm={dm} size="sm" v="ghost" onClick={()=>setTab("Supplies")}>View →</Btn>
-              </div>
-              {lowStockItems.filter(s=>s.minStock).map(s=>(
-                <div key={s.id} className="flex items-center justify-between py-2" style={{borderTop:`1px solid ${t.border}`}}>
-                  <div>
-                    <p style={{color:t.text}} className="text-sm font-semibold">{s.item}</p>
-                    {s.supplier&&<p style={{color:t.sub}} className="text-[11px]">{s.supplier}</p>}
-                  </div>
-                  <div className="text-right">
-                    <p style={{color:"#ef4444"}} className="font-bold text-sm">{s.qty} {s.unit}</p>
-                    <p style={{color:t.sub}} className="text-[10px]">min: {s.minStock} {s.unit}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* WHO'S ACTIVE RIGHT NOW — admin only */}
-          {isAdmin&&(()=>{
-            const now=Date.now();
-            const TWO_HOURS=2*60*60*1000;
-            const agentUsers2=users.filter(u=>u.role==="agent"&&u.active);
-            if(agentUsers2.length===0) return null;
-            const agentPulse=agentUsers2.map(u=>{
-              const lastPing=(gpsLogs||[]).filter(l=>l.agentId===u.id).sort((a,b)=>b.ts-a.ts)[0];
-              const isActive=lastPing&&(now-lastPing.ts)<TWO_HOURS;
-              const minsAgo=lastPing?Math.max(0,Math.round((now-lastPing.ts)/60000)):null;
-              return {u,isActive,minsAgo,lastPing};
-            });
-            const activeCount=agentPulse.filter(x=>x.isActive).length;
-            return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"12px 16px"}}>
-              <div className="flex items-center justify-between mb-2">
-                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">👥 Agents Live Now</p>
-                <span style={{background:activeCount>0?"#10b98120":"#6b728020",color:activeCount>0?"#10b981":"#6b7280",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{activeCount}/{agentPulse.length} active</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {agentPulse.map(({u,isActive,minsAgo,lastPing})=>{
-                  const initials=u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-                  return <div key={u.id} className="flex items-center gap-2 py-1.5 px-2.5 rounded-xl" style={{background:isActive?"#10b98110":"#6b728010",border:`1px solid ${isActive?"#10b98130":"#6b728020"}`}}>
-                    <div className="relative shrink-0">
-                      <div style={{width:28,height:28,borderRadius:"50%",background:isActive?"#10b98125":"#6b728025",color:isActive?"#10b981":"#6b7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>{initials}</div>
-                      <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:isActive?"#10b981":"#9ca3af",border:"1.5px solid "+t.card,boxShadow:isActive?"0 0 0 2px #10b98140":"none"}}/>
-                    </div>
-                    <div>
-                      <p style={{color:t.text,fontSize:11,fontWeight:700,lineHeight:1.2}}>{u.name.split(" ")[0]}</p>
-                      <p style={{color:isActive?"#10b981":"#9ca3af",fontSize:9,fontWeight:600}}>{isActive?(minsAgo<2?"just now":minsAgo<60?`${minsAgo}m ago`:`${Math.round(minsAgo/60)}h ago`):"offline"}</p>
-                    </div>
-                    {isActive&&lastPing&&<button onClick={()=>setTab("GPS")} style={{background:"#0ea5e910",color:"#0ea5e9",border:"none",borderRadius:6,fontSize:9,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>📍</button>}
-                  </div>;
-                })}
-              </div>
-            </div>;
-          })()}
-
-          {/* TODAY SUMMARY HERO BANNER */}
-          {(()=>{
-            const todayStr=today();
-            const todayD=deliveries.filter(d=>d.date===todayStr);
-            const todayDel=todayD.filter(d=>d.status==="Delivered");
-            const todayPend=todayD.filter(d=>d.status==="Pending");
-            const todayRev=todayDel.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-            const todayRepl=todayD.filter(d=>d.replacement?.done).length;
-            const delivRate=todayD.length>0?Math.round(todayDel.length/todayD.length*100):0;
-            const isFullDelivery=todayD.length>0&&delivRate===100;
-            return <div style={{background:isFullDelivery?(dm?"linear-gradient(135deg,#0d1f35,#0d1a2e)":"linear-gradient(135deg,#eff6ff,#e8f0fb)"):dm?"linear-gradient(135deg,#0f1923,#111820)":"linear-gradient(135deg,#f0f4f8,#eef2f8)",border:isFullDelivery?"2px solid #3b82f6":dm?"1px solid #1e3a5f":"1px solid #c7d7ee",borderRadius:8,padding:"18px 20px",transition:"all 0.5s ease",boxShadow:isFullDelivery?"0 0 0 3px rgba(59,130,246,0.2),0 4px 24px rgba(30,58,95,0.2)":"none",animation:isFullDelivery?"goldPulse 2s ease-in-out infinite":"none"}}>
-              {isFullDelivery&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:800,marginBottom:8,letterSpacing:"0.05em"}}>🏆 100% DELIVERED — PERFECT DAY!</p>}
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">📅 Today</p>
-                  <p style={{color:t.text}} className="font-black text-base">{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}</p>
-                </div>
-                {todayD.length>0&&<div className="text-right">
-                  <p style={{color:delivRate>=80?"#10b981":delivRate>=50?"#f59e0b":"#ef4444"}} className="text-2xl font-black">{delivRate}%</p>
-                  <p style={{color:t.sub}} className="text-[10px] font-semibold">delivery rate</p>
-                </div>}
-              </div>
-              {todayD.length===0
-                ?<p style={{color:t.sub}} className="text-sm">No orders scheduled today.</p>
-                :<div className="grid grid-cols-4 gap-3">
-                  {(canSeeFinancials
-                    ?[{label:"Orders",val:todayD.length,color:t.text,icon:"📋"},{label:"Delivered",val:todayDel.length,color:"#10b981",icon:"✅"},{label:"Pending",val:todayPend.length,color:"#f59e0b",icon:"⏳"},{label:"Revenue",val:inr(todayRev),color:"#10b981",icon:"💰"}]
-                    :[{label:"Orders",val:todayD.length,color:t.text,icon:"📋"},{label:"Delivered",val:todayDel.length,color:"#10b981",icon:"✅"},{label:"Pending",val:todayPend.length,color:"#f59e0b",icon:"⏳"},{label:"Replaced",val:todayRepl,color:"#f97316",icon:"🔄"}]
-                  ).map(x=><div key={x.label} className="text-center">
-                    <p style={{color:x.color}} className="font-black text-xl leading-none">{x.val}</p>
-                    <p style={{color:t.sub}} className="text-[10px] font-semibold mt-1">{x.label}</p>
-                  </div>)}
-                </div>}
-              {/* Delivery progress bar */}
-              {todayD.length>0&&<div className="mt-3">
-                <div style={{background:dm?"#2a2a00":"#fde68a",height:6,borderRadius:6,overflow:"hidden"}}>
-                  <div style={{width:`${delivRate}%`,background:delivRate>=80?"#10b981":delivRate>=50?"#f59e0b":"#ef4444",height:"100%",borderRadius:6,transition:"width 0.8s ease"}}/>
-                </div>
-              </div>}
-            </div>;
-          })()}
-
-          {/* END-OF-DAY DIGEST + WHATSAPP ORDER SUMMARY — admin only */}
-          {isAdmin&&(()=>{
-            const todayStr=today();
-            const todayD2=deliveries.filter(d=>d.date===todayStr);
-            const todayDel2=todayD2.filter(d=>d.status==="Delivered");
-            const todayPend2=todayD2.filter(d=>d.status==="Pending");
-            const todayRev2=todayDel2.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-            const todayWaste2=(wastage||[]).filter(w=>w.date===todayStr);
-            const hour=new Date().getHours();
-            const isEOD=hour>=18; // show from 6 PM
-
-            const overdueD2=deliveries.filter(d=>d.status==="Pending"&&d.date<todayStr);
-
-            function copyDigest(){
-              const lines=[
-                `📊 *${settings?.appName||"TAS"} — Daily Summary*`,
-                `📅 ${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}`,
-                ``,
-                `✅ Delivered: ${todayDel2.length}/${todayD2.length} orders`,
-                todayPend2.length>0?`⏳ Pending: ${todayPend2.length} orders`:``,
-                canSeeFinancials?`💰 Revenue collected: ${inr(todayRev2)}`:``,
-                todayWaste2.length>0?`🗑️ Wastage entries: ${todayWaste2.length} (${todayWaste2.reduce((s,w)=>s+(w.qty||0),0)} units)`:``,
-                overdueD2.length>0?`🔴 Still overdue: ${overdueD2.length} orders`:``,
-                ``,
-                `_Sent from ${settings?.appName||"TAS"} CRM_`,
-              ].filter(l=>l!==``).join("\n");
-              navigator.clipboard?.writeText(lines).then(()=>notify("Summary copied! Paste in WhatsApp ✓")).catch(()=>notify("Copy failed — try long-pressing the text"));
-            }
-
-
-            const agentUsers3=users.filter(u=>u.role==="agent"&&u.active);
-            const pendingByAgent=agentUsers3.map(u=>({
-              u,
-              count:deliveries.filter(d=>d.status==="Pending"&&(d.agentId===u.id||d.agent===u.name)).length
-            })).sort((a,b)=>b.count-a.count);
-
-            function openTool(key){
-              setAdminToolData(null);
-              if(key==="overdueCustomers"){
-                const days=Math.max(1,+overdueDays||7);
-                const res=customers.filter(c=>c.pending>0).map(c=>{
-                  const lastD=deliveries.filter(d=>d.customerId===c.id&&d.status==="Pending").sort((a,b)=>a.date>b.date?1:-1)[0];
-                  return {...c,lastPendingDate:lastD?.date||"",daysOverdue:lastD?.date?Math.round((Date.now()-new Date(lastD.date).getTime())/86400000):null};
-                }).filter(c=>c.daysOverdue===null||c.daysOverdue>=days).sort((a,b)=>(b.daysOverdue||0)-(a.daysOverdue||0));
-                setAdminToolData(res);
-              }
-              if(key==="inactiveCustomers"){
-                const days=Math.max(1,+inactiveDays||30);
-                const res=customers.map(c=>{
-                  const lastD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date>a.date?1:-1)[0];
-                  return {...c,lastOrderDate:lastD?.date||"",daysSince:lastD?.date?Math.round((Date.now()-new Date(lastD.date).getTime())/86400000):null};
-                }).filter(c=>!c.lastOrderDate||(c.daysSince!==null&&c.daysSince>=days)).sort((a,b)=>(b.daysSince||9999)-(a.daysSince||9999));
-                setAdminToolData(res);
-              }
-              if(key==="duplicates"){
-                const seen={};
-                customers.forEach(c=>{
-                  const k=c.name.trim().toLowerCase();
-                  if(!seen[k]) seen[k]=[];
-                  seen[k].push(c);
-                });
-                const res=Object.values(seen).filter(g=>g.length>1);
-                setAdminToolData(res);
-              }
-              if(key==="productSales"){
-                const from=salesFrom||deliveries.reduce((m,d)=>d.date<m?d.date:m,today());
-                const to=salesTo||today();
-                const filtered=deliveries.filter(d=>d.status==="Delivered"&&d.date>=from&&d.date<=to);
-                const res=products.map(p=>{
-                  const total=filtered.reduce((s,d)=>{const l=safeO(d.orderLines)[p.id];return s+(l?.qty||0);},0);
-                  const revenue=filtered.reduce((s,d)=>{const l=safeO(d.orderLines)[p.id];return s+(l?.qty||0)*(l?.priceAmount||0);},0);
-                  return {id:p.id,name:p.name,unit:p.unit,total,revenue};
-                }).filter(r=>r.total>0).sort((a,b)=>b.revenue-a.revenue);
-                setAdminToolData(res);
-              }
-              if(key==="wastageByProduct"){
-                const wpMap={};
-                (wastage||[]).forEach(w=>{
-                  if(!wpMap[w.product]) wpMap[w.product]={name:w.product,qty:0,entries:0,cost:0};
-                  wpMap[w.product].qty+=(w.qty||0);
-                  wpMap[w.product].entries+=1;
-                  wpMap[w.product].cost+=(w.costImpact||0);
-                });
-                const res=Object.values(wpMap).sort((a,b)=>b.qty-a.qty);
-                setAdminToolData(res);
-              }
-              if(key==="weeklyDigest"){
-                const days7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d.toISOString().slice(0,10);});
-                const first=days7[0],last=days7[6];
-                const wDel=deliveries.filter(d=>d.date>=first&&d.date<=last);
-                const wDelivered=wDel.filter(d=>d.status==="Delivered");
-                const wRev=wDelivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                const wWaste=(wastage||[]).filter(w=>w.date>=first&&w.date<=last);
-                const wExp=(expenses||[]).filter(e=>e.date>=first&&e.date<=last).reduce((s,e)=>s+(+e.amount||0),0);
-                const lines=[
-                  `📊 *${settings?.appName||"TAS"} — Weekly Summary*`,
-                  `📅 ${first} → ${last}`,
-                  ``,
-                  `📦 Orders: ${wDel.length} | ✅ Delivered: ${wDelivered.length}`,
-                  wRev>0?`💰 Revenue: ${inr(wRev)}`:``,
-                  wExp>0?`💸 Expenses: ${inr(wExp)}`:``,
-                  wRev>0&&wExp>0?`📈 Net: ${inr(wRev-wExp)}`:``,
-                  wWaste.length>0?`🗑️ Wastage entries: ${wWaste.length}`:``,
-                  ``,
-                  `_${settings?.appName||"TAS"} CRM_`,
-                ].filter(l=>l!==``).join("\n");
-                setAdminToolData(lines);
-              }
-              if(key==="agentLeaderboard"){
-                const now=new Date();
-                const mStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
-                const mEnd=today();
-                const res=agentUsers3.map(u=>{
-                  const myD=deliveries.filter(d=>(d.agentId===u.id||d.agent===u.name)&&d.date>=mStart&&d.date<=mEnd);
-                  const delivered=myD.filter(d=>d.status==="Delivered");
-                  const pending=myD.filter(d=>d.status==="Pending").length;
-                  const revenue=delivered.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                  return {u,total:myD.length,delivered:delivered.length,pending,revenue,rate:myD.length>0?Math.round(delivered.length/myD.length*100):0};
-                }).sort((a,b)=>b.delivered-a.delivered);
-                setAdminToolData(res);
-              }
-              if(key==="orphanDeliveries"){
-                const custIds=new Set(customers.map(c=>c.id));
-                const res=deliveries.filter(d=>d.customerId&&!custIds.has(d.customerId));
-                setAdminToolData(res);
-              }
-              if(key==="auditLogView"){
-                setAdminToolData([...(actLog||[])].slice(0,200));
-              }
-              setAdminToolSheet(key);
-            }
-
-            function doReschedule(){
-              if(!rescheduleDate){notify("Pick a date");return;}
-              const pending=deliveries.filter(d=>d.date===todayStr&&d.status==="Pending");
-              if(pending.length===0){notify("No pending orders today");return;}
-              setDeliv(p=>p.map(d=>pending.find(x=>x.id===d.id)?{...d,date:rescheduleDate}:d));
-              addLog("Rescheduled pending",`${pending.length} orders → ${rescheduleDate}`);
-              notify(`${pending.length} orders moved to ${rescheduleDate} ✓`);
-              setAdminToolSheet(null);
-            }
-
-            function doBulkAgentReassign(){
-              if(!bulkAgentTo){notify("Select target agent");return;}
-              const toUser=users.find(u=>u.id===bulkAgentTo);
-              if(!toUser){notify("Agent not found");return;}
-              let count=0;
-              setDeliv(p=>p.map(d=>{
-                if(d.date>=bulkAgentDateFrom&&d.date<=bulkAgentDateTo&&d.status==="Pending"&&(!bulkAgentFrom||d.agentId===bulkAgentFrom||d.agent===users.find(u=>u.id===bulkAgentFrom)?.name)){
-                  count++;
-                  return {...d,agentId:toUser.id,agent:toUser.name};
-                }
-                return d;
-              }));
-              addLog("Bulk agent reassign",`→ ${toUser.name} (${bulkAgentDateFrom} – ${bulkAgentDateTo})`);
-              notify(`Reassigned ${count} deliveries to ${toUser.name} ✓`);
-              setAdminToolSheet(null);
-            }
-
-            function doBulkDelete(){
-              const months=Math.max(1,+bulkDelMonths||3);
-              const cutoff=new Date(Date.now()-months*30*86400000).toISOString().slice(0,10);
-              const toDelete=deliveries.filter(d=>d.status==="Delivered"&&d.date<cutoff);
-              if(toDelete.length===0){notify("Nothing to delete");return;}
-              ask(`Delete ${toDelete.length} delivered orders older than ${months} months?`,()=>{
-                const ids=new Set(toDelete.map(d=>d.id));
-                setDeliv(p=>p.filter(d=>!ids.has(d.id)));
-                addLog("Bulk deleted old orders",`${toDelete.length} records before ${cutoff}`);
-                notify(`${toDelete.length} old orders deleted ✓`);
-                setAdminToolSheet(null);
-              });
-            }
-
-            function doResetPassword(){
-              if(!resetPwUser){notify("Select a user");return;}
-              if(!resetPwVal||resetPwVal.length<6){notify("Password must be at least 6 characters");return;}
-              setUsers(p=>p.map(u=>u.id===resetPwUser?{...u,password:hashPw(resetPwVal)}:u));
-              addLog("Reset password",`User: ${users.find(u=>u.id===resetPwUser)?.username||"?"}`);
-              notify("Password reset ✓");
-              setResetPwVal("");
-              setAdminToolSheet(null);
-            }
-
-            function doExportContacts(){
-              exportCSV(customers,"customer_contacts",[
-                {label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},
-                {label:"Active",val:r=>r.active?"Yes":"No"},{label:"Join Date",key:"joinDate"},
-                {label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Notes",key:"notes"},
-              ]);
-              addLog("Exported contacts",`${customers.length} customers`);
-              notify("Contacts exported ✓");
-            }
-
-            function doPrintRunSheet(){
-              const pendingToday=deliveries.filter(d=>d.date===todayStr&&d.status==="Pending");
-              if(pendingToday.length===0){notify("No pending deliveries today");return;}
-              const co=settings?.companyName||"TAS Healthy World";
-              const rows=pendingToday.map((d,i)=>{
-                const items=lineRows(d.orderLines||{},products).filter(r=>r.qty>0).map(r=>`${r.qty}× ${r.name}`).join(", ")||"—";
-                const agent=d.agent||"Unassigned";
-                return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-weight:700">${i+1}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-weight:700">${d.customer}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${d.address||"—"}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${items}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">${agent}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e5e5">☐</td></tr>`;
-              }).join("");
-              const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet ${todayStr}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;font-weight:900;color:#92400e}h2{font-size:12px;font-weight:700;color:#78716c;margin-top:4px;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#f5f5f4;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#a8a29e;border-bottom:2px solid #e5e5e5}.footer{margin-top:24px;text-align:center;font-size:10px;color:#a8a29e}@media print{@page{margin:1cm}body{padding:0}}</style></head><body><h1>🫓 ${co} — Delivery Run Sheet</h1><h2>${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · ${pendingToday.length} deliveries</h2><table><tr><th>#</th><th>Customer</th><th>Address</th><th>Items</th><th>Agent</th><th>Done ✓</th></tr>${rows}</table><div class="footer">Printed ${new Date().toLocaleString("en-IN")} · ${co}</div><script>window.addEventListener('load',function(){window.print();});</script></body></html>`;
-              const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-              const url=URL.createObjectURL(blob);
-              const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
-              document.body.appendChild(a);a.click();
-              setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
-              addLog("Printed run sheet",`${todayStr} — ${pendingToday.length} stops`);
-              notify("Run sheet opened in new tab ✓");
-            }
-
-            const toolGroups=[
-              {label:"📦 Deliveries",tools:[
-                {icon:"🔁",label:"Reschedule Pending",key:"reschedule",color:"#f59e0b"},
-                {icon:"👤",label:"Bulk Reassign Agent",key:"bulkReassign",color:"#0ea5e9"},
-                {icon:"🖨️",label:"Print Run Sheet",key:"printRunSheet",color:"#10b981"},
-                {icon:"📊",label:isEOD?"Copy Day Summary":"Day Summary (after 6 PM)",key:isEOD?"daySummary":null,color:"#6366f1"},
-              ]},
-              {label:"👥 Customers",tools:[
-                {icon:"🔴",label:"Overdue Customers",key:"overdueCustomers",color:"#ef4444"},
-                {icon:"😴",label:"Inactive Customers",key:"inactiveCustomers",color:"#f97316"},
-                {icon:"🪞",label:"Spot Duplicates",key:"duplicates",color:"#8b5cf6"},
-                {icon:"📤",label:"Export Contacts",key:"exportContacts",color:"#10b981"},
-              ]},
-              {label:"📊 Reports",tools:[
-                {icon:"📅",label:"Weekly Digest",key:"weeklyDigest",color:"#6366f1"},
-                {icon:"🏆",label:"Agent Leaderboard",key:"agentLeaderboard",color:"#f59e0b"},
-                {icon:"📦",label:"Product Sales",key:"productSales",color:"#0ea5e9"},
-                {icon:"🗑️",label:"Wastage by Product",key:"wastageByProduct",color:"#ef4444"},
-              ]},
-              {label:"🗃️ Maintenance",tools:[
-                {icon:"💾",label:"Quick Backup",key:"quickBackup",color:"#10b981"},
-                {icon:"🧹",label:"Orphan Deliveries",key:"orphanDeliveries",color:"#f97316"},
-                {icon:"📜",label:"Audit Log",key:"auditLogView",color:"#6366f1"},
-                {icon:"🗑️",label:"Bulk Delete Old Orders",key:"bulkDelete",color:"#ef4444"},
-              ]},
-              {label:"⚙️ Agent Tools",tools:[
-                {icon:"🔑",label:"Reset Password",key:"resetPassword",color:"#8b5cf6"},
-                {icon:"🔛",label:"Toggle Agent Active",key:"toggleAgent",color:"#0ea5e9"},
-              ]},
-            ];
-
-            return <>
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden"}}>
-                {/* Header — always visible, tap to expand/collapse */}
-                <button
-                  onClick={()=>setAdminToolSheet(adminToolSheet==="__open"?null:"__open")}
-                  style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",WebkitTapHighlightColor:"transparent"}}
-                >
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{width:32,height:32,borderRadius:10,background:"#f59e0b20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🛠️</div>
-                    <div>
-                      <p style={{color:t.text,fontWeight:800,fontSize:13,lineHeight:1.2}}>Admin Tools</p>
-                      <p style={{color:t.sub,fontSize:10,marginTop:1}}>{toolGroups.reduce((s,g)=>s+g.tools.filter(x=>x.key).length,0)} tools across {toolGroups.length} categories</p>
-                    </div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {pendingByAgent[0]?.count>0&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>🏃 {pendingByAgent[0].u.name} ({pendingByAgent[0].count})</span>}
-                    <div style={{width:24,height:24,borderRadius:"50%",background:t.inp,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:t.sub,fontWeight:700,transition:"transform 0.2s",transform:adminToolSheet==="__open"?"rotate(180deg)":"rotate(0deg)"}}>▾</div>
-                  </div>
-                </button>
-
-                {/* Dropdown body */}
-                {adminToolSheet==="__open"&&<>
-                  <div style={{height:1,background:t.border}}/>
-                  <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
-                    {toolGroups.map((group,gi)=>(
-                      <div key={gi}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,paddingLeft:2}}>{group.label}</p>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:6}}>
-                          {group.tools.map((tool,ti)=>(
-                            <button key={ti}
-                              onClick={()=>{
-                                if(!tool.key) return;
-                                if(tool.key==="daySummary"){copyDigest();return;}
-                                if(tool.key==="exportContacts"){doExportContacts();return;}
-                                if(tool.key==="printRunSheet"){doPrintRunSheet();return;}
-                                if(tool.key==="quickBackup"){exportAll();addLog("Quick backup","From admin tools");notify("Backup downloaded ✓");return;}
-                                openTool(tool.key);
-                              }}
-                              disabled={!tool.key}
-                              style={{
-                                background:tool.key?tool.color+"12":t.inp,
-                                border:`1px solid ${tool.key?tool.color+"35":t.border}`,
-                                color:tool.key?tool.color:t.sub,
-                                borderRadius:10,
-                                padding:"9px 10px",
-                                fontSize:11,
-                                fontWeight:700,
-                                cursor:tool.key?"pointer":"default",
-                                display:"flex",
-                                alignItems:"center",
-                                gap:6,
-                                textAlign:"left",
-                                lineHeight:1.3,
-                                WebkitTapHighlightColor:"transparent",
-                                opacity:tool.key?1:0.5,
-                                transition:"opacity 0.15s",
-                              }}
-                            >
-                              <span style={{fontSize:14,flexShrink:0}}>{tool.icon}</span>
-                              <span>{tool.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>}
-              </div>
-
-              {/* ── ADMIN TOOL SHEETS ── */}
-
-              {/* Reschedule pending */}
-              <Sheet open={adminToolSheet==="reschedule"} title="🔁 Reschedule Today's Pending" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Move all of today's pending deliveries ({deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} orders) to a new date.</p>
-                <Inp dm={dm} label="New Date" type="date" value={rescheduleDate} onChange={e=>setRescheduleDate(e.target.value)} min={todayStr}/>
-                <Btn dm={dm} v="amber" onClick={doReschedule}>Reschedule {deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} Orders</Btn>
-              </Sheet>
-
-              {/* Bulk reassign agent */}
-              <Sheet open={adminToolSheet==="bulkReassign"} title="👤 Bulk Reassign Agent" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Reassign all pending deliveries in a date range to a different agent.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Inp dm={dm} label="From Date" type="date" value={bulkAgentDateFrom} onChange={e=>setBulkAgentDateFrom(e.target.value)}/>
-                  <Inp dm={dm} label="To Date" type="date" value={bulkAgentDateTo} onChange={e=>setBulkAgentDateTo(e.target.value)}/>
-                </div>
-                <Sel dm={dm} label="From Agent (optional — leave blank for all)" value={bulkAgentFrom} onChange={e=>setBulkAgentFrom(e.target.value)}>
-                  <option value="">Any / Unassigned</option>
-                  {agentUsers3.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-                </Sel>
-                <Sel dm={dm} label="Reassign To" value={bulkAgentTo} onChange={e=>setBulkAgentTo(e.target.value)}>
-                  <option value="">— select agent —</option>
-                  {agentUsers3.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-                </Sel>
-                <Btn dm={dm} v="sky" onClick={doBulkAgentReassign}>Reassign Deliveries</Btn>
-              </Sheet>
-
-              {/* Print run sheet */}
-              <Sheet open={adminToolSheet==="printRunSheet"} title="🖨️ Print Run Sheet" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Generates a printable PDF run sheet for today's {deliveries.filter(d=>d.date===todayStr&&d.status==="Pending").length} pending deliveries with a checkbox column.</p>
-                <Btn dm={dm} v="success" onClick={()=>{doPrintRunSheet();setAdminToolSheet(null);}}>Open Print Preview</Btn>
-              </Sheet>
-
-              {/* Overdue customers */}
-              <Sheet open={adminToolSheet==="overdueCustomers"} title="🔴 Overdue Customers" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <div className="flex gap-2 items-end">
-                  <Inp dm={dm} label="Overdue by at least (days)" type="number" min="1" value={overdueDays} onChange={e=>setOverdueDays(e.target.value)} className="flex-1"/>
-                  <Btn dm={dm} v="danger" onClick={()=>openTool("overdueCustomers")}>Search</Btn>
-                </div>
-                {adminToolData&&(adminToolData.length===0
-                  ?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No overdue customers found ✓</p>
-                  :<div className="flex flex-col gap-2">
-                    {adminToolData.map(c=>(
-                      <div key={c.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
-                            <p style={{color:t.sub,fontSize:11}}>{c.phone||"No phone"}</p>
-                          </div>
-                          <div className="text-right">
-                            <p style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</p>
-                            <p style={{color:t.sub,fontSize:10}}>{c.daysOverdue!==null?`${c.daysOverdue}d overdue`:"no date"}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <Btn dm={dm} v="outline" onClick={()=>exportCSV(adminToolData,"overdue_customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Pending",key:"pending"},{label:"Days Overdue",key:"daysOverdue"}])}>Export CSV</Btn>
-                  </div>
-                )}
-              </Sheet>
-
-              {/* Inactive customers */}
-              <Sheet open={adminToolSheet==="inactiveCustomers"} title="😴 Inactive Customers" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <div className="flex gap-2 items-end">
-                  <Sel dm={dm} label="Inactive for" value={inactiveDays} onChange={e=>{setInactiveDays(e.target.value);}} className="flex-1">
-                    <option value="30">30 days</option>
-                    <option value="60">60 days</option>
-                    <option value="90">90 days</option>
-                  </Sel>
-                  <Btn dm={dm} v="amber" onClick={()=>openTool("inactiveCustomers")}>Search</Btn>
-                </div>
-                {adminToolData&&(adminToolData.length===0
-                  ?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No inactive customers found ✓</p>
-                  :<div className="flex flex-col gap-2">
-                    {adminToolData.map(c=>(
-                      <div key={c.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                        <div>
-                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
-                          <p style={{color:t.sub,fontSize:11}}>{c.lastOrderDate?`Last order: ${c.lastOrderDate}`:"No orders ever"}</p>
-                        </div>
-                        <p style={{color:"#f97316",fontWeight:700,fontSize:12}}>{c.daysSince!==null?`${c.daysSince}d ago`:"—"}</p>
-                      </div>
-                    ))}
-                    <Btn dm={dm} v="outline" onClick={()=>exportCSV(adminToolData,"inactive_customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Last Order",key:"lastOrderDate"},{label:"Days Since",key:"daysSince"}])}>Export CSV</Btn>
-                  </div>
-                )}
-              </Sheet>
-
-              {/* Duplicates */}
-              <Sheet open={adminToolSheet==="duplicates"} title="🪞 Duplicate Customer Names" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                {!adminToolData?<p style={{color:t.sub,fontSize:12}}>Loading…</p>
-                  :adminToolData.length===0
-                    ?<p style={{color:"#10b981",fontSize:13,textAlign:"center"}}>No duplicate names found ✓</p>
-                    :<div className="flex flex-col gap-3">
-                      {adminToolData.map((group,gi)=>(
-                        <div key={gi} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
-                          <p style={{color:"#f97316",fontWeight:700,fontSize:11,marginBottom:6}}>⚠️ {group.length} entries with same name</p>
-                          {group.map(c=>(
-                            <div key={c.id} className="flex justify-between items-center py-1">
-                              <div>
-                                <p style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</p>
-                                <p style={{color:t.sub,fontSize:11}}>{c.phone||"No phone"} · {c.address||"No address"}</p>
-                              </div>
-                              <p style={{color:t.sub,fontSize:10}}>ID: {c.id.slice(-6)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                }
-              </Sheet>
-
-              {/* Export contacts */}
-              <Sheet open={adminToolSheet==="exportContacts"} title="📤 Export Customer Contacts" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Exports all {customers.length} customers as a CSV with name, phone, address, join date, and balance.</p>
-                <Btn dm={dm} v="success" onClick={()=>{doExportContacts();setAdminToolSheet(null);}}>Download CSV</Btn>
-              </Sheet>
-
-              {/* Weekly digest */}
-              <Sheet open={adminToolSheet==="weeklyDigest"} title="📅 Weekly Digest" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                {adminToolData&&typeof adminToolData==="string"&&<>
-                  <pre style={{background:t.inp,borderRadius:10,padding:12,fontSize:11,color:t.text,whiteSpace:"pre-wrap",lineHeight:1.7}}>{adminToolData}</pre>
-                  <Btn dm={dm} v="primary" onClick={()=>navigator.clipboard?.writeText(adminToolData).then(()=>notify("Copied ✓")).catch(()=>notify("Copy failed"))}>Copy to Clipboard</Btn>
-                </>}
-              </Sheet>
-
-              {/* Agent leaderboard */}
-              <Sheet open={adminToolSheet==="agentLeaderboard"} title="🏆 Agent Leaderboard — This Month" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                {adminToolData&&<div className="flex flex-col gap-2">
-                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No delivery data this month</p>
-                    :adminToolData.map((row,i)=>(
-                    <div key={row.u.id} style={{background:i===0?"#f59e0b10":t.inp,border:i===0?"1px solid #f59e0b30":"none",borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <span style={{fontSize:18}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":"👤"}</span>
-                        <div>
-                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{row.u.name}</p>
-                          <p style={{color:t.sub,fontSize:11}}>{row.delivered}/{row.total} delivered · {row.rate}%</p>
-                        </div>
-                      </div>
-                      <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>{inr(row.revenue)}</p>
-                    </div>
-                  ))}
-                </div>}
-              </Sheet>
-
-              {/* Product sales */}
-              <Sheet open={adminToolSheet==="productSales"} title="📦 Product Sales Breakdown" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <div className="grid grid-cols-2 gap-3">
-                  <Inp dm={dm} label="From" type="date" value={salesFrom} onChange={e=>setSalesFrom(e.target.value)}/>
-                  <Inp dm={dm} label="To" type="date" value={salesTo} onChange={e=>setSalesTo(e.target.value)}/>
-                </div>
-                <Btn dm={dm} v="sky" onClick={()=>openTool("productSales")}>Calculate</Btn>
-                {adminToolData&&<div className="flex flex-col gap-2">
-                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No delivered orders in range</p>
-                    :adminToolData.map(r=>(
-                    <div key={r.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                      <div>
-                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{r.name}</p>
-                        <p style={{color:t.sub,fontSize:11}}>{r.total} {r.unit} sold</p>
-                      </div>
-                      <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>{inr(r.revenue)}</p>
-                    </div>
-                  ))}
-                </div>}
-              </Sheet>
-
-              {/* Wastage by product */}
-              <Sheet open={adminToolSheet==="wastageByProduct"} title="🗑️ Wastage by Product" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                {adminToolData&&<div className="flex flex-col gap-2">
-                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No wastage logged yet</p>
-                    :adminToolData.map((r,i)=>(
-                    <div key={i} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                      <div>
-                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{r.name}</p>
-                        <p style={{color:t.sub,fontSize:11}}>{r.entries} entries</p>
-                      </div>
-                      <div className="text-right">
-                        <p style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{r.qty} units</p>
-                        {r.cost>0&&<p style={{color:t.sub,fontSize:10}}>{inr(r.cost)} lost</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>}
-              </Sheet>
-
-              {/* Quick backup */}
-              <Sheet open={adminToolSheet==="quickBackup"} title="💾 Quick Backup" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Downloads a full JSON backup of all your data — customers, deliveries, products, expenses, wastage, and logs.</p>
-                {lastBackupDate&&<p style={{color:"#10b981",fontSize:12}}>Last backup: {lastBackupDate}</p>}
-                <Btn dm={dm} v="success" onClick={()=>{exportAll();setAdminToolSheet(null);}}>Download Backup Now</Btn>
-              </Sheet>
-
-              {/* Orphan deliveries */}
-              <Sheet open={adminToolSheet==="orphanDeliveries"} title="🧹 Orphan Deliveries" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:t.sub,fontSize:12}}>Deliveries linked to customers that no longer exist in the system.</p>
-                {adminToolData&&(adminToolData.length===0
-                  ?<p style={{color:"#10b981",fontSize:13,textAlign:"center"}}>No orphaned records found ✓</p>
-                  :<div className="flex flex-col gap-2">
-                    {adminToolData.map(d=>(
-                      <div key={d.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                        <div>
-                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{d.customer}</p>
-                          <p style={{color:t.sub,fontSize:11}}>{d.date} · {d.status}</p>
-                        </div>
-                        <Btn dm={dm} v="danger" size="sm" onClick={()=>{ask(`Delete orphan delivery for "${d.customer}"?`,()=>{setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted orphan delivery",d.customer);notify("Deleted");setAdminToolData(p=>p.filter(x=>x.id!==d.id));});}}>Delete</Btn>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Sheet>
-
-              {/* Audit log viewer */}
-              <Sheet open={adminToolSheet==="auditLogView"} title="📜 Audit Log" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                {adminToolData&&<div className="flex flex-col gap-1.5" style={{maxHeight:400,overflowY:"auto"}}>
-                  {adminToolData.length===0?<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No log entries yet</p>
-                    :adminToolData.map(e=>(
-                    <div key={e.id} style={{background:t.inp,borderRadius:8,padding:"8px 10px"}}>
-                      <div className="flex justify-between items-start">
-                        <p style={{color:t.text,fontWeight:700,fontSize:12}}>{e.action}</p>
-                        <p style={{color:t.sub,fontSize:10}}>{e.user}</p>
-                      </div>
-                      <p style={{color:t.sub,fontSize:11}}>{e.detail}</p>
-                      <p style={{color:t.sub,fontSize:10}}>{e.ts}</p>
-                    </div>
-                  ))}
-                </div>}
-              </Sheet>
-
-              {/* Bulk delete old orders */}
-              <Sheet open={adminToolSheet==="bulkDelete"} title="🗑️ Bulk Delete Old Orders" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <p style={{color:"#ef4444",fontSize:12,fontWeight:600}}>⚠️ This permanently deletes old delivered orders. Back up first!</p>
-                <Sel dm={dm} label="Delete delivered orders older than" value={bulkDelMonths} onChange={e=>setBulkDelMonths(e.target.value)}>
-                  <option value="3">3 months</option>
-                  <option value="6">6 months</option>
-                  <option value="12">12 months</option>
-                </Sel>
-                <p style={{color:t.sub,fontSize:12}}>
-                  {(()=>{
-                    const months=Math.max(1,+bulkDelMonths||3);
-                    const cutoff=new Date(Date.now()-months*30*86400000).toISOString().slice(0,10);
-                    const count=deliveries.filter(d=>d.status==="Delivered"&&d.date<cutoff).length;
-                    return `${count} delivered orders will be deleted (before ${cutoff})`;
-                  })()}
-                </p>
-                <Btn dm={dm} v="danger" onClick={doBulkDelete}>Delete Old Orders</Btn>
-              </Sheet>
-
-              {/* Reset password */}
-              <Sheet open={adminToolSheet==="resetPassword"} title="🔑 Reset User Password" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <Sel dm={dm} label="Select User" value={resetPwUser} onChange={e=>setResetPwUser(e.target.value)}>
-                  <option value="">— select user —</option>
-                  {users.filter(u=>u.id!==sess.id).map(u=><option key={u.id} value={u.id}>{u.name} (@{u.username}) · {u.role}</option>)}
-                </Sel>
-                <Inp dm={dm} label="New Password (min 6 chars)" type="password" value={resetPwVal} onChange={e=>setResetPwVal(e.target.value)} placeholder="Enter new password"/>
-                <Btn dm={dm} v="purple" onClick={doResetPassword}>Reset Password</Btn>
-              </Sheet>
-
-              {/* Toggle agent active */}
-              <Sheet open={adminToolSheet==="toggleAgent"} title="🔛 Toggle Agent Active" onClose={()=>setAdminToolSheet(null)} dm={dm}>
-                <div className="flex flex-col gap-2">
-                  {users.filter(u=>u.role==="agent").map(u=>(
-                    <div key={u.id} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex justify-between items-center">
-                      <div>
-                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{u.name}</p>
-                        <p style={{color:t.sub,fontSize:11}}>@{u.username}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span style={{color:u.active?"#10b981":"#9ca3af",fontSize:11,fontWeight:700}}>{u.active?"Active":"Inactive"}</span>
-                        <Tog dm={dm} on={u.active} onChange={()=>{setUsers(p=>p.map(x=>x.id===u.id?{...x,active:!x.active}:x));addLog(`${u.active?"Deactivated":"Activated"} agent`,u.name);notify(`${u.name} ${u.active?"deactivated":"activated"} ✓`);}}/>
-                      </div>
-                    </div>
-                  ))}
-                  {users.filter(u=>u.role==="agent").length===0&&<p style={{color:t.sub,fontSize:13,textAlign:"center"}}>No agents found</p>}
-                </div>
-              </Sheet>
-            </>;
-          })()}
-
-          {/* STAT CARDS */}
-          {widgets.includes("stats")&&<>
-            {canSeeFinancials&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Total Revenue" value={inr(totalRev)} sub="From delivered orders" accent="#10b981" animDelay="0.05s"/>
-              <StatCard dm={dm} label="Amount Due" value={inr(totalDue)} sub={`${customers.filter(c=>c.pending>0).length} customers`} accent="#ef4444" animDelay="0.1s"/>
-              <StatCard dm={dm} label="Total Costs" value={inr(totalExpOp+totalSupC)} sub="Ops + supplies" accent="#f59e0b" animDelay="0.15s"/>
-              <StatCard dm={dm} label="Net Profit" value={inr(netProfit)} sub={netProfit>=0?"Profitable ✓":"In loss ⚠️"} accent={netProfit>=0?"#10b981":"#ef4444"} animDelay="0.2s"/>
             </div>}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706" animDelay="0.08s"/>
-              <StatCard dm={dm} label="Pending Deliveries" value={pendingD.length} sub={`${deliveries.filter(d=>d.status==="Delivered").length} completed`} accent="#8b5cf6" animDelay="0.13s"/>
-              {(()=>{const r=deliveries.filter(d=>d.replacement?.done);return r.length>0&&<><StatCard dm={dm} label="Replacements" value={r.length} sub={`${Math.round(r.length/Math.max(deliveries.length,1)*100)}% of deliveries`} accent="#f97316" animDelay="0.18s"/><StatCard dm={dm} label="Repl. Deductions" value={inr(r.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} sub="Total deducted" accent="#ef4444" animDelay="0.23s"/></>;})()}
-            </div>
-          </>}
 
-          {/* REVENUE CHART */}
-          {widgets.includes("chart")&&canSeeFinancials&&<Card dm={dm} className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p style={{color:t.text}} className="font-bold text-sm">Revenue vs Expenses</p>
-                <p style={{color:t.sub}} className="text-[11px]">Last 7 days</p>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500"/><span style={{color:t.sub}} className="text-[11px]">Revenue</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500"/><span style={{color:t.sub}} className="text-[11px]">Expenses</span></div>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{top:0,right:0,left:-20,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={t.border}/>
-                <XAxis dataKey="date" tick={{fontSize:10,fill:t.sub}}/>
-                <YAxis tick={{fontSize:10,fill:t.sub}}/>
-                <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:12}} formatter={(v)=>inr(v)}/>
-                <Bar dataKey="Revenue" fill="#10b981" radius={[5,5,0,0]}/>
-                <Bar dataKey="Expenses" fill="#ef4444" radius={[5,5,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>}
-
-          {/* PENDING DELIVERIES */}
-          {widgets.includes("pendingDeliveries")&&<Card dm={dm}>
-            <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-              <div>
-                <p style={{color:t.text}} className="font-bold text-sm">Pending Deliveries</p>
-                <p style={{color:t.sub}} className="text-[11px]">{pendingD.length} outstanding</p>
-              </div>
-              {pendingD.length>0&&<Pill dm={dm} c="amber">{pendingD.length}</Pill>}
-            </div>
-            <Hr dm={dm}/>
-            {pendingD.length===0
-              ?<div className="py-8 text-center"><p className="text-2xl mb-2">🎉</p><p style={{color:t.sub}} className="text-sm font-semibold">All deliveries done!</p></div>
-              :pendingD.map((d,i)=>(
-              <div key={d.id}>{i>0&&<Hr dm={dm}/>}
-                <div className="px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p style={{color:t.text}} className="text-sm font-semibold truncate">{d.customer}</p>
-                    <p style={{color:t.sub}} className="text-xs">📅 {d.date}{d.deliveryDate&&d.deliveryDate!==d.date?` → by ${d.deliveryDate}`:""}{canSeePrices?` · ${inr(lineTotal(d.orderLines))}`:` · ${Object.values(safeO(d.orderLines)).reduce((s,l)=>s+(l.qty||0),0)} items`}</p>
+            {/* ── NOTICE BOARD ── */}
+            {(()=>{
+              const unreadNotices=(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id));
+              function saveNotice(){
+                if(!nbF.title.trim()||!nbF.body.trim()){notify("Title and message required");return;}
+                const rec={...nbF,id:uid(),postedBy:sess.name,postedAt:ts(),readBy:[]};
+                setNotices(p=>[rec,...p]);
+                addLog("Notice posted",rec.title);
+                addNotif("📌 Notice: "+rec.title,rec.body,"info","noticeboard");
+                notify("Notice posted ✓");
+                setNbSh(false);
+                setNbF({title:"",body:"",pinned:false});
+              }
+              function markRead(id){setNotices(p=>p.map(n=>n.id===id?{...n,readBy:[...(n.readBy||[]),sess.id]}:n));}
+              return (<>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <p style={{color:t.text,fontWeight:700,fontSize:13}}>📌 Notice Board</p>
+                    {unreadNotices.length>0&&<Pill dm={dm} c="sky">{unreadNotices.length} new</Pill>}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-500">📍</a>}
-                    <button onClick={()=>tglD(d)} style={{background:"#10b981",color:"#fff"}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">Done ✓</button>
-                  </div>
+                  {can("dash_postNotice")&&<Btn dm={dm} size="sm" onClick={()=>{setNbF({title:"",body:"",pinned:false});setNbSh(true);}}>+ Post</Btn>}
                 </div>
-              </div>
-            ))}
-          </Card>}
-
-          {/* OUTSTANDING PAYMENTS */}
-          {widgets.includes("outstanding")&&canSeeFinancials&&customers.filter(c=>c.pending>0).length>0&&<Card dm={dm}>
-            <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-              <div>
-                <p style={{color:t.text}} className="font-bold text-sm">Outstanding Payments</p>
-                <p style={{color:t.sub}} className="text-[11px]">{inr(customers.reduce((s,c)=>s+(c.pending||0),0))} total due · {inr(customers.reduce((s,c)=>s+(c.paid||0),0))} collected</p>
-              </div>
-              <Pill dm={dm} c="red">{customers.filter(c=>c.pending>0).length} unpaid</Pill>
-            </div>
-            <Hr dm={dm}/>
-            {customers.filter(c=>c.pending>0).sort((a,b)=>b.pending-a.pending).map((c,i)=>{
-              const collPct=c.paid+c.pending>0?Math.round(c.paid/(c.paid+c.pending)*100):0;
-              return <div key={c.id}>{i>0&&<Hr dm={dm}/>}
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between gap-3 mb-1.5">
-                    <div className="flex-1 min-w-0">
-                      <p style={{color:t.text}} className="text-sm font-semibold truncate">{c.name}</p>
-                      <p style={{color:t.sub}} className="text-xs">{inr(c.paid)} collected · {collPct}% paid</p>
+                {(notices||[]).length===0&&<div style={{background:t.inp,borderRadius:14,padding:"20px",textAlign:"center"}}><p style={{color:t.sub}} className="text-sm">No notices posted yet.</p></div>}
+                {[...(notices||[])].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(n=>{
+                  const isRead=(n.readBy||[]).includes(sess.id);
+                  return <div key={n.id} style={{background:n.pinned?(dm?"rgba(245,158,11,0.08)":"rgba(245,158,11,0.06)"):t.card,border:`1.5px solid ${n.pinned?"rgba(245,158,11,0.3)":isRead?t.border:"rgba(14,165,233,0.3)"}`,borderRadius:16,padding:"14px 16px",marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6,gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                          {n.pinned&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>📌 Pinned</span>}
+                          {!isRead&&<span style={{background:"#0ea5e920",color:"#0ea5e9",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>New</span>}
+                          <p style={{color:t.text,fontWeight:700,fontSize:13}}>{n.title}</p>
+                        </div>
+                        <p style={{color:t.sub,fontSize:11}}>by {n.postedBy} · {n.postedAt}</p>
+                      </div>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        {!isRead&&<button onClick={()=>markRead(n.id)} style={{background:"#0ea5e920",color:"#0ea5e9",border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Mark read</button>}
+                        {can("dash_delNotice")&&<button onClick={()=>setNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:t.inp,color:t.sub,border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <p className="text-sm font-black text-red-500">{inr(c.pending)}</p>
-                      {can("cust_markPaid")&& <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>}
-                    </div>
-                  </div>
-                  <div style={{background:t.border,height:3,borderRadius:3,overflow:"hidden"}}><div style={{width:`${collPct}%`,background:"#10b981",height:"100%",borderRadius:3}}/></div>
-                </div>
-              </div>;
-            })}
-          </Card>}
-
-          {/* TODAY'S WASTAGE */}
-          {widgets.includes("wastageToday")&&can("dash_seeWastage")&&(()=>{
-            const tw=wastage.filter(w=>w.date===today());
-            const twQty=tw.reduce((s,w)=>s+(w.qty||0),0);
-            const twCost=tw.reduce((s,w)=>s+(w.cost||0),0);
-            return tw.length>0&&<Card dm={dm}>
-              <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-                <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Today's Wastage</p>
-                  <p style={{color:t.sub}} className="text-[11px]">{tw.length} records</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span style={{color:"#f97316"}} className="text-sm font-black">{twQty} units</span>
-                  {can("waste_seeCost")&&twCost>0&&<span className="text-sm font-bold text-red-500">{inr(twCost)}</span>}
-                </div>
-              </div>
-              <Hr dm={dm}/>
-              {tw.map((w,i)=>(
-                <div key={w.id}>{i>0&&<Hr dm={dm}/>}
-                  <div className="px-4 py-2.5 flex items-center justify-between">
-                    <div>
-                      <p style={{color:t.text}} className="text-xs font-semibold">{w.product}</p>
-                      <p style={{color:t.sub}} className="text-[11px]">{w.type} · {w.shift} · {w.loggedBy}</p>
-                    </div>
-                    <span style={{color:t.text}} className="font-bold text-sm">{w.qty} <span style={{color:t.sub}} className="text-xs font-normal">{w.unit}</span></span>
-                  </div>
-                </div>
-              ))}
-            </Card>;
-          })()}
-
-          {/* OVERDUE DELIVERY FOLLOW-UP — admin only */}
-          {isAdmin&&(()=>{
-            const overdueD=deliveries.filter(d=>d.status==="Pending"&&d.date<today()).sort((a,b)=>a.date.localeCompare(b.date));
-            if(overdueD.length===0) return null;
-            return <div style={{background:dm?"#1a0808":"#fff8f8",border:"1.5px solid #ef444440",borderRadius:20,padding:"14px 18px"}}>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-0.5">🔴 Overdue Deliveries</p>
-                  <p style={{color:t.text}} className="font-bold text-sm">{overdueD.length} order{overdueD.length!==1?"s":""} past due date</p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {overdueD.slice(0,5).map(d=>{
-                  const cust=customers.find(c=>c.id===d.customerId);
-                  const daysAgo=Math.round((new Date(today())-new Date(d.date))/(86400000));
-                  return <div key={d.id} style={{background:dm?"rgba(239,68,68,0.07)":"rgba(239,68,68,0.05)",border:"1px solid #ef444425",borderRadius:12,padding:"10px 12px"}} className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p style={{color:t.text}} className="text-sm font-bold truncate">{d.customer}</p>
-                      <p style={{color:"#ef4444"}} className="text-[11px] font-semibold">{daysAgo}d overdue · {d.date}</p>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      {cust?.phone&&<a href={`tel:${cust.phone}`} style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}>📞 Call</a>}
-                      {can("deliv_markDone")&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered",deliveryDate:today()}:x));addLog("Marked overdue delivered",d.customer);notify(`${d.customer} marked delivered ✓`);captureGPS("marked_delivered",d.customer);addNotif("Delivery Completed",`${d.customer} (overdue) marked Delivered`,"success");}} style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Done</button>}
-                    </div>
+                    <p style={{color:t.text,lineHeight:1.6,fontSize:13}}>{n.body}</p>
                   </div>;
                 })}
-                {overdueD.length>5&&<p style={{color:t.sub}} className="text-[11px] text-center mt-1">+{overdueD.length-5} more — <button onClick={()=>setTab("Deliveries")} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:11}}>view all →</button></p>}
-              </div>
-            </div>;
-          })()}
-
-          {/* NOTICE BOARD */}
-          {(()=>{
-            const unreadNotices=(notices||[]).filter(n=>!(n.readBy||[]).includes(sess.id));
-            function saveNotice(){
-              if(!nbF.title.trim()||!nbF.body.trim()){notify("Title and message required");return;}
-              const rec={...nbF,id:uid(),postedBy:sess.name,postedAt:ts(),readBy:[]};
-              setNotices(p=>[rec,...p]);
-              addLog("Notice posted",rec.title);
-              addNotif("📌 Notice: "+rec.title,rec.body,"info","noticeboard");
-              notify("Notice posted ✓");
-              setNbSh(false);
-              setNbF({title:"",body:"",pinned:false});
-            }
-            function markRead(id){setNotices(p=>p.map(n=>n.id===id?{...n,readBy:[...(n.readBy||[]),sess.id]}:n));}
-            return (<>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <p style={{color:t.text}} className="font-bold text-sm">📌 Notice Board</p>
-                  {unreadNotices.length>0&&<Pill dm={dm} c="sky">{unreadNotices.length} new</Pill>}
-                </div>
-                {can("dash_postNotice")&& <Btn dm={dm} size="sm" onClick={()=>{setNbF({title:"",body:"",pinned:false});setNbSh(true);}}>+ Post Notice</Btn>}
-              </div>
-              {(notices||[]).length===0&&<div style={{background:t.inp,borderRadius:14,padding:"20px",textAlign:"center"}}><p style={{color:t.sub}} className="text-sm">No notices posted yet.</p></div>}
-              {[...(notices||[])].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(n=>{
-                const isRead=(n.readBy||[]).includes(sess.id);
-                return <div key={n.id} style={{background:n.pinned?(dm?"rgba(245,158,11,0.08)":"rgba(245,158,11,0.06)"):t.card,border:`1.5px solid ${n.pinned?"rgba(245,158,11,0.3)":isRead?t.border:"rgba(14,165,233,0.3)"}`,borderRadius:16,padding:"14px 16px"}}>
-                  <div className="flex items-start justify-between mb-2 gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {n.pinned&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>📌 Pinned</span>}
-                        {!isRead&&<span style={{background:"#0ea5e920",color:"#0ea5e9",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>New</span>}
-                        <p style={{color:t.text}} className="font-bold text-sm">{n.title}</p>
-                      </div>
-                      <p style={{color:t.sub}} className="text-[11px]">by {n.postedBy} · {n.postedAt}</p>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      {!isRead&&<button onClick={()=>markRead(n.id)} style={{background:"#0ea5e920",color:"#0ea5e9",border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Mark read</button>}
-                      {can("dash_delNotice")&& <button onClick={()=>setNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:t.inp,color:t.sub,border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>}
-                    </div>
-                  </div>
-                  <p style={{color:t.text,lineHeight:1.6}} className="text-sm">{n.body}</p>
-                </div>;
-              })}
-              <Sheet dm={dm} open={nbSh} onClose={()=>setNbSh(false)} title="Post Notice">
-                <Inp dm={dm} label="Title *" value={nbF.title} onChange={e=>setNbF({...nbF,title:e.target.value})} placeholder="e.g. Holiday schedule update"/>
-                <div>
-                  <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">Message *</label>
-                  <textarea value={nbF.body} onChange={e=>setNbF({...nbF,body:e.target.value})} placeholder="Write your announcement here…" rows={5}
-                    style={{width:"100%",background:T(dm).inp,border:`1.5px solid ${T(dm).inpB}`,color:T(dm).text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
-                </div>
-                <div style={{background:T(dm).inp,borderRadius:14,padding:"12px 16px"}} className="flex items-center justify-between">
+                <Sheet dm={dm} open={nbSh} onClose={()=>setNbSh(false)} title="Post Notice">
+                  <Inp dm={dm} label="Title *" value={nbF.title} onChange={e=>setNbF({...nbF,title:e.target.value})} placeholder="e.g. Holiday schedule update"/>
                   <div>
-                    <p style={{color:T(dm).text}} className="text-sm font-semibold">Pin this notice</p>
-                    <p style={{color:T(dm).sub}} className="text-[11px]">Pinned notices appear at the top</p>
+                    <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 ml-0.5">Message *</label>
+                    <textarea value={nbF.body} onChange={e=>setNbF({...nbF,body:e.target.value})} placeholder="Write your announcement here…" rows={5}
+                      style={{width:"100%",background:T(dm).inp,border:`1.5px solid ${T(dm).inpB}`,color:T(dm).text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
                   </div>
-                  <Tog dm={dm} on={nbF.pinned} onChange={()=>setNbF(f=>({...f,pinned:!f.pinned}))}/>
-                </div>
-                <Btn dm={dm} onClick={saveNotice} className="w-full">Post Notice</Btn>
-              </Sheet>
-            </>);
+                  <div style={{background:T(dm).inp,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div>
+                      <p style={{color:T(dm).text,fontSize:14,fontWeight:600}}>Pin this notice</p>
+                      <p style={{color:T(dm).sub,fontSize:11}}>Pinned notices appear at the top</p>
+                    </div>
+                    <Tog dm={dm} on={nbF.pinned} onChange={()=>setNbF(f=>({...f,pinned:!f.pinned}))}/>
+                  </div>
+                  <Btn dm={dm} onClick={saveNotice} className="w-full">Post Notice</Btn>
+                </Sheet>
+              </>);
+            })()}
+            </>;
           })()}
         </>)}
 
@@ -4790,20 +4376,27 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           {canSeeFinancials&&(()=>{
             const overdueC=customers.filter(c=>c.pending>0&&c.active);
             const totalOverdue=overdueC.reduce((s,c)=>s+(c.pending||0),0);
+            const totalReplDeducted=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+            const partialCount=deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0&&Math.max(0,lineTotal(d.orderLines)-(+d.replacement?.amount||0))>(+(d.partialPayment?.amount)||0)).length;
             if(!overdueC.length) return null;
             return <div style={{background:dm?"rgba(239,68,68,0.08)":"#fff1f1",border:"1.5px solid rgba(239,68,68,0.3)",borderRadius:16,padding:"14px 18px"}}>
               <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <div>
                   <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest mb-0.5">🔴 Overdue Payments</p>
                   <p style={{color:t.text}} className="font-bold text-sm">{overdueC.length} customer{overdueC.length!==1?"s":""} owe a total of <span className="text-red-500">{inr(totalOverdue)}</span></p>
+                  {(totalReplDeducted>0||partialCount>0)&&<div className="flex gap-2 flex-wrap mt-1">
+                    {totalReplDeducted>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:700}}>🔄 {inr(totalReplDeducted)} already replaced</span>}
+                    {partialCount>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:700}}>⚡ {partialCount} partial payments</span>}
+                  </div>}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <label style={{color:t.sub,fontSize:11}}>Over</label>
                   <select value={overdueAlertDays} onChange={e=>setOverdueAlertDays(+e.target.value)}
                     style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:12,borderRadius:8,padding:"4px 8px",outline:"none"}}>
                     {[1,3,7,14,30].map(d=><option key={d} value={d}>{d}d</option>)}
                   </select>
                   <label style={{color:t.sub,fontSize:11}}>days</label>
+                  {isAdmin&&<button onClick={()=>{setPaymentsSubTab("outstanding");setTab("Payments");}} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>}
                   <Btn dm={dm} v="danger" size="sm" onClick={()=>{
                     const cols=[{label:"Customer",key:"name"},{label:"Phone",key:"phone"},{label:"Pending (₹)",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"}];
                     exportTabPDF("Overdue Payments",overdueC.sort((a,b)=>b.pending-a.pending),cols,settings,`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:20px"><b style="color:#b91c1c">Total Outstanding: ${inr(totalOverdue)}</b> across ${overdueC.length} customers</div>`);
@@ -4811,18 +4404,24 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 mt-1">
-                {overdueC.sort((a,b)=>b.pending-a.pending).slice(0,5).map(c=>(
-                  <div key={c.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{background:dm?"rgba(239,68,68,0.06)":"rgba(239,68,68,0.04)",border:"1px solid rgba(239,68,68,0.15)"}}>
+                {overdueC.sort((a,b)=>b.pending-a.pending).slice(0,5).map(c=>{
+                  const cRepl=deliveries.filter(d=>d.customerId===c.id).reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const cPartial=deliveries.filter(d=>d.customerId===c.id&&d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0&&Math.max(0,lineTotal(d.orderLines)-(+d.replacement?.amount||0))>(+(d.partialPayment?.amount)||0)).length;
+                  return <div key={c.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{background:dm?"rgba(239,68,68,0.06)":"rgba(239,68,68,0.04)",border:"1px solid rgba(239,68,68,0.15)"}}>
                     <div>
                       <span style={{color:t.text,fontWeight:600,fontSize:13}}>{c.name}</span>
                       {c.phone&&<span style={{color:t.sub,fontSize:11,marginLeft:8}}>📞 {c.phone}</span>}
+                      {(cRepl>0||cPartial>0)&&<div className="flex gap-1 mt-0.5">
+                        {cRepl>0&&<span style={{color:"#f97316",fontSize:9,fontWeight:600}}>🔄 {inr(cRepl)} replaced</span>}
+                        {cPartial>0&&<span style={{color:"#f59e0b",fontSize:9,fontWeight:600,marginLeft:4}}>⚡ partial</span>}
+                      </div>}
                     </div>
                     <div className="flex items-center gap-2">
                       <span style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</span>
-                      <button onClick={()=>{setPaySh(c);setPayAmt("");}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>
+                      <button onClick={()=>{if(isAdmin){setPayLedgerCust(c);setPayLedgerAmt(String(c.pending||""));setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}else{setPaySh(c);setPayAmt("");}}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>
                     </div>
-                  </div>
-                ))}
+                  </div>;
+                })}
                 {overdueC.length>5&&<p style={{color:t.sub}} className="text-[11px] text-center mt-1">+{overdueC.length-5} more customers with outstanding payments</p>}
               </div>
             </div>;
@@ -4967,18 +4566,27 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             </Card>;
           })()}
 
-          {/* Summary bar */}
-          {canSeeFinancials&&<div className="grid grid-cols-3 gap-3">
+          {/* Summary bar — 4-up on desktop */}
+          {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
             <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.filter(c=>!c.active).length} inactive`} accent="#d97706"/>
             <StatCard dm={dm} label="Total Collected" value={inr(customers.reduce((s,c)=>s+(c.paid||0),0))} sub="All time" accent="#10b981"/>
             <StatCard dm={dm} label="Outstanding" value={inr(customers.reduce((s,c)=>s+(c.pending||0),0))} sub={`${customers.filter(c=>c.pending>0).length} unpaid`} accent="#ef4444"/>
+            <StatCard dm={dm} label="Total Customers" value={customers.length} sub={`${activeC.length} active`} accent="#8b5cf6"/>
           </div>}
-          <div className="flex gap-2 items-center justify-between flex-wrap">
-            <div className="flex gap-2 flex-wrap items-center">
-              <Pill dm={dm} c="amber">{activeC.length} active</Pill>
-              <Pill dm={dm} c="stone">{customers.filter(c=>!c.active).length} inactive</Pill>
-              {/* Old View only — Standard and CLV removed */}
+          {/* ── UNIFIED TOOLBAR ── */}
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{flex:"1 1 220px",minWidth:0}}>
+              <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…" style={{width:"100%"}}/>
             </div>
+            <select value={custSortField} onChange={e=>setCustSortField(e.target.value)}
+              style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer",flexShrink:0,minWidth:130}}>
+              <option value="name">Name A–Z</option>
+              <option value="lastOrder">Last Order</option>
+              <option value="pending">Most Owing</option>
+              <option value="orders">Most Orders</option>
+              <option value="revenue">Revenue ↓</option>
+            </select>
+            <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap"}}>
             <div className="flex gap-2 flex-wrap">
               {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
                 const enriched=customers.map(c=>{
@@ -5134,204 +4742,299 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               }}>CSV</Btn>}
               <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ Customer</Btn>
             </div>
+            </div>
           </div>
-          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…"/>
-          {clvFilter==="og"&&<>
-          {fCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
-          {/* Mobile: 1-col, tablet: 2-col, desktop: 3-4 col */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,320px),1fr))",gap:16}}>
-          {fCust.map(c=>{
-            const rows=lineRows(c.orderLines,products);
-            const tot=lineTotal(c.orderLines);
-            const cDelivs=deliveries.filter(d=>d.customerId===c.id);
-            const cDone=cDelivs.filter(d=>d.status==="Delivered");
-            const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-            const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
-            const cReplacements=cDelivs.filter(d=>d.replacement?.done).length;
-            const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
-            const partialPaid=c.partialPay||0;
-            const netTot=Math.max(0,tot-cReplAmt);
-            const totalBilled=(c.paid||0)+(c.pending||0);
-            const payPct=totalBilled>0?Math.round((c.paid||0)/totalBilled*100):100;
-            const lastDiffDays=lastDeliv?Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24)):null;
-            const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
-            const lastCol=lastDiffDays===null?"#6b7280":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
-            const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
-            return (
-              <div key={c.id} onClick={()=>setCView(c)} style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:20,overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:dm?"none":"0 2px 12px rgba(0,0,0,0.06)",transition:"box-shadow 0.15s, border-color 0.15s",cursor:"pointer"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.currentTarget.style.boxShadow=dm?"0 0 0 2px #3b82f620":"0 4px 20px rgba(30,58,95,0.15)";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.boxShadow=dm?"none":"0 2px 12px rgba(0,0,0,0.06)";}}>
+          {/* ── STATUS FILTER PILLS ── */}
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+            {[
+              {key:"all",    label:`All (${fCust.length})`,         accent:"#6b7280"},
+              {key:"active", label:`Active (${fCust.filter(c=>c.active).length})`,   accent:"#10b981"},
+              {key:"inactive",label:`Inactive (${fCust.filter(c=>!c.active).length})`,accent:"#6b7280"},
+              {key:"owing",  label:`Owing (${fCust.filter(c=>(c.pending||0)>0).length})`, accent:"#ef4444"},
+              {key:"clear",  label:`Paid Up (${fCust.filter(c=>!(c.pending||0)).length})`, accent:"#10b981"},
+            ].map(({key,label,accent})=>{
+              const active=custStatusFilter===key;
+              return <button key={key} onClick={()=>setCustStatusFilter(key)}
+                style={{flexShrink:0,background:active?`${accent}18`:t.inp,color:active?accent:t.sub,border:`1.5px solid ${active?accent:t.border}`,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                {label}
+              </button>;
+            })}
+          </div>
 
-                {/* ── TOP STRIPE: status colour bar ── */}
-                <div style={{height:4,background:c.active?(c.pending>0?"linear-gradient(90deg,#10b981,#f59e0b)":"#10b981"):"#6b7280"}}/>
+          {clvFilter==="og"&&(()=>{
+            // Apply sort + filter on top of existing fCust search filter
+            let displayCust=[...fCust];
+            if(custStatusFilter==="active") displayCust=displayCust.filter(c=>c.active);
+            else if(custStatusFilter==="inactive") displayCust=displayCust.filter(c=>!c.active);
+            else if(custStatusFilter==="owing") displayCust=displayCust.filter(c=>(c.pending||0)>0);
+            else if(custStatusFilter==="clear") displayCust=displayCust.filter(c=>!(c.pending||0)>0);
+            displayCust=displayCust.map(c=>{
+              const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+              const cDone=cDelivs.filter(d=>d.status==="Delivered");
+              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              return {...c,_cDelivs:cDelivs,_cDone:cDone,_lastDeliv:lastDeliv,_cRev:cRev};
+            });
+            if(custSortField==="name") displayCust.sort((a,b)=>a.name.localeCompare(b.name));
+            else if(custSortField==="lastOrder") displayCust.sort((a,b)=>(b._lastDeliv?.date||"").localeCompare(a._lastDeliv?.date||""));
+            else if(custSortField==="pending") displayCust.sort((a,b)=>(b.pending||0)-(a.pending||0));
+            else if(custSortField==="orders") displayCust.sort((a,b)=>b._cDelivs.length-a._cDelivs.length);
+            else if(custSortField==="revenue") displayCust.sort((a,b)=>b._cRev-a._cRev);
 
-                <div style={{padding:"18px 20px",flex:1,display:"flex",flexDirection:"column",gap:0}}>
+            return <>
+            {displayCust.length>0&&<p style={{color:t.sub,fontSize:11,fontWeight:600,paddingLeft:2}}>{displayCust.length} customer{displayCust.length!==1?"s":""}</p>}
+            {displayCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,520px),1fr))",gap:14,alignItems:"start"}}>
+            {displayCust.map(c=>{
+              const cDelivs=c._cDelivs;
+              const cDone=c._cDone;
+              const lastDeliv=c._lastDeliv;
+              const rows=lineRows(c.orderLines,products);
+              const tot=lineTotal(c.orderLines);
+              const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+              const cReplacements=cDelivs.filter(d=>d.replacement?.done).length;
+              const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+              const partialPaid=c.partialPay||0;
+              const netTot=Math.max(0,tot-cReplAmt);
+              const totalBilled=(c.paid||0)+(c.pending||0);
+              const payPct=totalBilled>0?Math.round((c.paid||0)/totalBilled*100):100;
+              const lastDiffDays=lastDeliv?Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24)):null;
+              const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
+              const lastCol=lastDiffDays===null?"#6b7280":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
+              const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
+              const isExpanded=expandedCustCard===c.id;
 
-                  {/* ── HEADER ROW ── */}
-                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12,gap:10}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-                      <div style={{width:44,height:44,borderRadius:14,background:c.active?"#f59e0b22":"#6b728022",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>
+              return (
+                <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?(dm?"#f59e0b":"#f59e0b"):t.border}`,borderRadius:16,overflow:"hidden",boxShadow:dm?"none":isExpanded?"0 6px 24px rgba(245,158,11,0.13)":"0 1px 8px rgba(0,0,0,0.06)",transition:"border-color 0.15s,box-shadow 0.2s"}}>
+
+                  {/* ── TOP STRIPE ── */}
+                  <div style={{height:3,background:c.active?(c.pending>0?"linear-gradient(90deg,#10b981,#f59e0b)":"#10b981"):"#6b7280"}}/>
+
+                  {/* ── COLLAPSED HEADER ── */}
+                  <div onClick={()=>setExpandedCustCard(isExpanded?null:c.id)}
+                    style={{padding:"14px 18px",cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",gap:14}}>
+                    {/* Avatar with recency dot */}
+                    <div style={{position:"relative",flexShrink:0}}>
+                      <div style={{width:46,height:46,borderRadius:14,background:c.active?"#f59e0b22":"#6b728018",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,letterSpacing:-1}}>
                         {c.name.charAt(0).toUpperCase()}
                       </div>
-                      <div style={{minWidth:0}}>
-                        <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1.2,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</p>
-                        {c.phone&&<p style={{color:t.sub,fontSize:12}}>📞 {c.phone}</p>}
-                        {c.address&&<p style={{color:t.sub,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}}>📍 {c.address}</p>}
+                      <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:lastCol,border:`2px solid ${t.card}`}}/>
+                    </div>
+                    {/* Name + meta */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:800,fontSize:14,lineHeight:1.2}}>{c.name}</p>
+                        <span style={{background:c.active?(dm?"#10b98122":"#dcfce7"):(dm?"#ffffff10":"#f3f4f6"),color:c.active?"#15803d":"#6b7280",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,letterSpacing:"0.04em"}}>{c.active?"● ACTIVE":"○ INACTIVE"}</span>
+                        {c.pending>0&&<span style={{background:dm?"#ef444420":"#fef2f2",color:"#dc2626",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>Due {inr(c.pending)}</span>}
+                        {!c.pending&&totalBilled>0&&<span style={{background:dm?"#10b98120":"#f0fdf4",color:"#16a34a",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>✓ Clear</span>}
+                      </div>
+                      <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                        {c.phone&&<span style={{color:t.sub,fontSize:11}}>📞 {c.phone}</span>}
+                        <span style={{color:lastCol,fontSize:11,fontWeight:600}}>🕐 {lastLabel}</span>
+                        <span style={{color:t.sub,fontSize:11}}>{cDelivs.length} order{cDelivs.length!==1?"s":""}</span>
+                        {c.address&&<span style={{color:t.sub,fontSize:11,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {c.address}</span>}
                       </div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-                      <span style={{background:c.active?"#dcfce7":"#f3f4f6",color:c.active?"#15803d":"#6b7280",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99,letterSpacing:"0.05em"}}>{c.active?"● ACTIVE":"○ INACTIVE"}</span>
-                      <span style={{color:lastCol,fontSize:11,fontWeight:600}}>🕐 {lastLabel}</span>
+                    {/* Right: financials + chevron */}
+                    <div style={{display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
+                      {canSeePrices&&<div style={{textAlign:"right"}}>
+                        <p style={{color:"#10b981",fontWeight:900,fontSize:14,lineHeight:1}}>{inr(c.paid||0)}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2}}>collected</p>
+                      </div>}
+                      {canSeeFinancials&&c.pending>0&&<div style={{textAlign:"right"}}>
+                        <p style={{color:"#ef4444",fontWeight:900,fontSize:14,lineHeight:1}}>{inr(c.pending)}</p>
+                        <p style={{color:t.sub,fontSize:9,marginTop:2}}>pending</p>
+                      </div>}
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{color:t.sub,transition:"transform 0.2s",transform:isExpanded?"rotate(180deg)":"none",flexShrink:0}}><path d="M4.5 6.75L9 11.25L13.5 6.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </div>
                   </div>
 
-                  {/* ── DELIVERY HISTORY STATS ── */}
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12}}>
-                    {[
-                      {label:"Orders",val:cDelivs.length,color:t.text},
-                      {label:"Delivered",val:cDone.length,color:"#10b981"},
-                      {label:"Returns",val:cReturns,color:cReturns>0?"#ef4444":t.sub},
-                      {label:"Replaced",val:cReplacements,color:cReplacements>0?"#f97316":t.sub},
-                    ].map(({label,val,color})=>(
-                      <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
-                        <p style={{color,fontWeight:900,fontSize:16,lineHeight:1}}>{val}</p>
-                        <p style={{color:t.sub,fontSize:9,marginTop:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {/* ── EXPANDED BODY — two-column on desktop ── */}
+                  {isExpanded&&<div style={{borderTop:`1px solid ${t.border}`,padding:"18px 18px 20px",animation:"custCardExpand 0.18s ease-out"}} ref={el=>{if(el&&!document.getElementById("cust-card-anim-style")){const s=document.createElement("style");s.id="cust-card-anim-style";s.textContent="@keyframes custCardExpand{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}";document.head.appendChild(s);}}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,alignItems:"start"}}>
 
-                  {/* ── DELIVERY RATE BAR ── */}
-                  {cDelivs.length>0&&<div style={{marginBottom:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:t.sub,marginBottom:4}}>
-                      <span style={{fontWeight:600}}>Delivery rate</span>
-                      <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
-                    </div>
-                    <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}>
-                      <div style={{width:`${delivRate}%`,height:"100%",borderRadius:4,background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",transition:"width 0.4s"}}/>
-                    </div>
-                  </div>}
+                      {/* ── LEFT COLUMN ── */}
+                      <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-                  {/* ── PAYMENT STATUS ── */}
-                  {canSeeFinancials&&<div style={{background:t.inp,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Payment</span>
-                      <span style={{fontSize:11,fontWeight:700,color:c.pending>0?"#ef4444":"#10b981"}}>{c.pending>0?`Due ${inr(c.pending)}`:"✓ Fully Paid"}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
-                      <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(c.paid||0)}</span>
-                      {totalBilled>0&&<span style={{color:t.sub}}>{payPct}% settled</span>}
-                    </div>
-                    <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
-                      <div style={{width:`${payPct}%`,background:c.pending>0?"#f59e0b":"#10b981",height:"100%",borderRadius:5,transition:"width 0.4s"}}/>
-                    </div>
-                    {partialPaid>0&&<p style={{color:"#f59e0b",fontSize:11,marginTop:6,fontWeight:600}}>💛 Partial on hold: {inr(partialPaid)}</p>}
-                    {cReplAmt>0&&<p style={{color:"#f97316",fontSize:11,marginTop:4,fontWeight:600}}>🔄 Replacement deductions: −{inr(cReplAmt)}</p>}
-                  </div>}
+                        {/* Stats row */}
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                          {[
+                            {label:"Orders",val:cDelivs.length,color:t.text},
+                            {label:"Delivered",val:cDone.length,color:"#10b981"},
+                            {label:"Returns",val:cReturns,color:cReturns>0?"#ef4444":t.sub},
+                            {label:"Replaced",val:cReplacements,color:cReplacements>0?"#f97316":t.sub},
+                          ].map(({label,val,color})=>(
+                            <div key={label} style={{background:t.inp,borderRadius:10,padding:"10px 6px",textAlign:"center"}}>
+                              <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{val}</p>
+                              <p style={{color:t.sub,fontSize:9,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
+                            </div>
+                          ))}
+                        </div>
 
-                  {/* ── REGULAR ORDER ── */}
-                  {rows.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
-                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Regular Order</p>
-                    {rows.map(r=>(
-                      <div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingBottom:4,marginBottom:4,borderBottom:`1px solid ${t.border}`}}>
-                        <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
-                        {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
-                      </div>
-                    ))}
-                    {canSeePrices&&tot>0&&<>
-                      {cReplAmt>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#f97316",marginTop:4}}><span>Replacement deduction</span><span>−{inr(cReplAmt)}</span></div>}
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,marginTop:6,paddingTop:6,borderTop:`2px solid ${t.border}`}}>
-                        <span style={{color:t.sub}}>Net Total</span>
-                        <span style={{color:"#f59e0b"}}>{inr(cReplAmt>0?netTot:tot)}</span>
-                      </div>
-                    </>}
-                  </div>}
+                        {/* Delivery rate bar */}
+                        {cDelivs.length>0&&<div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:5}}>
+                            <span style={{fontWeight:600}}>Delivery rate</span>
+                            <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
+                          </div>
+                          <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
+                            <div style={{width:`${delivRate}%`,height:"100%",borderRadius:5,background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",transition:"width 0.4s"}}/>
+                          </div>
+                        </div>}
 
-                  {c.notes&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",marginBottom:10}}>"{c.notes}"</p>}
-                  {c.joinDate&&<p style={{color:t.sub,fontSize:11,marginBottom:12}}>📅 Customer since {c.joinDate}</p>}
+                        {/* Payment status */}
+                        {canSeeFinancials&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                            <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Payment Status</span>
+                            <span style={{fontSize:12,fontWeight:800,color:c.pending>0?"#ef4444":"#10b981",background:c.pending>0?"#ef444415":"#10b98115",borderRadius:8,padding:"2px 9px"}}>{c.pending>0?`Due ${inr(c.pending)}`:"✓ Fully Paid"}</span>
+                          </div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:8}}>
+                            <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(c.paid||0)}</span>
+                            {totalBilled>0&&<span style={{color:t.sub}}>{payPct}% settled</span>}
+                          </div>
+                          <div style={{background:t.border,height:6,borderRadius:6,overflow:"hidden",marginBottom:8}}>
+                            <div style={{width:`${payPct}%`,background:c.pending>0?"#f59e0b":"#10b981",height:"100%",borderRadius:6,transition:"width 0.4s"}}/>
+                          </div>
+                          {partialPaid>0&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>💛 Partial on hold: {inr(partialPaid)}</p>}
+                          {cReplAmt>0&&<p style={{color:"#f97316",fontSize:11,marginTop:4,fontWeight:600}}>🔄 Replacement deductions: −{inr(cReplAmt)}</p>}
+                        </div>}
 
-                  {/* ── PARTIAL PAYMENT WIDGET ── */}
-                  {canSeeFinancials&&can("cust_markPaid")&&<div style={{background:dm?"rgba(245,158,11,0.07)":"#fffbeb",border:`1px solid ${dm?"rgba(245,158,11,0.25)":"#fde68a"}`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
-                    <p style={{color:"#d97706",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:7}}>💰 Log Partial Payment</p>
-                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <input
-                        type="number" inputMode="numeric" placeholder="₹ Amount"
-                        defaultValue={c.partialPay||""}
-                        onBlur={e=>{const v=+e.target.value;if(v>=0){setCust(p=>p.map(x=>x.id===c.id?{...x,partialPay:v}:x));addLog("Partial payment set",`${c.name} — ${inr(v)}`);} }}
-                        style={{flex:1,background:t.card,border:`1.5px solid ${dm?"rgba(245,158,11,0.3)":"#fde68a"}`,color:t.text,borderRadius:8,padding:"7px 10px",fontSize:13,outline:"none"}}
-                      />
-                      <button onClick={()=>{const v=c.partialPay||0;if(v>0){setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+v,pending:Math.max(0,(x.pending||0)-v),partialPay:0}:x));addLog("Partial payment applied",`${c.name} — ${inr(v)}`);notify(`${inr(v)} applied to ${c.name} ✓`);}}}
-                        style={{background:"#059669",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
-                        Apply
-                      </button>
-                    </div>
-                  </div>}
+                        {/* Regular order template */}
+                        {rows.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:12,padding:"12px 14px"}}>
+                          <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Regular Order Template</p>
+                          {rows.map(r=>(
+                            <div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${t.border}`}}>
+                              <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?<span style={{color:t.sub,fontSize:11}}> @ {inr(r.priceAmount)}</span>:""}</span>
+                              {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
+                            </div>
+                          ))}
+                          {canSeePrices&&tot>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,marginTop:6,paddingTop:6,borderTop:`2px solid ${t.border}`}}>
+                            <span style={{color:t.sub}}>Net Total</span>
+                            <span style={{color:"#f59e0b"}}>{inr(cReplAmt>0?netTot:tot)}</span>
+                          </div>}
+                        </div>}
 
-                  {/* ── ACTION BUTTONS: row 1 = tools, row 2 = actions ── */}
-                  <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:7,marginTop:"auto",paddingTop:8}}>
-                    {/* Row 1: Edit · PDF · XLS */}
-                    <div style={{display:"flex",gap:7}}>
-                      {can("cust_edit")
-                        ?<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}}
-                          style={{flex:1,background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,height:36,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          ✏️ Edit
-                        </button>
-                        :<div style={{flex:1}}/>}
-                      <button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)}
-                        style={{flex:1,background:"#7c3aed",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                        📄 PDF
-                      </button>
-                      {can("cust_export")
-                        ?<button onClick={()=>{
-                            const cD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date));
-                            const enrichedRows=cD.map(d=>{
-                              const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");
-                              return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};
-                            });
-                            exportTabExcel(c.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enrichedRows,[
-                              {label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},
-                              {label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},
-                              {label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}
-                            ],settings);
-                          }}
-                          style={{flex:1,background:"#059669",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          📊 XLS
-                        </button>
-                        :<div style={{flex:1}}/>}
-                    </div>
-                    {/* Row 2: Collect · Pause/Activate · Map · Delete */}
-                    <div style={{display:"flex",gap:7}}>
-                      {can("cust_markPaid")
-                        ?<button onClick={()=>{setPaySh(c);setPayAmt("");}}
-                          style={{flex:1,background:"#f59e0b",color:"#000",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          💰 Collect
-                        </button>
-                        :<div style={{flex:1}}/>}
-                      {can("cust_deactivate")
-                        ?<button onClick={()=>togActive(c)}
-                          style={{flex:1,background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf830",height:36,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          {c.active?"⏸ Pause":"▶ Activate"}
-                        </button>
-                        :<div style={{flex:1}}/>}
-                      {c.address
-                        ?<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
-                          style={{flex:1,background:"#0ea5e9",color:"#fff",height:36,borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",textDecoration:"none",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          📍 Map
-                        </a>
-                        :<div style={{flex:1}}/>}
-                      {can("cust_delete")
-                        ?<button onClick={()=>delC(c)}
-                          style={{flex:1,background:"#dc2626",color:"#fff",border:"none",height:36,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3,WebkitTapHighlightColor:"transparent"}}>
-                          🗑 Delete
-                        </button>
-                        :<div style={{flex:1}}/>}
-                    </div>
-                  </div>
+                        {/* Notes + info */}
+                        {(c.notes||c.address||c.joinDate)&&<div style={{background:t.inp,borderRadius:10,padding:"10px 14px",display:"flex",flexDirection:"column",gap:4}}>
+                          {c.address&&<p style={{color:t.sub,fontSize:11}}>📍 {c.address}</p>}
+                          {c.notes&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic"}}>"{c.notes}"</p>}
+                          {c.joinDate&&<p style={{color:t.sub,fontSize:11}}>📅 Customer since {c.joinDate}</p>}
+                        </div>}
+
+                        {/* Partial payment widget */}
+                        {canSeeFinancials&&can("cust_markPaid")&&<div style={{background:dm?"rgba(245,158,11,0.07)":"#fffbeb",border:`1px solid ${dm?"rgba(245,158,11,0.25)":"#fde68a"}`,borderRadius:12,padding:"12px 14px"}}>
+                          <p style={{color:"#d97706",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>💰 Log Partial Payment</p>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <input type="number" inputMode="numeric" placeholder="₹ Amount"
+                              defaultValue={c.partialPay||""}
+                              onBlur={e=>{const v=+e.target.value;if(v>=0){setCust(p=>p.map(x=>x.id===c.id?{...x,partialPay:v}:x));addLog("Partial payment set",`${c.name} — ${inr(v)}`);} }}
+                              style={{flex:1,background:t.card,border:`1.5px solid ${dm?"rgba(245,158,11,0.3)":"#fde68a"}`,color:t.text,borderRadius:8,padding:"8px 10px",fontSize:13,outline:"none"}}/>
+                            <button onClick={()=>{const v=c.partialPay||0;if(v>0){setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+v,pending:Math.max(0,(x.pending||0)-v),partialPay:0}:x));addLog("Partial payment applied",`${c.name} — ${inr(v)}`);notify(`${inr(v)} applied to ${c.name} ✓`);}}}
+                              style={{background:"#059669",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>Apply</button>
+                          </div>
+                        </div>}
+
+                        {/* Action buttons — single row on desktop */}
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          {can("cust_edit")&&<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}}
+                            style={{flex:"1 1 80px",background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,height:38,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>✏️ Edit</button>}
+                          <button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)}
+                            style={{flex:"1 1 80px",background:"#7c3aed",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>📄 PDF</button>
+                          {can("cust_export")&&<button onClick={()=>{
+                              const cD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date));
+                              const enrichedRows=cD.map(d=>{const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};});
+                              exportTabExcel(c.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enrichedRows,[{label:"Invoice No",val:r=>r.invNo||""},{label:"Receipt No",val:r=>{const inv=r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:""}},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},{label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}],settings);
+                            }}
+                            style={{flex:"1 1 80px",background:"#059669",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>📊 XLS</button>}
+                          {can("cust_markPaid")&&<button onClick={()=>{setPaySh(c);setPayAmt("");}}
+                            style={{flex:"1 1 90px",background:"#f59e0b",color:"#000",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>💰 Collect</button>}
+                          {can("cust_deactivate")&&<button onClick={()=>togActive(c)}
+                            style={{flex:"1 1 80px",background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf830",height:38,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>{c.active?"⏸ Pause":"▶ Activate"}</button>}
+                          {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer"
+                            style={{flex:"1 1 80px",background:"#0ea5e9",color:"#fff",height:38,borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",textDecoration:"none",gap:4}}>📍 Map</a>}
+                          {can("cust_delete")&&<button onClick={()=>delC(c)}
+                            style={{flex:"1 1 80px",background:"#dc2626",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>🗑 Delete</button>}
+                        </div>
+
+                      </div>{/* end left column */}
+
+                      {/* ── RIGHT COLUMN — Recent Deliveries ── */}
+                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Recent Deliveries {cDelivs.length>0&&<span style={{color:t.sub,fontWeight:500,fontSize:10,textTransform:"none",letterSpacing:0}}>({cDelivs.length} total)</span>}</p>
+                        {cDelivs.length===0&&<p style={{color:t.sub,fontSize:12}}>No deliveries yet.</p>}
+                        {[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map((d)=>{
+                          const dTot=lineTotal(d.orderLines);
+                          const dRepl=+d.replacement?.amount||0;
+                          const dNet=Math.max(0,dTot-dRepl);
+                          const dCollected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+                          const dBal=Math.max(0,dNet-dCollected);
+                          const dSc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#0ea5e9":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                          const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                          const custRcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+                          const dItems=Object.entries(d.orderLines||{}).filter(([,l])=>l.qty>0);
+                          const hasDeductions=dRepl>0||dCollected>0;
+                          return <div key={d.id} style={{background:t.inp,borderRadius:12,overflow:"hidden",border:`1px solid ${t.border}`}}>
+                            {/* Header */}
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",gap:8}}>
+                              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                                <span style={{color:t.text,fontSize:12,fontWeight:700}}>{d.date}</span>
+                                <span style={{background:`${dSc}20`,color:dSc,borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800}}>{d.status}</span>
+                                {invNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",fontWeight:700,background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",borderRadius:4,padding:"1px 6px"}}>📄 {invNo}</span>}
+                                {invNo&&<span style={{color:"#0ea5e9",fontSize:9,fontFamily:"monospace",fontWeight:700,background:dm?"rgba(14,165,233,0.15)":"rgba(14,165,233,0.08)",borderRadius:4,padding:"1px 6px"}}>🧾 {custRcptNo}</span>}
+                              </div>
+                              {canSeePrices&&<span style={{fontSize:11,fontWeight:800,color:dBal===0?"#10b981":"#ef4444",background:dBal===0?"#10b98115":"#ef444415",borderRadius:8,padding:"3px 9px",flexShrink:0}}>
+                                {dBal===0?"✓ Settled":`Due ${inr(dBal)}`}
+                              </span>}
+                            </div>
+                            {/* Items */}
+                            {dItems.length>0&&<div style={{padding:"0 12px 8px",borderTop:`1px solid ${t.border}`}}>
+                              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",margin:"7px 0 5px"}}>Items</p>
+                              {dItems.map(([pid,l])=>{
+                                const prod=products.find(p=>p.id===pid)||{name:l.name||pid};
+                                return <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,paddingBottom:3}}>
+                                  <span style={{color:t.sub}}>{l.qty} × {prod.name}</span>
+                                  {canSeePrices&&l.priceAmount>0&&<span style={{color:t.text,fontWeight:600}}>{inr(l.qty*l.priceAmount)}</span>}
+                                </div>;
+                              })}
+                            </div>}
+                            {/* Bill breakdown */}
+                            {canSeePrices&&dTot>0&&<div style={{borderTop:`1px solid ${t.border}`,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                                <span style={{color:t.sub}}>Order total</span>
+                                <span style={{color:t.text,fontWeight:600}}>{inr(dTot)}</span>
+                              </div>
+                              {dRepl>0&&<>
+                                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                                  <span style={{color:"#f97316"}}>🔄 Replacement{d.replacement?.item?` (${d.replacement.item}${d.replacement.qty?" ×"+d.replacement.qty:""})`:""}</span>
+                                  <span style={{color:"#f97316",fontWeight:700}}>−{inr(dRepl)}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                                  <span style={{color:t.sub,fontWeight:600}}>Net payable</span>
+                                  <span style={{color:t.text,fontWeight:700}}>{inr(dNet)}</span>
+                                </div>
+                              </>}
+                              {dCollected>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                                <span style={{color:"#10b981"}}>💰 Collected</span>
+                                <span style={{color:"#10b981",fontWeight:700}}>−{inr(dCollected)}</span>
+                              </div>}
+                              {(hasDeductions||dBal>0)&&<div style={{borderTop:`1.5px solid ${t.border}`,marginTop:2,paddingTop:5,display:"flex",justifyContent:"space-between",fontSize:12}}>
+                                <span style={{fontWeight:700,color:dBal===0?"#10b981":"#ef4444"}}>{dBal===0?"✓ Fully settled":"Balance due"}</span>
+                                <span style={{fontWeight:800,color:dBal===0?"#10b981":"#ef4444"}}>{dBal===0?"—":inr(dBal)}</span>
+                              </div>}
+                            </div>}
+                          </div>;
+                        })}
+                        {cDelivs.length>5&&<p style={{color:t.sub,fontSize:10,textAlign:"center"}}>+{cDelivs.length-5} more · <button onClick={()=>{setTab("Deliveries");setExpandedDeliveryCust(c.id);}} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:10}}>View all →</button></p>}
+                      </div>{/* end right column */}
+
+                    </div>{/* end two-col grid */}
+                  </div>}{/* end expanded body */}
                 </div>
-              </div>
-            );
-          })}
-          </div>
-          </>}
+              );
+            })}
+            </div>
+            </>;
+          })()}
         </>)}
 
         {/* DELIVERIES */}
@@ -5360,7 +5063,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
             {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
           </div>
           {/* BULK ACTION BAR */}
@@ -5599,66 +5302,195 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           })()}
 
           {fDeliv.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No deliveries found.{delivStatusFilter!=="all"?` (filter: ${delivStatusFilter})`:""}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" style={{contain:"layout"}}>
-          {!delivCalendar&&[...fDeliv].sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
-            const rows=lineRows(d.orderLines,products);
-            const tot=lineTotal(d.orderLines);
-            const isBulkChecked=bulkSelected.has(d.id);
-            return (
-              <Card key={d.id} dm={dm} style={isBulkChecked?{border:`2px solid #f59e0b`}:{}}><div className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-start gap-2 flex-1 min-w-0">
-                    {bulkSelect&&<button onClick={()=>{const s=new Set(bulkSelected);if(s.has(d.id))s.delete(d.id);else s.add(d.id);setBulkSelected(s);}} style={{width:22,height:22,borderRadius:6,border:`2px solid ${isBulkChecked?"#f59e0b":t.inpB}`,background:isBulkChecked?"#f59e0b":t.inp,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
-                      {isBulkChecked&&<span style={{color:"#000",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
-                    </button>}
-                    <div className="min-w-0">
-                      <p style={{color:t.text}} className="font-semibold">{d.customer}</p>
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
-                        <span style={{color:t.sub}} className="text-xs">📅 {d.date}</span>
-                        {d.deliveryDate&&<span style={{color:t.sub}} className="text-xs">→ by {d.deliveryDate}</span>}
-                        <span style={{color:t.sub}} className="text-xs">by {d.createdBy||"—"}</span>
-                        {(invRegistry?.issued||{})[d.id]&&<span style={{color:t.sub,fontSize:9,fontFamily:"monospace",background:t.inp,borderRadius:4,padding:"1px 5px"}}>{(invRegistry?.issued||{})[d.id]}</span>}
+
+          {/* ── CUSTOMER-GROUPED DELIVERY VIEW ── */}
+          {!delivCalendar&&(()=>{
+            // Group filtered deliveries by customer
+            const custMap={};
+            [...fDeliv].sort((a,b)=>b.date.localeCompare(a.date)).forEach(d=>{
+              const key=d.customerId||d.customer;
+              if(!custMap[key]) custMap[key]={name:d.customer,customerId:d.customerId,delivs:[]};
+              custMap[key].delivs.push(d);
+            });
+            const custGroups=Object.values(custMap).sort((a,b)=>a.name.localeCompare(b.name));
+            return <div className="flex flex-col gap-3">
+              {custGroups.map(group=>{
+                const isExpanded=expandedDeliveryCust===group.customerId||expandedDeliveryCust===group.name;
+                const totalOrders=group.delivs.length;
+                const totalAmt=group.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                const totalRepl=group.delivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                const totalCollected=group.delivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
+                const totalBalance=Math.max(0,totalAmt-totalRepl-totalCollected);
+                const pendingCount=group.delivs.filter(d=>d.status==="Pending").length;
+                const deliveredCount=group.delivs.filter(d=>d.status==="Delivered").length;
+                const replCount=group.delivs.filter(d=>d.replacement?.done).length;
+                return <Card key={group.customerId||group.name} dm={dm}>
+                  {/* ── CUSTOMER HEADER ROW (always visible) ── */}
+                  <div onClick={()=>setExpandedDeliveryCust(isExpanded?null:(group.customerId||group.name))}
+                    style={{padding:"14px 16px",cursor:"pointer",userSelect:"none"}}
+                    className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div style={{width:40,height:40,borderRadius:12,background:dm?"rgba(245,158,11,0.15)":"rgba(245,158,11,0.1)",color:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16,flexShrink:0}}>
+                        {group.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p style={{color:t.text,fontWeight:800,fontSize:15}} className="truncate">{group.name}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                          <span style={{color:t.sub,fontSize:11}}>{totalOrders} order{totalOrders!==1?"s":""}</span>
+                          {deliveredCount>0&&<span style={{color:"#10b981",fontSize:11,fontWeight:600}}>✓ {deliveredCount} delivered</span>}
+                          {pendingCount>0&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⏳ {pendingCount} pending</span>}
+                          {replCount>0&&<span style={{color:"#f97316",fontSize:11,fontWeight:600}}>🔄 {replCount} replaced</span>}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <button onClick={()=>tglD(d)}><Pill dm={dm} c={d.status==="Delivered"?"green":d.status==="In Transit"?"blue":"amber"}>{d.status}</Pill></button>
-                </div>
-                <div style={{background:t.inp}} className="rounded-xl px-3 py-2.5 mb-3">
-                  {rows.length===0?<p style={{color:t.sub}} className="text-xs">No items</p>
-                    :rows.map(r=>(
-                    <div key={r.id} className="flex justify-between text-xs py-0.5">
-                      <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
-                      {canSeePrices&&<span style={{color:t.text}} className="font-semibold">{inr(r.qty*r.priceAmount)}</span>}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        {canSeePrices&&<p style={{color:"#f59e0b",fontWeight:900,fontSize:14}}>{inr(totalAmt)}</p>}
+                        {canSeePrices&&totalBalance>0&&<p style={{color:"#ef4444",fontSize:10,fontWeight:700}}>Due: {inr(totalBalance)}</p>}
+                        {canSeePrices&&totalBalance===0&&totalAmt>0&&<p style={{color:"#10b981",fontSize:10,fontWeight:700}}>✓ All clear</p>}
+                      </div>
+                      <span style={{color:t.sub,fontSize:18,fontWeight:300,transition:"transform 0.2s",transform:isExpanded?"rotate(180deg)":"none",display:"inline-block"}}>⌃</span>
                     </div>
-                  ))}
-                  {canSeePrices&&tot>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1.5 pt-1.5 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total</span><span className="text-amber-500">{inr(tot)}</span></div>}
-                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&<div style={{borderTop:`1px solid ${t.border}`}} className="mt-1 pt-1 flex justify-between text-xs"><span style={{color:"#10b981"}}>✓ Collected</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+d.partialPayment.amount)}</span></div>}
-                  {canSeePrices&&d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&(()=>{const _repl=+d.replacement?.amount||0;const _net=Math.max(0,tot-_repl);const _bal=Math.max(0,_net-(+d.partialPayment.amount));return _bal>0?<div className="flex justify-between text-xs" style={{color:"#f59e0b",fontWeight:700}}><span>Balance Due</span><span>{inr(_bal)}</span></div>:<div className="flex justify-between text-xs" style={{color:"#10b981",fontWeight:700}}><span>✓ Fully Settled</span><span>—</span></div>;})()}
-                </div>
-                {d.notes&&<p style={{color:t.sub}} className="text-xs italic mb-2">"{d.notes}"</p>}
-                {d.partialPayment?.enabled&&+d.partialPayment?.amount>0&&(()=>{const _repl=+d.replacement?.amount||0;const _net=Math.max(0,(canSeePrices?lineTotal(d.orderLines):0)-_repl);const _bal=Math.max(0,_net-(+d.partialPayment.amount));return<div style={{background:_bal>0?"#f59e0b15":"#10b98115",border:`1px solid ${_bal>0?"#f59e0b30":"#10b98130"}`,borderRadius:10,padding:"6px 10px",marginBottom:8}} className="flex items-center justify-between"><span className="text-xs font-semibold" style={{color:_bal>0?"#d97706":"#10b981"}}>💰 {_bal>0?"Partial collected":"Fully collected"}</span>{canSeePrices&&<span className="text-xs font-bold" style={{color:_bal>0?"#d97706":"#10b981"}}>{inr(+d.partialPayment.amount)}{_bal>0?` · Due ${inr(_bal)}`:""}</span>}</div>;})()} 
-                {d.replacement?.done&&(
-                  <div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2 mb-2">
-                    <p className="text-[11px] font-semibold text-orange-500 mb-0.5">🔄 Replacement Made</p>
-                    {d.replacement.item&&<p style={{color:t.sub}} className="text-xs">Item: {d.replacement.item}{d.replacement.qty?` · Qty: ${d.replacement.qty}`:""}{d.replacement.amount?` · ${inr(+d.replacement.amount)} deducted`:""}</p>}
-                    {d.replacement.reason&&<p style={{color:t.sub}} className="text-xs">Reason: {d.replacement.reason}</p>}
                   </div>
-                )}
-                <div className="flex gap-2 mt-1 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
-                  {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,display:"inline-flex",alignItems:"center",gap:6,WebkitTapHighlightColor:"transparent",textDecoration:"none",flexShrink:0}}>📍 Nav</a>}
-                  <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
-                  <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
-                  {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
-                  {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
-                  <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>WA</button>
-                  {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
-                  {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
-                  {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:44,padding:"0 14px",borderRadius:12,fontSize:13,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
-                </div>
-              </div></Card>
-            );
-          })}
-          </div>
+
+                  {/* ── EXPANDED: per-delivery list ── */}
+                  {isExpanded&&<div style={{borderTop:`1px solid ${t.border}`}}>
+                    {/* Customer summary strip */}
+                    {canSeePrices&&<div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(245,158,11,0.04)",padding:"10px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,borderBottom:`1px solid ${t.border}`}}>
+                      {[
+                        {l:"Total Billed",v:inr(totalAmt),c:"#f59e0b"},
+                        {l:"Replacements",v:totalRepl>0?`−${inr(totalRepl)}`:"None",c:totalRepl>0?"#f97316":t.sub},
+                        {l:"Collected",v:inr(totalCollected),c:"#10b981"},
+                        {l:"Balance Due",v:inr(totalBalance),c:totalBalance>0?"#ef4444":"#10b981"},
+                      ].map(x=><div key={x.l} style={{textAlign:"center"}}>
+                        <p style={{color:x.c,fontWeight:800,fontSize:13}}>{x.v}</p>
+                        <p style={{color:t.sub,fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:2}}>{x.l}</p>
+                      </div>)}
+                    </div>}
+
+                    {/* Each delivery */}
+                    {group.delivs.map((d,di)=>{
+                      const rows=lineRows(d.orderLines,products);
+                      const tot=lineTotal(d.orderLines);
+                      const replAmt=+d.replacement?.amount||0;
+                      const netAmt=Math.max(0,tot-replAmt);
+                      const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+                      const balanceDue=Math.max(0,netAmt-collected);
+                      const sc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#0ea5e9":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                      const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                      const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+                      const isBulkChecked=bulkSelected.has(d.id);
+                      // Batch info if any production record on same date
+                      const batchesOnDate=prodTargets.filter(pt=>pt.date===d.date);
+                      return <div key={d.id} style={{
+                        borderTop:di>0?`1px solid ${t.border}`:"none",
+                        background:isBulkChecked?(dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.06)"):undefined,
+                        borderLeft:`4px solid ${sc}`,
+                        padding:"14px 16px",
+                      }}>
+                        {/* Delivery header */}
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex items-start gap-2 min-w-0">
+                            {bulkSelect&&<button onClick={()=>{const s=new Set(bulkSelected);if(s.has(d.id))s.delete(d.id);else s.add(d.id);setBulkSelected(s);}} style={{width:22,height:22,borderRadius:6,border:`2px solid ${isBulkChecked?"#f59e0b":t.inpB}`,background:isBulkChecked?"#f59e0b":t.inp,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2,cursor:"pointer"}}>
+                              {isBulkChecked&&<span style={{color:"#000",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
+                            </button>}
+                            <div>
+                              <div className="flex flex-wrap gap-2 items-center mb-1">
+                                <span style={{color:t.text,fontWeight:700,fontSize:13}}>📅 {d.date}</span>
+                                {d.deliveryDate&&d.deliveryDate!==d.date&&<span style={{color:t.sub,fontSize:11}}>→ deliver by {d.deliveryDate}</span>}
+                                <button onClick={()=>tglD(d)} style={{background:`${sc}20`,color:sc,border:`1px solid ${sc}40`,borderRadius:8,padding:"2px 10px",fontSize:10,fontWeight:800,cursor:"pointer"}}>{d.status}</button>
+                              </div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                <span style={{color:t.sub,fontSize:10}}>👤 {d.createdBy||d.agent||"—"}</span>
+                                {invNo&&<span style={{color:"#8b5cf6",fontSize:10,fontWeight:700,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",borderRadius:4,padding:"1px 6px"}}>📄 {invNo}</span>}
+                                {invNo&&<span style={{color:"#0ea5e9",fontSize:10,fontWeight:700,fontFamily:"monospace",background:dm?"rgba(14,165,233,0.15)":"rgba(14,165,233,0.08)",borderRadius:4,padding:"1px 6px"}}>🧾 {rcptNo}</span>}
+                                {batchesOnDate.length>0&&<span style={{color:"#7c3aed",fontSize:10,fontWeight:700,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:4,padding:"1px 6px"}}>🏭 {batchesOnDate.map(b=>b.batchLabel||"Batch").join(", ")}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Items ordered */}
+                        {rows.length>0&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Items Ordered</p>
+                          {rows.map(r=>(
+                            <div key={r.id} className="flex justify-between items-center" style={{paddingBottom:4,marginBottom:4,borderBottom:`1px solid ${t.border}`}}>
+                              <span style={{color:t.text,fontSize:12}}>{r.qty} × <b>{r.name}</b>{canSeePrices?<span style={{color:t.sub}}> @ {inr(r.priceAmount)}</span>:""}</span>
+                              {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:12}}>{inr(r.qty*r.priceAmount)}</span>}
+                            </div>
+                          ))}
+                          {canSeePrices&&tot>0&&<div className="flex justify-between" style={{paddingTop:4,fontWeight:800,fontSize:13}}>
+                            <span style={{color:t.sub}}>Order Total</span>
+                            <span style={{color:"#f59e0b"}}>{inr(tot)}</span>
+                          </div>}
+                        </div>}
+
+                        {/* Replacement block */}
+                        {d.replacement?.done&&<div style={{background:"#f9731618",border:"1px solid #f9731640",borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+                          <p style={{color:"#f97316",fontWeight:800,fontSize:11,marginBottom:4}}>🔄 Replacement Made</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {d.replacement.item&&<span style={{color:t.text,fontSize:11}}>Item: <b>{d.replacement.item}</b></span>}
+                            {d.replacement.qty&&<span style={{color:t.text,fontSize:11}}>Qty returned: <b>{d.replacement.qty}</b></span>}
+                            {canSeePrices&&replAmt>0&&<span style={{color:"#f97316",fontWeight:700,fontSize:11}}>Deducted: −{inr(replAmt)}</span>}
+                            {d.replacement.reason&&<span style={{color:t.sub,fontSize:11,fontStyle:"italic"}}>Reason: {d.replacement.reason}</span>}
+                          </div>
+                        </div>}
+
+                        {/* Payment summary — proper stacked breakdown */}
+                        {canSeePrices&&tot>0&&<div style={{background:t.inp,borderRadius:12,overflow:"hidden",marginBottom:10}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",padding:"8px 12px 0"}}>Payment Summary</p>
+                          <div style={{padding:"6px 12px 10px",display:"flex",flexDirection:"column",gap:5}}>
+                            {/* Order total row */}
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+                              <span style={{color:t.sub}}>Order total</span>
+                              <span style={{color:t.text,fontWeight:700}}>{inr(tot)}</span>
+                            </div>
+                            {/* Replacement deduction row */}
+                            {replAmt>0&&<>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+                                <span style={{color:"#f97316"}}>🔄 Replacement deducted{d.replacement?.item?` — ${d.replacement.item}${d.replacement.qty?" ×"+d.replacement.qty:""}`:""}</span>
+                                <span style={{color:"#f97316",fontWeight:700}}>−{inr(replAmt)}</span>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,paddingTop:3,borderTop:`1px dashed ${t.border}`}}>
+                                <span style={{color:t.sub,fontWeight:600}}>Net payable</span>
+                                <span style={{color:t.text,fontWeight:800}}>{inr(netAmt)}</span>
+                              </div>
+                            </>}
+                            {/* Collected row */}
+                            {collected>0&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+                              <span style={{color:"#10b981"}}>💰 Collected</span>
+                              <span style={{color:"#10b981",fontWeight:700}}>−{inr(collected)}</span>
+                            </div>}
+                            {/* Balance due — always shown */}
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:13,fontWeight:800,paddingTop:5,marginTop:2,borderTop:`2px solid ${t.border}`}}>
+                              <span style={{color:balanceDue===0?"#10b981":"#ef4444"}}>{balanceDue===0?"✓ Fully settled":"Balance due"}</span>
+                              <span style={{color:balanceDue===0?"#10b981":"#ef4444",background:balanceDue===0?"#10b98118":"#ef444418",borderRadius:8,padding:"2px 10px"}}>{balanceDue===0?"—":inr(balanceDue)}</span>
+                            </div>
+                          </div>
+                        </div>}
+
+                        {d.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic",marginBottom:8}}>📝 "{d.notes}"</p>}
+
+                        {/* Action buttons */}
+                        <div className="flex gap-2 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
+                          {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,WebkitTapHighlightColor:"transparent",textDecoration:"none",flexShrink:0}}>📍 Nav</a>}
+                          <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
+                          <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
+                          {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
+                          {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
+                          <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>WA</button>
+                          {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
+                          {can("deliv_markDone")&&d.status!=="Delivered"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>✓ Done</button>}
+                          {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
+                          {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
+                        </div>
+                      </div>;
+                    })}
+                  </div>}
+                </Card>;
+              })}
+            </div>;
+          })()}
         </>)}
 
         {/* SUPPLIES */}
@@ -6974,6 +6806,301 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         </>)}
 
 
+        {/* ══════════════════════════════════════════════════════════════
+            PAYMENTS TAB — Full ledger, outstanding balances, daily summary
+            ══════════════════════════════════════════════════════════════ */}
+        {tab==="Payments"&&isAdmin&&(()=>{
+          const todayStr=today();
+          // ── Build comprehensive payment data ──────────────────────────
+          // Compute per-delivery payment status
+          const delivPayments=deliveries.map(d=>{
+            const orderTotal=lineTotal(d.orderLines);
+            const replAmt=+(d.replacement?.amount)||0;
+            const netPayable=Math.max(0,orderTotal-replAmt);
+            const collected=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
+            const balance=Math.max(0,netPayable-collected);
+            const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+            const rcptNo=invNo?`RCP-${invNo.replace("TAS-","")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+            const payStatus=netPayable===0?"zero":balance===0&&netPayable>0?"settled":collected>0&&balance>0?"partial":"pending";
+            return {d,orderTotal,replAmt,netPayable,collected,balance,invNo,rcptNo,payStatus};
+          });
+
+          // ── Manual ledger entries ──────────────────────────────────────
+          const allLedgerEntries=[
+            ...delivPayments.filter(dp=>dp.collected>0).map(dp=>({
+              id:`deliv_${dp.d.id}`,type:"delivery",date:dp.d.date,customer:dp.d.customer,customerId:dp.d.customerId,
+              amount:dp.collected,balance:dp.balance,invNo:dp.invNo,rcptNo:dp.rcptNo,
+              note:dp.d.partialPayment?.note||"",method:"Delivery Collect",by:dp.d.partialPayment?.collectedBy||dp.d.createdBy||"—",
+              replAmt:dp.replAmt,orderTotal:dp.orderTotal,netPayable:dp.netPayable,payStatus:dp.payStatus,ts:dp.d.partialPayment?.collectedAt||dp.d.date
+            })),
+            ...(paymentLedger||[]).map(e=>({
+              id:e.id,type:"manual",date:e.date,customer:e.customerName,customerId:e.customerId,
+              amount:e.amount,balance:0,invNo:null,rcptNo:null,
+              note:e.note||"",method:e.method||"Cash",by:e.recordedBy||"—",
+              replAmt:0,orderTotal:0,netPayable:0,payStatus:"manual",ts:e.ts||e.date
+            })),
+          ].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||"").localeCompare(a.ts||""));
+
+          // ── Filtered entries ───────────────────────────────────────────
+          const q2=paymentsSearch.toLowerCase();
+          const filteredEntries=allLedgerEntries.filter(e=>{
+            const matchQ=!q2||e.customer.toLowerCase().includes(q2)||(e.invNo||"").toLowerCase().includes(q2)||(e.rcptNo||"").toLowerCase().includes(q2)||e.note.toLowerCase().includes(q2);
+            const now2=new Date();
+            const matchDate=paymentsDateFilter==="all"?true:
+              paymentsDateFilter==="today"?e.date===todayStr:
+              paymentsDateFilter==="week"?e.date>=(new Date(now2.getTime()-6*86400000).toISOString().slice(0,10)):
+              paymentsDateFilter==="month"?e.date>=(new Date(now2.getFullYear(),now2.getMonth(),1).toISOString().slice(0,10)):true;
+            return matchQ&&matchDate;
+          });
+
+          // ── Outstanding balances per customer ──────────────────────────
+          const custOutstanding=customers.map(c=>{
+            const custDelivs=delivPayments.filter(dp=>dp.d.customerId===c.id);
+            const totalOrdered=custDelivs.reduce((s,dp)=>s+dp.orderTotal,0);
+            const totalRepl=custDelivs.reduce((s,dp)=>s+dp.replAmt,0);
+            const totalNet=custDelivs.reduce((s,dp)=>s+dp.netPayable,0);
+            const totalCollected=custDelivs.reduce((s,dp)=>s+dp.collected,0);
+            const totalBalance=custDelivs.reduce((s,dp)=>s+dp.balance,0);
+            const pendingDelivs=custDelivs.filter(dp=>dp.payStatus==="pending");
+            const partialDelivs=custDelivs.filter(dp=>dp.payStatus==="partial");
+            const settledDelivs=custDelivs.filter(dp=>dp.payStatus==="settled");
+            // also count manual ledger payments
+            const manualPaid=(paymentLedger||[]).filter(e=>e.customerId===c.id).reduce((s,e)=>s+e.amount,0);
+            return {c,totalOrdered,totalRepl,totalNet,totalCollected:totalCollected+manualPaid,totalBalance,pendingDelivs,partialDelivs,settledDelivs,custDelivs};
+          }).filter(x=>x.custDelivs.length>0||x.c.pending>0);
+
+          // ── Daily summary data ─────────────────────────────────────────
+          const last30Days=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+          const dailySummary=last30Days.map(date=>{
+            const dayDelivs=delivPayments.filter(dp=>dp.d.date===date);
+            const dayOrdered=dayDelivs.reduce((s,dp)=>s+dp.orderTotal,0);
+            const dayRepl=dayDelivs.reduce((s,dp)=>s+dp.replAmt,0);
+            const dayNet=dayDelivs.reduce((s,dp)=>s+dp.netPayable,0);
+            const dayCollected=dayDelivs.reduce((s,dp)=>s+dp.collected,0);
+            const dayManual=(paymentLedger||[]).filter(e=>e.date===date).reduce((s,e)=>s+e.amount,0);
+            const dayPending=dayNet-dayCollected;
+            const dayPartial=dayDelivs.filter(dp=>dp.payStatus==="partial").length;
+            const daySettled=dayDelivs.filter(dp=>dp.payStatus==="settled").length;
+            const dayUnpaid=dayDelivs.filter(dp=>dp.payStatus==="pending").length;
+            return {date,dayOrdered,dayRepl,dayNet,dayCollected,dayManual,totalCash:dayCollected+dayManual,dayPending:Math.max(0,dayPending),dayPartial,daySettled,dayUnpaid,delivCount:dayDelivs.length};
+          }).filter(d=>d.delivCount>0||d.dayManual>0);
+
+          // ── Totals ────────────────────────────────────────────────────
+          const totalCollectedAll=allLedgerEntries.filter(e=>e.type==="delivery").reduce((s,e)=>s+e.amount,0);
+          const totalManualAll=(paymentLedger||[]).reduce((s,e)=>s+e.amount,0);
+          const totalReplAll=delivPayments.reduce((s,dp)=>s+dp.replAmt,0);
+          const totalBalanceAll=delivPayments.reduce((s,dp)=>s+dp.balance,0);
+          const partialCustCount=custOutstanding.filter(x=>x.partialDelivs.length>0).length;
+          const pendingCustCount=custOutstanding.filter(x=>x.totalBalance>0).length;
+
+          const SUB_TABS=[
+            {id:"ledger",label:"📋 Full Ledger"},
+            {id:"outstanding",label:"⏳ Outstanding"},
+            {id:"daily",label:"📅 Daily Summary"},
+          ];
+
+          return <>
+            {/* ── KPI strip ── */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+              <div style={{background:dm?"#0a1f12":"#f0fdf4",border:"1.5px solid #10b98130",borderRadius:16,padding:"12px 16px",gridColumn:"1/-1"}}>
+                <p style={{color:"#10b981",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>💰 Payment Overview</p>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                  {[
+                    {label:"Total Collected",val:inr(totalCollectedAll+totalManualAll),color:"#10b981"},
+                    {label:"Repl Deducted",val:inr(totalReplAll),color:"#f97316"},
+                    {label:"Outstanding",val:inr(totalBalanceAll),color:totalBalanceAll>0?"#ef4444":"#10b981"},
+                    {label:"Customers With Dues",val:pendingCustCount,color:pendingCustCount>0?"#f59e0b":"#10b981"},
+                  ].map(({label,val,color})=>(
+                    <div key={label} style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.7)",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                      <p style={{color,fontWeight:900,fontSize:14,lineHeight:1}}>{val}</p>
+                      <p style={{color:t.sub,fontSize:9,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em",lineHeight:1.3}}>{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sub-tab nav ── */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {SUB_TABS.map(s=>(
+                <button key={s.id} onClick={()=>setPaymentsSubTab(s.id)}
+                  style={{background:paymentsSubTab===s.id?(dm?"#3b82f6":"#1e3a5f"):"transparent",color:paymentsSubTab===s.id?"#fff":t.sub,borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,border:`1.5px solid ${paymentsSubTab===s.id?(dm?"#3b82f6":"#1e3a5f"):t.border}`,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                  {s.label}
+                </button>
+              ))}
+              <button onClick={()=>{setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}}
+                style={{marginLeft:"auto",background:"#10b981",color:"#fff",borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                + Record Payment
+              </button>
+            </div>
+
+            {/* ── FULL LEDGER sub-tab ── */}
+            {paymentsSubTab==="ledger"&&<>
+              <div className="flex gap-2 flex-wrap">
+                <div style={{flex:1,minWidth:180}}>
+                  <Search dm={dm} value={paymentsSearch} onChange={setPaymentsSearch} placeholder="Search customer, invoice, receipt…"/>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  {["all","today","week","month"].map(f=>(
+                    <button key={f} onClick={()=>setPaymentsDateFilter(f)}
+                      style={{background:paymentsDateFilter===f?(dm?"#3b82f6":"#1e3a5f"):t.inp,color:paymentsDateFilter===f?"#fff":t.sub,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,border:`1px solid ${paymentsDateFilter===f?"transparent":t.border}`,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                      {f==="all"?"All":f==="today"?"Today":f==="week"?"7d":f==="month"?"This Month":""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {filteredEntries.length===0&&<p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>No payment records found.</p>}
+              {filteredEntries.map((entry,ei)=>{
+                const statusColor=entry.payStatus==="settled"?"#10b981":entry.payStatus==="partial"?"#f59e0b":entry.payStatus==="manual"?"#3b82f6":"#ef4444";
+                const statusLabel=entry.payStatus==="settled"?"✓ Settled":entry.payStatus==="partial"?"⚡ Partial":entry.payStatus==="manual"?"💳 Manual":"⏳ Pending";
+                return <div key={entry.id} style={{background:t.card,border:`1px solid ${statusColor}30`,borderRadius:16,padding:"14px 16px",borderLeft:`3px solid ${statusColor}`}}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0">
+                      <p style={{color:t.text,fontWeight:800,fontSize:14,lineHeight:1.2}}>{entry.customer}</p>
+                      <div className="flex gap-2 flex-wrap mt-1">
+                        <span style={{color:t.sub,fontSize:10}}>📅 {entry.date}</span>
+                        {entry.invNo&&<span style={{background:t.inp,color:t.sub,fontSize:9,fontFamily:"monospace",borderRadius:4,padding:"1px 6px"}}>{entry.invNo}</span>}
+                        {entry.rcptNo&&<span style={{background:t.inp,color:t.sub,fontSize:9,fontFamily:"monospace",borderRadius:4,padding:"1px 6px"}}>{entry.rcptNo}</span>}
+                        <span style={{color:t.sub,fontSize:10}}>via {entry.method}</span>
+                        <span style={{color:t.sub,fontSize:10}}>by {entry.by}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p style={{color:"#10b981",fontWeight:900,fontSize:16}}>{inr(entry.amount)}</p>
+                      <span style={{background:statusColor+"20",color:statusColor,fontSize:9,fontWeight:700,borderRadius:20,padding:"2px 8px"}}>{statusLabel}</span>
+                    </div>
+                  </div>
+                  {entry.type==="delivery"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",fontSize:11}}>
+                    {entry.orderTotal>0&&<span style={{background:t.inp,borderRadius:6,padding:"2px 8px",color:t.sub}}>Order: <b style={{color:t.text}}>{inr(entry.orderTotal)}</b></span>}
+                    {entry.replAmt>0&&<span style={{background:"#f9731615",borderRadius:6,padding:"2px 8px",color:"#f97316"}}>🔄 Repl: <b>−{inr(entry.replAmt)}</b></span>}
+                    {entry.netPayable>0&&<span style={{background:t.inp,borderRadius:6,padding:"2px 8px",color:t.sub}}>Net: <b style={{color:t.text}}>{inr(entry.netPayable)}</b></span>}
+                    {entry.balance>0&&<span style={{background:"#f59e0b15",borderRadius:6,padding:"2px 8px",color:"#f59e0b"}}>Due: <b>{inr(entry.balance)}</b></span>}
+                  </div>}
+                  {entry.note&&<p style={{color:t.sub,fontSize:11,marginTop:6,fontStyle:"italic"}}>📝 "{entry.note}"</p>}
+                </div>;
+              })}
+            </>}
+
+            {/* ── OUTSTANDING sub-tab ── */}
+            {paymentsSubTab==="outstanding"&&<>
+              <div style={{background:dm?"#1a0a0a":"#fff7f7",border:"1.5px solid #ef444430",borderRadius:16,padding:"12px 16px"}}>
+                <p style={{color:"#ef4444",fontSize:12,fontWeight:700,marginBottom:4}}>⏳ Customers with outstanding balances: {pendingCustCount}</p>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <span style={{background:"#ef444420",color:"#ef4444",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>Total Due: {inr(totalBalanceAll)}</span>
+                  <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>Partial: {partialCustCount} customers</span>
+                  <span style={{background:"#f9731620",color:"#f97316",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>Replaced: {inr(totalReplAll)} deducted</span>
+                </div>
+              </div>
+              {custOutstanding.sort((a,b)=>b.totalBalance-a.totalBalance).map(({c,totalOrdered,totalRepl,totalNet,totalCollected:tc,totalBalance,pendingDelivs,partialDelivs,settledDelivs,custDelivs})=>{
+                const hasDue=totalBalance>0||(c.pending||0)>0;
+                const accentColor=hasDue?"#ef4444":"#10b981";
+                return <div key={c.id} style={{background:t.card,border:`1px solid ${accentColor}25`,borderRadius:16,padding:"14px 16px",borderLeft:`3px solid ${accentColor}`}}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <p style={{color:t.text,fontWeight:800,fontSize:14}}>{c.name}</p>
+                      {c.phone&&<p style={{color:t.sub,fontSize:11}}>📞 {c.phone}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p style={{color:hasDue?"#ef4444":"#10b981",fontWeight:900,fontSize:16}}>{inr(Math.max(totalBalance,c.pending||0))}</p>
+                      <p style={{color:t.sub,fontSize:9}}>{hasDue?"outstanding":"fully settled"}</p>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+                    {[
+                      {label:"Total Ordered",val:inr(totalOrdered),color:t.text},
+                      {label:"Repl Deducted",val:inr(totalRepl),color:"#f97316"},
+                      {label:"Collected",val:inr(tc),color:"#10b981"},
+                      {label:"Balance Due",val:inr(Math.max(totalBalance,c.pending||0)),color:hasDue?"#ef4444":"#10b981"},
+                    ].map(({label,val,color})=>(
+                      <div key={label} style={{background:t.inp,borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
+                        <p style={{color,fontWeight:800,fontSize:11,lineHeight:1}}>{val}</p>
+                        <p style={{color:t.sub,fontSize:8,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                    {settledDelivs.length>0&&<span style={{background:"#10b98115",color:"#10b981",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>✓ {settledDelivs.length} settled</span>}
+                    {partialDelivs.length>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>⚡ {partialDelivs.length} partial</span>}
+                    {pendingDelivs.length>0&&<span style={{background:"#ef444415",color:"#ef4444",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>⏳ {pendingDelivs.length} unpaid</span>}
+                    {totalRepl>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>🔄 {inr(totalRepl)} replaced</span>}
+                  </div>
+                  {/* Per-delivery breakdown */}
+                  {custDelivs.length>0&&<div style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Delivery Breakdown</p>
+                    {custDelivs.slice(0,5).map(({d,orderTotal:dOt,replAmt:dRa,netPayable:dNet,collected:dColl,balance:dBal,invNo:dInv,payStatus:dSt})=>(
+                      <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.border}`,fontSize:11}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <span style={{color:t.sub}}>{d.date}</span>
+                          {dInv&&<span style={{color:t.sub,fontSize:9,marginLeft:6,fontFamily:"monospace"}}>{dInv}</span>}
+                          {dRa>0&&<span style={{color:"#f97316",fontSize:9,marginLeft:4}}>🔄−{inr(dRa)}</span>}
+                          <span style={{display:"inline-block",marginLeft:6,background:dSt==="settled"?"#10b98120":dSt==="partial"?"#f59e0b20":"#ef444420",color:dSt==="settled"?"#10b981":dSt==="partial"?"#f59e0b":"#ef4444",borderRadius:4,padding:"0px 5px",fontSize:9,fontWeight:700}}>
+                            {dSt==="settled"?"✓":dSt==="partial"?"⚡":"⏳"}
+                          </span>
+                        </div>
+                        <div style={{textAlign:"right",shrink:0}}>
+                          <span style={{color:t.text,fontWeight:700}}>{inr(dNet)}</span>
+                          {dBal>0&&<span style={{color:"#ef4444",marginLeft:6,fontSize:10}}>due {inr(dBal)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {custDelivs.length>5&&<p style={{color:t.sub,fontSize:10,marginTop:4,textAlign:"center"}}>+{custDelivs.length-5} more deliveries</p>}
+                  </div>}
+                  <div className="flex gap-2 mt-3">
+                    {hasDue&&<button onClick={()=>{setPayLedgerCust(c);setPayLedgerAmt(String(Math.max(totalBalance,c.pending||0)));setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}}
+                      style={{flex:1,background:"#10b981",color:"#fff",borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                      💰 Record Payment
+                    </button>}
+                    <button onClick={()=>{setDetailModal({type:"customer",data:c});}}
+                      style={{flex:1,background:t.inp,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:600,border:`1px solid ${t.border}`,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                      👤 View Customer
+                    </button>
+                  </div>
+                </div>;
+              })}
+              {custOutstanding.length===0&&<p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>All customers are fully settled! 🎉</p>}
+            </>}
+
+            {/* ── DAILY SUMMARY sub-tab ── */}
+            {paymentsSubTab==="daily"&&<>
+              {dailySummary.length===0&&<p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>No payment data yet.</p>}
+              {dailySummary.map(day=>{
+                const isToday=day.date===todayStr;
+                return <div key={day.date} style={{background:isToday?(dm?"#0a1f12":"#f0fdf4"):t.card,border:`1px solid ${isToday?"#10b98140":t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p style={{color:isToday?"#10b981":t.text,fontWeight:800,fontSize:14}}>{isToday?"🌟 Today — ":""}{new Date(day.date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}</p>
+                      <p style={{color:t.sub,fontSize:11}}>{day.delivCount} deliveries</p>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <p style={{color:"#10b981",fontWeight:900,fontSize:16}}>{inr(day.totalCash)}</p>
+                      <p style={{color:t.sub,fontSize:10}}>total collected</p>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                    {[
+                      {label:"Orders",val:inr(day.dayOrdered),color:t.text},
+                      {label:"Replaced",val:inr(day.dayRepl),color:"#f97316"},
+                      {label:"Collected",val:inr(day.dayCollected),color:"#10b981"},
+                      {label:"Still Due",val:inr(day.dayPending),color:day.dayPending>0?"#ef4444":"#10b981"},
+                    ].map(({label,val,color})=>(
+                      <div key={label} style={{background:t.inp,borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
+                        <p style={{color,fontWeight:800,fontSize:11,lineHeight:1}}>{val}</p>
+                        <p style={{color:t.sub,fontSize:8,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {(day.dayPartial>0||day.daySettled>0||day.dayUnpaid>0)&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+                    {day.daySettled>0&&<span style={{background:"#10b98115",color:"#10b981",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>✓ {day.daySettled} settled</span>}
+                    {day.dayPartial>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>⚡ {day.dayPartial} partial</span>}
+                    {day.dayUnpaid>0&&<span style={{background:"#ef444415",color:"#ef4444",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>⏳ {day.dayUnpaid} unpaid</span>}
+                    {day.dayManual>0&&<span style={{background:"#3b82f615",color:"#3b82f6",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>💳 {inr(day.dayManual)} manual</span>}
+                  </div>}
+                </div>;
+              })}
+            </>}
+          </>;
+        })()}
+
         {/* P&L TAB */}
         {tab==="P&L"&&isAdmin&&(()=>{
           // ── Compute date window ──────────────────────────────────────
@@ -7228,6 +7355,49 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div>
             </div>
 
+            {/* ── PAYMENT BREAKDOWN (replacements, partial, pending) ── */}
+            {(()=>{
+              const delivPB=deliveries.filter(d=>dateFrom<=d.date&&d.date<=dateTo);
+              const replCount=delivPB.filter(d=>d.replacement?.done).length;
+              const replAmtPB=delivPB.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+              const partialCount=delivPB.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length;
+              const partialAmt=delivPB.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0);
+              const fullyPaidCount=delivPB.filter(d=>{const net=lineTotal(d.orderLines)-(+d.replacement?.amount||0);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;return net>0&&coll>=net;}).length;
+              const unpaidCount=delivPB.filter(d=>!(d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0)).length;
+              const totalPBOrders=delivPB.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              const netAfterRepl=totalPBOrders-replAmtPB;
+              const pendingAmt=Math.max(0,netAfterRepl-partialAmt);
+              const manualLedgerAmt=(paymentLedger||[]).filter(e=>e.date>=dateFrom&&e.date<=dateTo).reduce((s,e)=>s+e.amount,0);
+              return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>💳 Payment Breakdown — {periodLabel}</p>
+                  <button onClick={()=>setTab("Payments")} style={{background:"#3b82f615",color:"#3b82f6",border:"none",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                  {[
+                    {label:"Total Orders",val:inr(totalPBOrders),color:t.text},
+                    {label:"Repl Deducted",val:`−${inr(replAmtPB)}`,color:"#f97316",sub:`${replCount} replacements`},
+                    {label:"Net Billed",val:inr(netAfterRepl),color:"#10b981"},
+                    {label:"Collected",val:inr(partialAmt+manualLedgerAmt),color:"#10b981",sub:`${partialCount} deliveries`},
+                    {label:"Manual Paid",val:inr(manualLedgerAmt),color:"#3b82f6"},
+                    {label:"Still Pending",val:inr(pendingAmt),color:pendingAmt>0?"#ef4444":"#10b981"},
+                  ].map(({label,val,color,sub})=>(
+                    <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
+                      <p style={{color,fontWeight:800,fontSize:12,lineHeight:1}}>{val}</p>
+                      <p style={{color:t.sub,fontSize:9,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
+                      {sub&&<p style={{color:t.sub,fontSize:9,marginTop:1}}>{sub}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {fullyPaidCount>0&&<span style={{background:"#10b98115",color:"#10b981",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>✓ {fullyPaidCount} fully paid deliveries</span>}
+                  {partialCount>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⚡ {partialCount} partial payments</span>}
+                  {unpaidCount>0&&<span style={{background:"#ef444415",color:"#ef4444",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⏳ {unpaidCount} unpaid deliveries</span>}
+                  {replCount>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>🔄 {replCount} replacements · {inr(replAmtPB)} off</span>}
+                </div>
+              </div>;
+            })()}
+
             {/* ── MONTH HIGHLIGHTS ── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
@@ -7386,14 +7556,20 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               {mDelivs.length>0&&<div className="mb-2">
                                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Deliveries ({mDelivs.length})</p>
                                 <div style={{maxHeight:120,overflowY:"auto"}}>
-                                  {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>(
+                                  {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
+                                    const plInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                                    return (
                                     <div key={d.id||di} className="flex justify-between items-center py-1" style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
                                       onClick={()=>setDetailModal({type:"delivery",data:d})}
                                       onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
-                                      <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{d.customer}</span>
+                                      <div>
+                                        <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{d.customer}</span>
+                                        {plInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",marginLeft:6,background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.07)",borderRadius:3,padding:"1px 4px"}}>{plInvNo}</span>}
+                                      </div>
                                       <span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</span>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>}
                               {/* Top expenses */}
@@ -7884,6 +8060,48 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <StatCard dm={dm} label="Active Products" value={prodSales.filter(p=>p.totalQty>0).length} sub={`of ${products.length} in catalogue`} accent="#8b5cf6"/>
             </div>
 
+            {/* ── PAYMENT HEALTH ── */}
+            {(()=>{
+              const allPH=deliveries;
+              const totalOV=allPH.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              const totalReplPH=allPH.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+              const totalNetPH=totalOV-totalReplPH;
+              const totalCollPH=allPH.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0);
+              const manualTotalPH=(paymentLedger||[]).reduce((s,e)=>s+e.amount,0);
+              const totalPaidPH=totalCollPH+manualTotalPH;
+              const totalPendingPH=Math.max(0,totalNetPH-totalPaidPH);
+              const partialDelivs=allPH.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length;
+              const collPct=totalNetPH>0?Math.round(totalPaidPH/totalNetPH*100):100;
+              return <div style={{background:dm?"linear-gradient(135deg,#0a1f12,#0c0c16)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:`1.5px solid ${dm?"#10b98130":"#86efac"}`,borderRadius:20,padding:"16px 18px"}}>
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>💳 Payment Health — All Time</p>
+                  <button onClick={()=>setTab("Payments")} style={{background:"#10b98115",color:"#10b981",border:"none",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr) ",gap:8,marginBottom:10}}>
+                  <div style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.8)",borderRadius:12,padding:"10px 14px",gridColumn:"1/-1"}}>
+                    <div className="flex justify-between mb-2"><span style={{color:"#10b981",fontSize:12,fontWeight:700}}>{inr(totalPaidPH)} collected ({collPct}%)</span><span style={{color:"#ef4444",fontSize:12,fontWeight:700}}>{inr(totalPendingPH)} pending</span></div>
+                    <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
+                      <div style={{width:`${collPct}%`,background:"linear-gradient(90deg,#10b981,#059669)",borderRadius:"8px 0 0 8px",transition:"width 0.6s"}}/>
+                      <div style={{width:`${100-collPct}%`,background:"#ef4444",borderRadius:"0 8px 8px 0"}}/>
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                  {[
+                    {label:"Repl Deducted",val:inr(totalReplPH),color:"#f97316"},
+                    {label:"Partial Payments",val:partialDelivs,color:"#f59e0b",suffix:"deliveries"},
+                    {label:"Manual Entries",val:(paymentLedger||[]).length,color:"#3b82f6",suffix:"records"},
+                    {label:"Customers w/ Dues",val:customers.filter(c=>c.pending>0).length,color:customers.filter(c=>c.pending>0).length>0?"#ef4444":"#10b981"},
+                  ].map(({label,val,color,suffix})=>(
+                    <div key={label} style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.8)",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                      <p style={{color,fontWeight:800,fontSize:13,lineHeight:1}}>{val}{suffix?" "+suffix:""}</p>
+                      <p style={{color:t.sub,fontSize:9,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em",lineHeight:1.3}}>{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>;
+            })()}
+
             {/* ── DELIVERY PERFORMANCE ── */}
             {totalScheduled>0&&<Card dm={dm} className="p-4">
               <p style={{color:t.text}} className="font-bold text-sm mb-1">🚚 Delivery Performance</p>
@@ -8018,7 +8236,6 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("revenue")}>Revenue{anlCustSort==="revenue"?" ↓":""}</th>
                       <th style={{color:t.sub}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]">Part.Paid</th>
                       <th style={{color:t.sub,cursor:"pointer"}} className="px-3 py-2 text-right font-bold uppercase tracking-wide text-[10px]" onClick={()=>setAnlCustSort("outstanding")}>Outstanding{anlCustSort==="outstanding"?" ↓":""}</th>
-                      <th style={{color:t.sub}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Share</th>
                       <th style={{color:t.sub}} className="px-3 py-2 text-left font-bold uppercase tracking-wide text-[10px]">Status</th>
                     </tr></thead>
                     <tbody>
@@ -8039,27 +8256,21 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <td className="px-3 py-2.5 text-right">{hasPartial?<span style={{color:"#f59e0b",fontWeight:700}}>{inr(c.partialCollected)}</span>:<span style={{color:t.sub}}>—</span>}</td>
                             <td className="px-3 py-2.5 text-right"><span style={{color:hasOutstanding?"#ef4444":"#10b981",fontWeight:700}}>{hasOutstanding?inr(c.outstandingBalance):"✓ Clear"}</span></td>
                             <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-1.5">
-                                <div style={{width:32,height:4,background:t.border,borderRadius:4,overflow:"hidden"}}>
-                                  <div style={{width:`${share}%`,height:"100%",background:"#f59e0b",borderRadius:4}}/>
-                                </div>
-                                <span style={{color:t.sub,fontSize:10}}>{share}%</span>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5">
                               <span style={{background:hasOutstanding?"#ef444420":"#10b98120",color:hasOutstanding?"#ef4444":"#10b981",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:10}}>{hasOutstanding?"OWING":"CLEAR"}</span>
                               <span style={{color:t.sub,fontSize:10,marginLeft:4}}>{isExp?"▲":"▼"}</span>
                             </td>
                           </tr>
                           {isExp&&<tr style={{background:dm?"rgba(99,102,241,0.06)":"rgba(99,102,241,0.03)"}}>
-                            <td colSpan={8} className="px-4 py-3">
+                            <td colSpan={7} className="px-4 py-3">
                               <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>Recent deliveries · {c.name}</p>
                               {custDelivs.length===0?<p style={{color:t.sub,fontSize:11}}>No deliveries in this period.</p>
                               :custDelivs.slice(0,5).map(d=>{
                                 const net=Math.max(0,lineTotal(d.orderLines)-(+(d.replacement?.amount)||0));
+                                const anlInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
                                 return <div key={d.id} style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                   <div>
                                     <p style={{color:t.text,fontSize:11,fontWeight:600}}>{d.date} · <span style={{color:d.status==="Delivered"?"#10b981":"#f59e0b"}}>{d.status}</span></p>
+                                    {anlInvNo&&<p style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",fontWeight:700,marginTop:2}}>📄 {anlInvNo} · 🧾 RCP-{anlInvNo.replace(/^[A-Z]+-/,"")}</p>}
                                     {d.orderLines&&Object.values(d.orderLines).filter(l=>l.qty>0).map((l,li)=><span key={li} style={{color:t.sub,fontSize:10,marginRight:6}}>{l.name||l.product||""} ×{l.qty}</span>)}
                                   </div>
                                   <p style={{color:"#f59e0b",fontWeight:700,fontSize:12}}>{inr(net)}</p>
@@ -8596,7 +8807,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <div className="flex items-center justify-between">
                 <Pill dm={dm} c="purple">{filteredPT.length} runs · {filteredPT.reduce((s,x)=>s+(+x.actual||0),0)} units</Pill>
                 <div className="flex gap-2">
-                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty",key:"actual",num:true},{label:"QC",key:"qcGrade"},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty",key:"actual",num:true},{label:"QC",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual",num:true},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>XLS</Btn>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(filteredPT,"production",[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual"},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join("; ")},{label:"Notes",key:"notes"}])}>CSV</Btn>
                   <Btn dm={dm} size="sm" onClick={()=>{
                     const todayBatches=[...new Set(prodTargets.filter(x=>x.date===todayStr&&x.batchId).map(x=>x.batchId))];
                     const nextNum=todayBatches.length+1;
@@ -8632,6 +8845,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <div className="flex items-center gap-2 flex-wrap">
                               <span style={{background:"#8b5cf6",color:"#fff",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.01em"}}>{r.batchLabel||"Batch"}</span>
                               <span style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{r.product}</span>
+                              {(r.linkedInvoices||[]).length>0&&(r.linkedInvoices||[]).map(inv=>(
+                                <span key={inv} style={{background:dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.1)",color:"#7c3aed",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {inv}</span>
+                              ))}
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap justify-end">
                               {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🕐 {r.shift}</span>}
@@ -8674,7 +8890,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       </div>
                     </div>;
                   })}
-                  {/* Customer paper trail for this date */}
+                  {/* Customer paper trail for this date — full detail */}
                   {(()=>{
                     const dayDelivs=deliveries.filter(d=>d.date===date&&d.status==="Delivered");
                     if(dayDelivs.length===0)return null;
@@ -8698,7 +8914,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}× ${p?p.name:(l.name||pid)}`;}).join(", ");
                         const tot=lineTotal(d.orderLines);const repl=+d.replacement?.amount||0;const net=tot-repl;const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;const bal=Math.max(0,net-collected);
                         const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":d.status==="Cancelled"?"#dc2626":"#d97706";
+                        const dInvNo=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+                        const dRcptNo=`RCP-${dInvNo.replace(/^[A-Z]+-/,"")}`;
                         return `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+                          <td style="font-family:monospace;font-size:10px;color:#7c3aed;font-weight:700;white-space:nowrap">${dInvNo}</td>
+                          <td style="font-family:monospace;font-size:10px;color:#0ea5e9;font-weight:700;white-space:nowrap">${dRcptNo}</td>
                           <td><b>${d.customer}</b>${d.address?`<br><span style="font-size:10px;color:#94a3b8">📍 ${d.address}</span>`:""}${d.agent?`<br><span style="font-size:10px;color:#94a3b8">👤 ${d.agent}</span>`:""}</td>
                           <td style="font-size:11px;color:#475569">${items||"—"}</td>
                           <td style="text-align:right;font-weight:700">₹${tot.toLocaleString("en-IN")}</td>
@@ -8757,10 +8977,10 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
 <div class="section-title" style="margin-top:28px">📦 Customer Delivery Breakdown</div>
 <table>
-  <thead><tr><th>Customer</th><th>Items</th><th style="text-align:right">Order Total</th><th>Replacement</th><th style="text-align:right">Net Payable</th><th style="text-align:right">Collected</th><th style="text-align:right">Balance Due</th><th>Status</th></tr></thead>
+  <thead><tr><th>Invoice No</th><th>Receipt No</th><th>Customer</th><th>Items</th><th style="text-align:right">Order Total</th><th>Replacement</th><th style="text-align:right">Net Payable</th><th style="text-align:right">Collected</th><th style="text-align:right">Balance Due</th><th>Status</th></tr></thead>
   <tbody>${delivRows}</tbody>
   <tr style="background:#f1f5f9;font-weight:800;font-size:13px">
-    <td colspan="2">TOTAL (${dayDelivs.length} customers)</td>
+    <td colspan="4">TOTAL (${dayDelivs.length} customers)</td>
     <td style="text-align:right">₹${totalOrderVal.toLocaleString("en-IN")}</td>
     <td style="color:#f97316">${totalReplAmt>0?"−₹"+totalReplAmt.toLocaleString("en-IN"):"—"}</td>
     <td style="text-align:right">₹${totalNet.toLocaleString("en-IN")}</td>
@@ -8780,15 +9000,78 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                       document.body.appendChild(a);a.click();
                       setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
                     };
-                    return <div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginTop:12}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,gap:8}}>
-                        <p style={{color:t.sub,fontSize:10,fontWeight:700}}>📦 Customers served {dayLabel}:</p>
-                        <button onClick={exportTrailPDF} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:7,padding:"4px 11px",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>📄 PDF Trail</button>
+                    const batchLabels=dayRecs.map(r=>r.batchLabel||"Batch").join(", ");
+                    const totalDayOrderVal=dayDelivs.reduce((s,d2)=>s+lineTotal(d2.orderLines),0);
+                    const totalDayRepl=dayDelivs.reduce((s,d2)=>s+(+d2.replacement?.amount||0),0);
+                    const totalDayCollected=dayDelivs.reduce((s,d2)=>s+(d2.partialPayment?.enabled?(+d2.partialPayment?.amount||0):0),0);
+                    const totalDayBalance=Math.max(0,totalDayOrderVal-totalDayRepl-totalDayCollected);
+                    return <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",marginTop:12,border:`1px solid ${t.border}`}}>
+                      {/* Header + summary */}
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+                        <div>
+                          <p style={{color:t.text,fontSize:12,fontWeight:800}}>📦 {dayDelivs.length} Customer{dayDelivs.length!==1?"s":""} Served</p>
+                          <p style={{color:t.sub,fontSize:10}}>Batch{dayRecs.length!==1?"es":""}: {batchLabels}</p>
+                        </div>
+                        <button onClick={exportTrailPDF} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>📄 PDF Trail</button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {dayDelivs.map(d=>{
-                          const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ");
-                          return <span key={d.id} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:7,padding:"3px 9px",fontSize:10,color:t.text}}><b>{d.customer}</b> — {items}</span>;
+                      {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+                        {[
+                          {l:"Billed",v:inr(totalDayOrderVal),c:"#f59e0b"},
+                          {l:"Replaced",v:totalDayRepl>0?`−${inr(totalDayRepl)}`:"None",c:totalDayRepl>0?"#f97316":t.sub},
+                          {l:"Collected",v:inr(totalDayCollected),c:"#10b981"},
+                          {l:"Balance",v:inr(totalDayBalance),c:totalDayBalance>0?"#ef4444":"#10b981"},
+                        ].map(x=><div key={x.l} style={{background:t.card,borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
+                          <p style={{color:x.c,fontWeight:800,fontSize:11}}>{x.v}</p>
+                          <p style={{color:t.sub,fontSize:9,marginTop:1,textTransform:"uppercase"}}>{x.l}</p>
+                        </div>)}
+                      </div>}
+                      {/* Per-customer delivery cards */}
+                      <div className="flex flex-col gap-2">
+                        {dayDelivs.map((d,di)=>{
+                          const dRows=lineRows(d.orderLines,products);
+                          const dTot=lineTotal(d.orderLines);
+                          const dRepl=+d.replacement?.amount||0;
+                          const dNet=Math.max(0,dTot-dRepl);
+                          const dCollected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+                          const dBalance=Math.max(0,dNet-dCollected);
+                          const dInvNo=(invRegistry?.issued||{})[d.id]||null;
+                          const dRcptNo=dInvNo?`RCP-${dInvNo.replace("TAS-","")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+                          return <div key={d.id} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"10px 12px",borderLeft:"3px solid #7c3aed"}}>
+                            {/* Customer name + invoice/receipt */}
+                            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:6}}>
+                              <div>
+                                <p style={{color:t.text,fontWeight:800,fontSize:13}}>{d.customer}</p>
+                                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:3}}>
+                                  {dInvNo&&<span style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",color:"#8b5cf6",borderRadius:5,padding:"1px 7px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {dInvNo}</span>}
+                                  {dInvNo&&<span style={{background:dm?"rgba(14,165,233,0.15)":"rgba(14,165,233,0.08)",color:"#0ea5e9",borderRadius:5,padding:"1px 7px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>🧾 {dRcptNo}</span>}
+                                  <span style={{background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.06)",color:"#7c3aed",borderRadius:5,padding:"1px 7px",fontSize:9,fontWeight:700}}>🏭 {batchLabels}</span>
+                                </div>
+                              </div>
+                              {canSeePrices&&<div style={{textAlign:"right",flexShrink:0}}>
+                                <p style={{color:"#f59e0b",fontWeight:800,fontSize:12}}>{inr(dTot)}</p>
+                                {dBalance>0&&<p style={{color:"#ef4444",fontSize:10,fontWeight:700}}>Due: {inr(dBalance)}</p>}
+                                {dBalance===0&&dTot>0&&<p style={{color:"#10b981",fontSize:10,fontWeight:700}}>✓ Clear</p>}
+                              </div>}
+                            </div>
+                            {/* Items */}
+                            <div style={{marginBottom:6}}>
+                              {dRows.map(r=><div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"1px 0"}}>
+                                <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?<span> @ {inr(r.priceAmount)}</span>:""}</span>
+                                {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
+                              </div>)}
+                            </div>
+                            {/* Replacement */}
+                            {d.replacement?.done&&<div style={{background:"#f9731612",border:"1px solid #f9731630",borderRadius:7,padding:"5px 8px",marginBottom:6}}>
+                              <p style={{color:"#f97316",fontSize:10,fontWeight:700}}>🔄 {d.replacement.item||"Replacement"}{d.replacement.qty?` ×${d.replacement.qty}`:""}{canSeePrices&&dRepl>0?` · −${inr(dRepl)}`:""}</p>
+                              {d.replacement.reason&&<p style={{color:t.sub,fontSize:10}}>{d.replacement.reason}</p>}
+                            </div>}
+                            {/* Payment summary */}
+                            {canSeePrices&&dTot>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,fontSize:10}}>
+                              {dRepl>0&&<span style={{color:t.sub}}>Net: <b style={{color:t.text}}>{inr(dNet)}</b></span>}
+                              {dCollected>0&&<span style={{color:"#10b981"}}>Collected: <b>{inr(dCollected)}</b></span>}
+                              <span style={{color:dBalance>0?"#ef4444":"#10b981",fontWeight:700}}>{dBalance>0?`Balance: ${inr(dBalance)}`:"✓ Settled"}</span>
+                            </div>}
+                          </div>;
                         })}
                       </div>
                     </div>;
@@ -9390,14 +9673,16 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         {tab==="Settings"&&isAdmin&&(()=>{
           // Settings section nav
           const SECS=[
+            {id:"toggles",icon:"⚡",label:"Features"},
+            {id:"invoice",icon:"🧾",label:"Invoice"},
             {id:"account",icon:"👤",label:"Account"},
             {id:"staff",icon:"👥",label:"Staff"},
             {id:"products",icon:"📦",label:"Products"},
             {id:"recipes",icon:"🧪",label:"Recipes"},
-            {id:"access",icon:"🔒",label:"Access"},
-            {id:"app",icon:"🎨",label:"App"},
+            {id:"access",icon:"🔒",label:"Permissions"},
+            {id:"app",icon:"🎨",label:"Branding"},
+            {id:"alerts",icon:"🔔",label:"Alerts"},
             {id:"data",icon:"💾",label:"Data"},
-            {id:"notifications",icon:"🔔",label:"Notifications"},
           ];
           return <>
           {/* Section pill nav */}
@@ -9410,6 +9695,188 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </button>
             ))}
           </div>
+
+          {/* ── FEATURE TOGGLES ── */}
+          {settingsSection==="toggles"&&<>
+            {/* Orders & Delivery */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>📦 Orders & Delivery</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Core features for the delivery workflow</p>
+              {[
+                {key:"bulkOrderEnabled",label:"Bulk Order Entry",desc:"Create orders for multiple customers at once",icon:"📋",defOn:true},
+                {key:"featureSmartDeduction",label:"Smart Auto-Deduct",desc:"Auto-reduce supply stock when production is logged",icon:"🤖",defOn:true},
+                {key:"featureShiftManagement",label:"Shift Management",desc:"Enable shift-based scheduling and handovers",icon:"🔄",defOn:true},
+                {key:"featureOrderDateOverride",label:"Order Date Override",desc:"Allow agents to backdate or forward-date orders",icon:"📅",defOn:false},
+                {key:"featureRouteOpt",label:"Route Optimization",desc:"Auto-suggest delivery routes for agents",icon:"🗺",defOn:false},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Finance */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>💰 Finance</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Financial controls and calculations</p>
+              {[
+                {key:"featureCreditLimit",label:"Credit Limit Enforcement",desc:"Block orders when customer exceeds their credit limit",icon:"💳",defOn:false},
+                {key:"featureTaxCalc",label:"Tax Calculation (GST/VAT)",desc:"Apply tax automatically on invoices",icon:"🧾",defOn:false},
+                {key:"featureMultiCurrency",label:"Multi-Currency Support",desc:"Accept orders in different currencies",icon:"💱",defOn:false},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Reports */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>📊 Reports & Analytics</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Control what appears in reports</p>
+              {[
+                {key:"invoiceShowOnReports",label:"Invoice Numbers in Reports",desc:"Display invoice ID on all exported and printed reports",icon:"📄",defOn:true},
+                {key:"invoiceShowOnPnL",label:"Invoice Numbers in P&L",desc:"Show invoice references on profit & loss statements",icon:"📈",defOn:true},
+                {key:"invoiceShowOnAnalytics",label:"Invoice Numbers in Analytics",desc:"Include invoice data in analytics breakdowns",icon:"🔍",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Agent features */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🚚 Delivery Agent Features</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Control what agents can see and do</p>
+              {[
+                {key:"agentCollectEnabled",label:"Agent Cash Collection",desc:"Show the Collect button so agents can record cash on delivery",icon:"💰",defOn:true},
+                {key:"agentCollectRequireNote",label:"Require Collection Note",desc:"Agent must enter a note before confirming collection",icon:"📝",defOn:false},
+                {key:"agentInvoiceEnabled",label:"Delivery Receipts",desc:"Show Receipt button on delivery cards",icon:"🧾",defOn:true},
+                {key:"agentInvoiceShowPrices",label:"Show Prices on Receipt",desc:"Include unit prices and totals on the printed receipt",icon:"💲",defOn:true},
+                {key:"agentAutoReceipt",label:"Auto-print After Collection",desc:"Auto-trigger print dialog when agent confirms collection",icon:"🖨",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+          </>}
+
+          {/* ── INVOICE NUMBERING ── */}
+          {settingsSection==="invoice"&&(()=>{
+            const prefix = settings?.invoicePrefix||"TAS";
+            const startSeq = settings?.invoiceStartSeq||1;
+            const yearReset = settings?.invoiceYearReset!==false;
+            const currentSeq = invRegistry?.seq||0;
+            const year = new Date().getFullYear();
+            const previewNo = `${prefix}-${yearReset?year+"-":""}${String(Math.max(currentSeq+1,startSeq)).padStart(4,"0")}`;
+            const previewReceipt = `RCP-${yearReset?year+"-":""}${String(Math.max(currentSeq+1,startSeq)).padStart(4,"0")}`;
+            const totalIssued = Object.keys(invRegistry?.issued||{}).length;
+            return <>
+              {/* Stats */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                {[
+                  {label:"Invoices Issued",val:totalIssued,color:"#8b5cf6"},
+                  {label:"Current Sequence",val:`#${currentSeq}`,color:"#f59e0b"},
+                  {label:"Next Number",val:previewNo,color:"#10b981"},
+                ].map(({label,val,color})=>(
+                  <div key={label} style={{background:t.inp,borderRadius:12,padding:"12px 10px",textAlign:"center"}}>
+                    <p style={{color,fontWeight:900,fontSize:15,lineHeight:1,fontFamily:"monospace"}}>{val}</p>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:5}}>{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Format config */}
+              <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+                <p style={{color:t.text}} className="text-sm font-bold">📐 Number Format</p>
+                <p style={{color:t.sub}} className="text-[11px]">Defines how invoice numbers look system-wide — applied to all invoices, receipts, reports, P&amp;L, and analytics.</p>
+                <div>
+                  <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Invoice Prefix</label>
+                  <input value={settings?.invoicePrefix||"TAS"} onChange={e=>setSettings(s=>({...s,invoicePrefix:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,8)}))} maxLength={8} placeholder="TAS" style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:16,width:"100%",outline:"none",fontFamily:"monospace",fontWeight:700,letterSpacing:"0.08em"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>Letters and numbers only. Max 8 chars. e.g. TAS, INV, ORD</p>
+                </div>
+
+                <div className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div>
+                    <p style={{color:t.text}} className="text-sm font-semibold">📅 Year in Number</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Include the current year: TAS-2026-0001 vs TAS-0001</p>
+                  </div>
+                  <Tog dm={dm} on={yearReset} onChange={()=>setSettings(s=>({...s,invoiceYearReset:!yearReset}))}/>
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <p style={{color:t.text}} className="text-sm font-semibold">🔁 Reset Sequence Yearly</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">Restart from 0001 at the start of each year</p>
+                  </div>
+                  <Tog dm={dm} on={yearReset} onChange={()=>setSettings(s=>({...s,invoiceYearReset:!yearReset}))}/>
+                </div>
+              </div></Card>
+
+              {/* Live preview */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text}} className="text-sm font-bold mb-3">👁 Live Preview</p>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[
+                    {label:"Invoice",val:previewNo,color:"#8b5cf6"},
+                    {label:"Receipt",val:previewReceipt,color:"#0ea5e9"},
+                    {label:"Shown in P&L",val:settings?.invoiceShowOnPnL!==false?"✓ Yes":"✗ Hidden",color:settings?.invoiceShowOnPnL!==false?"#10b981":"#ef4444"},
+                    {label:"Shown in Analytics",val:settings?.invoiceShowOnAnalytics!==false?"✓ Yes":"✗ Hidden",color:settings?.invoiceShowOnAnalytics!==false?"#10b981":"#ef4444"},
+                    {label:"Shown in All Reports",val:settings?.invoiceShowOnReports!==false?"✓ Yes":"✗ Hidden",color:settings?.invoiceShowOnReports!==false?"#10b981":"#ef4444"},
+                  ].map(({label,val,color})=>(
+                    <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${t.border}`}}>
+                      <span style={{color:t.sub,fontSize:12}}>{label}</span>
+                      <span style={{color,fontWeight:800,fontSize:13,fontFamily:"monospace"}}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div></Card>
+
+              {/* Appearance toggles */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text}} className="text-sm font-bold mb-1">📍 Where invoice numbers appear</p>
+                <p style={{color:t.sub}} className="text-[11px] mb-3">System-wide control — applies across all modules</p>
+                {[
+                  {key:"invoiceShowOnReports",label:"All Printed Reports",desc:"PDF exports, daily sheets, delivery reports"},
+                  {key:"invoiceShowOnPnL",label:"Profit & Loss Reports",desc:"P&L monthly and yearly statements"},
+                  {key:"invoiceShowOnAnalytics",label:"Analytics Dashboard",desc:"Analytics tab data tables and exports"},
+                ].map(({key,label,desc})=>(
+                  <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                    <div>
+                      <p style={{color:t.text}} className="text-sm font-semibold">{label}</p>
+                      <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                    </div>
+                    <Tog dm={dm} on={settings?.[key]!==false} onChange={()=>setSettings(s=>({...s,[key]:s?.[key]===false?true:false}))}/>
+                  </div>
+                ))}
+              </div></Card>
+
+              {/* Danger: reset sequence */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:"#ef4444"}} className="text-sm font-bold mb-1">⚠️ Sequence Management</p>
+                <p style={{color:t.sub}} className="text-[11px] mb-3">Total issued: <strong>{totalIssued}</strong> invoices. Current counter: <strong>{currentSeq}</strong>.</p>
+                <Btn dm={dm} v="danger" size="sm" onClick={()=>ask(`Reset invoice counter to 0? All ${totalIssued} existing invoice numbers will remain linked to their deliveries, but new ones will restart from 0001.`,()=>{setInvRegistry({seq:0,issued:invRegistry?.issued||{}});notify("Invoice counter reset to 0 ✓");})}>Reset Counter (keep existing)</Btn>
+              </div></Card>
+            </>;
+          })()}
 
           {/* ── ACCOUNT MANAGEMENT ── */}
           {settingsSection==="account"&&<>
@@ -9843,13 +10310,39 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
           {/* ── APP BRANDING ── */}
           {settingsSection==="app"&&<>
+            {/* Live preview strip */}
+            <div style={{background:t.accent,borderRadius:16,padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+              <span style={{fontSize:36,lineHeight:1}}>{settings?.appEmoji||"🫓"}</span>
+              <div>
+                <p style={{color:"#fff",fontWeight:900,fontSize:16,lineHeight:1.2}}>{settings?.appName||"TAS Healthy World"}</p>
+                <p style={{color:"rgba(255,255,255,0.6)",fontSize:11,marginTop:3}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
+                {settings?.brandTagline&&<p style={{color:"rgba(255,255,255,0.5)",fontSize:10,marginTop:3,fontStyle:"italic"}}>"{settings.brandTagline}"</p>}
+              </div>
+            </div>
+
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
-              <p style={{color:t.text}} className="text-sm font-bold">App Branding</p>
+              <p style={{color:t.text}} className="text-sm font-bold">🎨 App Identity</p>
               <Inp dm={dm} label="App Name" value={settings?.appName||""} onChange={e=>setSettings(s=>({...s,appName:e.target.value}))} placeholder="TAS Healthy World"/>
               <Inp dm={dm} label="Subtitle" value={settings?.appSubtitle||""} onChange={e=>setSettings(s=>({...s,appSubtitle:e.target.value}))} placeholder="Paratha Factory · Operations"/>
-              <Inp dm={dm} label="Emoji/Icon" value={settings?.appEmoji||""} onChange={e=>setSettings(s=>({...s,appEmoji:e.target.value}))} placeholder="🫓"/>
-              <Inp dm={dm} label="Company Name (invoices)" value={settings?.companyName||""} onChange={e=>setSettings(s=>({...s,companyName:e.target.value}))} placeholder="TAS Healthy World"/>
-              <Inp dm={dm} label="Company Subtitle (invoices)" value={settings?.companySubtitle||""} onChange={e=>setSettings(s=>({...s,companySubtitle:e.target.value}))} placeholder="Malabar Paratha Factory · Goa, India"/>
+              <Inp dm={dm} label="Tagline (optional)" value={settings?.brandTagline||""} onChange={e=>setSettings(s=>({...s,brandTagline:e.target.value}))} placeholder="Fresh. Local. Delivered."/>
+              <div>
+                <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Emoji / Icon</label>
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {["🫓","🍽️","🏭","🌿","🥘","🍲","🌾","🚚","⚡","🔥"].map(e=>(
+                    <button key={e} onClick={()=>setSettings(s=>({...s,appEmoji:e}))} style={{fontSize:22,background:settings?.appEmoji===e?t.accent+"22":t.inp,border:`2px solid ${settings?.appEmoji===e?t.accent:t.border}`,borderRadius:10,padding:"6px 10px",cursor:"pointer",transition:"all 0.15s"}}>{e}</button>
+                  ))}
+                </div>
+                <Inp dm={dm} label="Custom emoji" value={settings?.appEmoji||""} onChange={e=>setSettings(s=>({...s,appEmoji:e.target.value}))} placeholder="🫓"/>
+              </div>
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+              <p style={{color:t.text}} className="text-sm font-bold">🏢 Company Details (used on Invoices & Receipts)</p>
+              <Inp dm={dm} label="Company Name" value={settings?.companyName||""} onChange={e=>setSettings(s=>({...s,companyName:e.target.value}))} placeholder="TAS Healthy World"/>
+              <Inp dm={dm} label="Company Subtitle" value={settings?.companySubtitle||""} onChange={e=>setSettings(s=>({...s,companySubtitle:e.target.value}))} placeholder="Malabar Paratha Factory · Goa, India"/>
+              <Inp dm={dm} label="Address" value={settings?.companyAddress||""} onChange={e=>setSettings(s=>({...s,companyAddress:e.target.value}))} placeholder="123 Factory Road, Goa 403001"/>
+              <Inp dm={dm} label="Phone" value={settings?.companyPhone||""} onChange={e=>setSettings(s=>({...s,companyPhone:e.target.value}))} placeholder="+91 98765 43210"/>
+              <Inp dm={dm} label="GST Number" value={settings?.companyGST||""} onChange={e=>setSettings(s=>({...s,companyGST:e.target.value}))} placeholder="22AAAAA0000A1Z5"/>
             </div></Card>
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">🌤 Weather Widget Location</p>
@@ -9897,14 +10390,83 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div></Card>
           </>}
 
+          {/* ── ALERTS & NOTIFICATIONS ── */}
+          {settingsSection==="alerts"&&<>
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔔 Alert Toggles</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Control which alerts fire across the system. Browser push + in-app notifications both follow these settings.</p>
+              {[
+                {key:"alertLowStock",label:"Low Stock Alert",desc:"Alert when a supply item falls below the threshold",icon:"⚠️",defOn:true},
+                {key:"alertOverdueDelivery",label:"Overdue Delivery Alert",desc:"Alert when a delivery is past its expected date",icon:"🔴",defOn:true},
+                {key:"alertChurnRisk",label:"Churn Risk Alert",desc:"Alert when a customer has been inactive for too long",icon:"💤",defOn:true},
+                {key:"alertPaymentReceived",label:"Payment Received",desc:"Alert when a payment is recorded for any customer",icon:"💰",defOn:true},
+                {key:"alertNewOrder",label:"New Order Created",desc:"Alert when a new delivery order is saved",icon:"📦",defOn:false},
+                {key:"alertDailyReport",label:"Daily Summary",desc:"Morning briefing notification",icon:"☀️",defOn:false},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>📣 Who gets notified</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Choose which roles receive each type of notification</p>
+              {[
+                {key:"payment",label:"Payment events",icon:"💰"},
+                {key:"delivery",label:"Delivery events",icon:"📦"},
+                {key:"lowstock",label:"Low stock alerts",icon:"⚠️"},
+                {key:"newentry",label:"New entries (general)",icon:"📝"},
+                {key:"noticeboard",label:"Noticeboard posts",icon:"📌"},
+              ].map(({key,label,icon})=>{
+                const cur=settings?.notifTargets?.[key]||[];
+                return <div key={key} style={{borderBottom:`1px solid ${t.border}`,paddingBottom:12,marginBottom:12}}>
+                  <p style={{color:t.text,fontSize:12,fontWeight:700,marginBottom:8}}>{icon} {label}</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {["admin","factory","agent"].map(role=>{
+                      const on=cur.includes(role);
+                      return <button key={role} onClick={()=>{const next=on?cur.filter(r=>r!==role):[...cur,role];setSettings(s=>({...s,notifTargets:{...(s.notifTargets||{}),[key]:next}}));}}
+                        style={{background:on?t.accent:t.inp,color:on?t.accentFg:t.sub,border:`1.5px solid ${on?t.accent:t.border}`,borderRadius:20,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",textTransform:"capitalize",transition:"all 0.15s"}}>{role}</button>;
+                    })}
+                  </div>
+                </div>;
+              })}
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>⚙️ Alert Thresholds</p>
+              <div className="flex flex-col gap-3 mt-2">
+                <div>
+                  <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Low Stock Threshold (units)</label>
+                  <input type="number" min={0} value={settings?.lowStockThreshold??5} onChange={e=>setSettings(s=>({...s,lowStockThreshold:+e.target.value}))} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:16,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>Alert fires when any supply item qty ≤ this value</p>
+                </div>
+                <div>
+                  <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Churn Alert Days</label>
+                  <input type="number" min={1} value={settings?.churnDays??14} onChange={e=>setSettings(s=>({...s,churnDays:+e.target.value}))} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:16,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>Alert fires if a customer has no orders for this many days</p>
+                </div>
+                <div>
+                  <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Auto Backup Reminder (days)</label>
+                  <input type="number" min={1} value={settings?.autoBackupReminder??7} onChange={e=>setSettings(s=>({...s,autoBackupReminder:+e.target.value}))} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:16,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>Reminder fires if no backup taken in this many days</p>
+                </div>
+              </div>
+            </div></Card>
+          </>}
+
           {/* ── DATA / BACKUP ── */}
           {settingsSection==="data"&&<>
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
-              <p style={{color:t.text}} className="text-sm font-bold">Backup & Restore</p>
+              <p style={{color:t.text}} className="text-sm font-bold">🗄️ Backup & Restore</p>
               {(()=>{
                 const daysSince=lastBackupDate?Math.round((Date.now()-new Date(lastBackupDate).getTime())/86400000):null;
                 const noBackup=!lastBackupDate;
-                const stale=daysSince!==null&&daysSince>=7;
+                const stale=daysSince!==null&&daysSince>=(settings?.autoBackupReminder||7);
                 if(noBackup||stale) return <div style={{background:noBackup?"#ef444415":"#f59e0b15",border:`1px solid ${noBackup?"#ef444430":"#f59e0b30"}`,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:16}}>{noBackup?"⚠️":"🕐"}</span>
                   <div>
@@ -9925,7 +10487,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <p style={{color:t.text}} className="text-sm font-bold">Export as CSV</p>
               <div className="flex gap-2 flex-wrap">
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Join Date",key:"joinDate"},{label:"Notes",key:"notes"}])}>Customers</Btn>
-                <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
+                <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"}])}>Supplies</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>Expenses</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(actLog,"activity",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"}])}>Activity Log</Btn>
@@ -10617,6 +11179,45 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           <Inp dm={dm} label="Amount (₹)" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="Enter amount"/>
           <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn dm={dm} v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
         </>}
+      </Sheet>
+
+      {/* ── PAYMENT LEDGER MANUAL ENTRY SHEET ── */}
+      <Sheet dm={dm} open={payLedgerSh} onClose={()=>{setPayLedgerSh(false);setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");}} title="💰 Record Payment">
+        <p style={{color:t.sub,fontSize:12}}>Log a manual payment from a customer. This will update their balance and appear in the full payment ledger.</p>
+        {/* Customer picker */}
+        <Sel dm={dm} label="Customer *" value={payLedgerCust?.id||""} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setPayLedgerCust(c||null);if(c)setPayLedgerAmt(String(c.pending||""));}}>
+          <option value="">— Select customer —</option>
+          {customers.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}{c.pending>0?` (Due: ${inr(c.pending)})`:""}</option>)}
+        </Sel>
+        {payLedgerCust&&<div style={{background:t.inp,borderRadius:12,padding:"10px 14px"}}>
+          <div className="flex gap-3 flex-wrap">
+            <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>✓ Paid: {inr(payLedgerCust.paid||0)}</span>
+            <span style={{color:"#ef4444",fontSize:12,fontWeight:700}}>⏳ Due: {inr(payLedgerCust.pending||0)}</span>
+          </div>
+        </div>}
+        {/* Amount + quick select */}
+        {payLedgerCust&&(payLedgerCust.pending||0)>0&&<div className="flex gap-2 flex-wrap">
+          {[payLedgerCust.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).slice(0,4).map(q=>(
+            <button key={q} onClick={()=>setPayLedgerAmt(String(q))} style={{background:payLedgerAmt===String(q)?"#10b981":t.inp,color:payLedgerAmt===String(q)?"#fff":t.text,border:`1px solid ${payLedgerAmt===String(q)?"#10b981":t.border}`,borderRadius:10,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+              {inr(q)}{q===payLedgerCust.pending?" (Full)":""}
+            </button>
+          ))}
+        </div>}
+        <Inp dm={dm} label="Amount (₹) *" type="number" value={payLedgerAmt} onChange={e=>setPayLedgerAmt(e.target.value)} placeholder="Enter amount received"/>
+        <Sel dm={dm} label="Payment Method" value={payLedgerMethod} onChange={e=>setPayLedgerMethod(e.target.value)}>
+          {["Cash","UPI","Bank Transfer","Cheque","Other"].map(m=><option key={m}>{m}</option>)}
+        </Sel>
+        <Inp dm={dm} label="Note / Reference" value={payLedgerNote} onChange={e=>setPayLedgerNote(e.target.value)} placeholder="e.g. UPI ref #12345, bank transfer, paid in cash…"/>
+        <div className="flex gap-2">
+          <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPayLedgerSh(false);setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");}}>Cancel</Btn>
+          <Btn dm={dm} v="success" className="flex-1" onClick={()=>{
+            if(!payLedgerCust){notify("Select a customer");return;}
+            const amt=+payLedgerAmt;
+            if(!amt||amt<=0){notify("Enter a valid amount");return;}
+            recordPaymentLedger(payLedgerCust.id,payLedgerCust.name,amt,payLedgerNote,payLedgerMethod);
+            setPayLedgerSh(false);setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");
+          }}>Confirm {payLedgerAmt?inr(+payLedgerAmt):""}</Btn>
+        </div>
       </Sheet>
 
 
