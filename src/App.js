@@ -330,6 +330,7 @@ function exportPDF(record, products, type, settings, deliveries) {
   const cosub  = settings?.companySubtitle|| "Malabar Paratha Factory · Goa, India";
   const gst    = settings?.companyGST     || "";
   const coPhone= settings?.companyPhone   || "";
+  const coLogo = settings?.companyLogo    || "";
   const invoiceNo=record.invNo||`INV-${(record.date||today()).replace(/-/g,"")}-${(record.id||uid()).slice(-4).toUpperCase()}`;
 
   // ── Customer delivery history (only for customer type) ──
@@ -456,7 +457,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 @media print{@page{size:A4;margin:1cm}body{padding:0}.no-print{display:none!important}}.print-bar{position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);gap:12px}.print-bar a{background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.print-bar a.dl{background:#059669}
 </style></head><body>
 <div class="hdr">
-  <div><div class="brand">🫓 ${co}</div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
+  <div><div class="brand">${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:48px;max-width:120px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}<span>🫓 ${co}</span></div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
   <div><div class="ititle">${type==="customer"?"CUSTOMER REPORT":"INVOICE"}</div>
   <div class="imeta">${invoiceNo}</div>
   <div class="imeta">Date: ${record.date||today()}</div>
@@ -650,6 +651,7 @@ function exportDeliveryInvoice(d, products, settings, invNo) {
   const gst     = settings?.companyGST      || "";
   const coPhone = settings?.companyPhone    || "";
   const coAddr  = settings?.companyAddress  || "";
+  const coLogo  = settings?.companyLogo     || "";
   const rows    = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
   const gross   = lineTotal(d.orderLines||{});
   const replAmt = +(d.replacement?.amount)||0;
@@ -747,6 +749,7 @@ body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-siz
 <!-- HEADER -->
 <div class="header">
   <div>
+    ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:52px;max-width:130px;object-fit:contain;margin-bottom:6px;display:block"/>`:""}
     <div class="brand-name">🫓 ${co}</div>
     <div class="brand-sub">
       ${cosub}<br>
@@ -909,6 +912,7 @@ function exportDeliveryReceipt(d, products, settings, invNo) {
   const cosub   = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
   const gst     = settings?.companyGST      || "";
   const coPhone = settings?.companyPhone    || "";
+  const coLogo  = settings?.companyLogo     || "";
   const rows    = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
   const orderTotal = lineTotal(d.orderLines||{});
   const replAmt    = +(d.replacement?.amount)||0;
@@ -960,6 +964,7 @@ body{font-family:Arial,sans-serif;color:#1c1917;background:#fff;padding:0;max-wi
 @media print{@page{size:80mm auto;margin:0}.print-bar{display:none!important}body{padding:0;max-width:100%}}
 </style></head><body>
 <div class="brand-bar">
+  ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:40px;max-width:100px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}
   <div class="brand-name">${co}</div>
   <div class="brand-sub">${cosub}${coPhone?` · ${coPhone}`:""}${gst?` · GST: ${gst}`:""}</div>
 </div>
@@ -3359,6 +3364,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [anlFinView,setAnlFinView]=useState("summary");
   const [anlOverviewMetric,setAnlOverviewMetric]=useState("revenue");
   const [anlExportOpen,setAnlExportOpen]=useState(null);
+  const [anlChartType,setAnlChartType]=useState("bar"); // "bar" | "line"
+  const [anlTrendMetric,setAnlTrendMetric]=useState("revenue"); // "revenue" | "deliveries" | "expenses"
+  const [anlShowInsights,setAnlShowInsights]=useState(true);
   // Production search + auto-deduct toggle
   const [ptSearch,setPtSearch]=useState("");
   const [ptShiftFilter,setPtShiftFilter]=useState("all");
@@ -5687,1238 +5695,384 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
         {/* EXPENSES */}
         {tab==="Expenses"&&isAdmin&&(()=>{
-          // ── derived filter values ──
-          const expCats=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]);
-          const totalWasteCost=(wastage||[]).reduce((a,w)=>a+(w.cost||0),0);
-          // date range for expense filters
-          const getExpDateRange=()=>{
-            const t2=today();
-            if(expDateFilter==="today")return{from:t2,to:t2};
-            if(expDateFilter==="week"){const d=new Date();d.setDate(d.getDate()-6);return{from:d.toISOString().slice(0,10),to:t2};}
-            if(expDateFilter==="month"){return{from:t2.slice(0,7)+"-01",to:t2};}
-            if(expDateFilter==="custom")return{from:expCustomFrom||"2000-01-01",to:expCustomTo||t2};
-            return{from:"2000-01-01",to:t2};
-          };
-          const {from:eFr,to:eTo}=getExpDateRange();
-          const filteredExp=expenses.filter(e=>{
-            const inDate=e.date>=eFr&&e.date<=eTo;
-            const inCat=expCatFilter==="all"||e.category===expCatFilter;
-            const q=expSearch.toLowerCase();
-            const inSearch=!q||(e.category||"").toLowerCase().includes(q)||(e.notes||"").toLowerCase().includes(q)||(e.vendor||"").toLowerCase().includes(q)||(e.receipt||"").toLowerCase().includes(q)||(e.approvedBy||"").toLowerCase().includes(q)||(e.tags||"").toLowerCase().includes(q);
-            return inDate&&inCat&&inSearch;
-          }).sort((a,b)=>b.date.localeCompare(a.date));
-          const filtExpTotal=filteredExp.reduce((s,e)=>s+(e.amount||0),0);
 
-          // ── cat breakdown for filtered ──
-          const catBreakdown=expCats.map(cat=>({cat,total:filteredExp.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),count:filteredExp.filter(e=>e.category===cat).length})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
-          const maxCatVal=catBreakdown[0]?.total||1;
+          // ── derived data (unchanged from original) ──
+          const expCats = (settings?.expenseCategories || ["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]);
+          const expBudgets = settings?.expenseBudgets || {};
+          const expAlerts = settings?.expenseAlerts || { budgetWarnPct:80, showDailyAvg:true, showTopVendor:true };
+          const totalWC = (wastage||[]).reduce((s,w) => s+(w.cost||0), 0);
+          const totalReplDed = deliveries.reduce((s,d) => s+(+d.replacement?.amount||0), 0);
+          const totalCost = totalExpOp + totalSupC + totalWC;
+          const isProfitable = netProfit >= 0;
+          const expRatio = totalRev > 0 ? Math.round(totalExpOp/totalRev*100) : 0;
+          const avgExpPerDay = expenses.length > 0
+            ? (totalExpOp / Math.max(1, new Set(expenses.map(e=>e.date)).size))
+            : 0;
+
+          // ── date range filter ──
+          const getExpDateRange = () => {
+            const t2 = today();
+            if (expDateFilter==="today") return { from:t2, to:t2 };
+            if (expDateFilter==="week") { const d=new Date(); d.setDate(d.getDate()-6); return { from:d.toISOString().slice(0,10), to:t2 }; }
+            if (expDateFilter==="month") return { from:t2.slice(0,7)+"-01", to:t2 };
+            if (expDateFilter==="custom") return { from:expCustomFrom||"2000-01-01", to:expCustomTo||t2 };
+            return { from:"2000-01-01", to:t2 };
+          };
+          const { from:eFr, to:eTo } = getExpDateRange();
+
+          // ── filtered expenses ──
+          const filteredExp = expenses.filter(e => {
+            const inDate = e.date>=eFr && e.date<=eTo;
+            const inCat = expCatFilter==="all" || e.category===expCatFilter;
+            const q = expSearch.toLowerCase();
+            const inSearch = !q
+              || (e.category||"").toLowerCase().includes(q)
+              || (e.notes||"").toLowerCase().includes(q)
+              || (e.vendor||"").toLowerCase().includes(q)
+              || (e.tags||"").toLowerCase().includes(q)
+              || (e.approvedBy||"").toLowerCase().includes(q);
+            return inDate && inCat && inSearch;
+          }).sort((a,b) => b.date.localeCompare(a.date));
+          const filtExpTotal = filteredExp.reduce((s,e) => s+(e.amount||0), 0);
+
+          // ── category breakdown ──
+          const PALETTE = ["#ef4444","#f97316","#f59e0b","#10b981","#0ea5e9","#8b5cf6","#ec4899"];
+          const catBreakdown = expCats.map((cat,ci) => ({
+            cat,
+            color: PALETTE[ci%7],
+            total: filteredExp.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0),
+            count: filteredExp.filter(e=>e.category===cat).length,
+            budget: expBudgets[cat]||0,
+          })).filter(x => x.total>0).sort((a,b) => b.total-a.total);
+          const maxCatVal = catBreakdown[0]?.total || 1;
 
           // ── vendor breakdown ──
-          const vendorMap={};
-          filteredExp.forEach(e=>{if(e.vendor){vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+(e.amount||0);}});
-          const vendorBreakdown=Object.entries(vendorMap).sort((a,b)=>b[1]-a[1]);
+          const vendorMap = {};
+          filteredExp.forEach(e => { if(e.vendor){ vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+(e.amount||0); }});
+          const vendorBreakdown = Object.entries(vendorMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
           // ── payment method breakdown ──
-          const pmMap={};
-          filteredExp.forEach(e=>{const pm=e.paymentMethod||"Cash";pmMap[pm]=(pmMap[pm]||0)+(e.amount||0);});
+          const pmMap = {};
+          filteredExp.forEach(e => { const pm=e.paymentMethod||"Cash"; pmMap[pm]=(pmMap[pm]||0)+(e.amount||0); });
+          const topPM = Object.entries(pmMap).sort((a,b)=>b[1]-a[1])[0];
 
-          // ── revenue drill-down ──
-          const delivByMonth={};
-          deliveries.filter(d=>d.status==="Delivered").forEach(d=>{const m=d.date?.slice(0,7)||"";delivByMonth[m]=(delivByMonth[m]||0)+lineTotal(d.orderLines);});
+          // ── monthly trend (last 6 months) ──
+          const monthlyMap = {};
+          expenses.forEach(e => { const m=e.date?.slice(0,7); if(m) monthlyMap[m]=(monthlyMap[m]||0)+(e.amount||0); });
+          const monthlyTrend = Object.entries(monthlyMap).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6);
+          const maxMonthly = Math.max(...monthlyTrend.map(([,v])=>v), 1);
 
-          // ── supply cost by category ──
-          const supCatMap={};
-          supplies.forEach(s=>{const cat=s.category||s.item||"Other";supCatMap[cat]=(supCatMap[cat]||0)+(s.cost||0);});
-          const supCatBreak=Object.entries(supCatMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+          // ── all filtered entries (show all, not just 8) ──
+          const recentExp = filteredExp;
 
-          // ── daily snapshots from Firebase ──
-          const savedSnaps=Object.values(finSnapshots||{}).sort((a,b)=>b.date?.localeCompare(a.date||"")||0);
+          // ── budget alerts ──
+          const budgetAlerts = Object.entries(expBudgets).filter(([cat,budget]) => {
+            const spent = expenses.filter(e=>e.category===cat&&e.date?.startsWith(today().slice(0,7))).reduce((s,e)=>s+(e.amount||0),0);
+            return budget>0 && spent/budget>=(expAlerts.budgetWarnPct||80)/100;
+          }).map(([cat,budget]) => {
+            const spent = expenses.filter(e=>e.category===cat&&e.date?.startsWith(today().slice(0,7))).reduce((s,e)=>s+(e.amount||0),0);
+            return { cat, budget, spent, over: spent>budget, pct: Math.round(spent/budget*100) };
+          });
 
-          const PALETTE=["#ef4444","#f97316","#f59e0b","#10b981","#0ea5e9","#8b5cf6","#ec4899"];
+          // ── revenue allocation percentages ──
+          const pctSupply  = totalRev>0 ? Math.round(totalSupC/totalRev*100) : 0;
+          const pctExp     = totalRev>0 ? Math.round(totalExpOp/totalRev*100) : 0;
+          const pctWaste   = totalRev>0 ? Math.round(totalWC/totalRev*100) : 0;
+          const pctProfit  = totalRev>0 ? Math.max(0, Math.round(netProfit/totalRev*100)) : 0;
 
-          const isProfitable=netProfit>=0;
-          return(<>
-          {/* ── KPI HERO WIDGETS ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* Op Expenses */}
-            <div style={{background:dm?"linear-gradient(135deg,#2d0505,#3f0f0f)":"linear-gradient(135deg,#fff1f2,#ffe4e6)",border:`1px solid ${dm?"#7f1d1d30":"#fecdd3"}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:-12,right:-12,width:64,height:64,background:"rgba(239,68,68,0.15)",borderRadius:"50%"}}/>
-              <p style={{color:dm?"#f87171":"#b91c1c",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Op. Expenses</p>
-              <p style={{color:dm?"#fef2f2":"#450a0a",fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(totalExpOp)}</p>
-              <p style={{color:dm?"#ef4444":"#dc2626",fontSize:11,marginTop:5,fontWeight:500}}>{expenses.length} entries</p>
-            </div>
-            {/* Supply Costs */}
-            <div style={{background:dm?"linear-gradient(135deg,#1e1b4b,#2d1b69)":"linear-gradient(135deg,#ede9fe,#ddd6fe)",border:`1px solid ${dm?"#4c1d9530":"#c4b5fd"}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:-12,right:-12,width:64,height:64,background:"rgba(139,92,246,0.15)",borderRadius:"50%"}}/>
-              <p style={{color:dm?"#a78bfa":"#6d28d9",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Supply Costs</p>
-              <p style={{color:dm?"#ede9fe":"#3b0764",fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(totalSupC)}</p>
-              <p style={{color:dm?"#7c3aed":"#7c3aed",fontSize:11,marginTop:5,fontWeight:500}}>raw materials</p>
-            </div>
-            {/* Revenue */}
-            <div style={{background:dm?"linear-gradient(135deg,#0a1f0a,#0f2d0f)":"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:`1px solid ${dm?"#14532d30":"#bbf7d0"}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:-12,right:-12,width:64,height:64,background:"rgba(16,185,129,0.15)",borderRadius:"50%"}}/>
-              <p style={{color:dm?"#34d399":"#059669",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Revenue</p>
-              <p style={{color:dm?"#d1fae5":"#064e3b",fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(totalRev)}</p>
-              <p style={{color:dm?"#10b981":"#059669",fontSize:11,marginTop:5,fontWeight:500}}>delivered orders</p>
-            </div>
-            {/* Net Profit */}
-            <div style={{background:isProfitable?(dm?"linear-gradient(135deg,#052818,#073d20)":"linear-gradient(135deg,#ecfdf5,#d1fae5)"):(dm?"linear-gradient(135deg,#2d0a0a,#3f1010)":"linear-gradient(135deg,#fff1f2,#ffe4e6)"),border:`1px solid ${isProfitable?(dm?"#14532d40":"#a7f3d0"):(dm?"#7f1d1d30":"#fecdd3")}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:-12,right:-12,width:64,height:64,background:isProfitable?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)",borderRadius:"50%"}}/>
-              <p style={{color:isProfitable?(dm?"#34d399":"#059669"):(dm?"#f87171":"#b91c1c"),fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Net Profit</p>
-              <p style={{color:isProfitable?(dm?"#d1fae5":"#064e3b"):(dm?"#fef2f2":"#450a0a"),fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(netProfit)}</p>
-              <p style={{color:isProfitable?(dm?"#10b981":"#059669"):(dm?"#ef4444":"#dc2626"),fontSize:11,marginTop:5,fontWeight:500}}>{isProfitable?"profitable ✓":"in loss ⚠️"}</p>
-            </div>
-          </div>
+          // ── filter label ──
+          const filterLabel = expDateFilter==="all" ? "All time"
+            : expDateFilter==="today" ? "Today"
+            : expDateFilter==="week"  ? "Last 7 days"
+            : expDateFilter==="month" ? "This month"
+            : (expCustomFrom&&expCustomTo) ? `${expCustomFrom} → ${expCustomTo}`
+            : "Custom range (pick dates below)";
 
-          {/* ── PAPER TRAIL ── */}
-          {(()=>{
-            const totalWC=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
-            const totalReplDed=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
-            const grossRev=deliveries.filter(d=>d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
-            const totalCost=totalExpOp+totalSupC+totalWC;
-            const PT_SECTIONS=[
-              {key:"revenue",label:"💰 Revenue",color:"#10b981",value:totalRev},
-              {key:"supply",label:"📦 Supply",color:"#8b5cf6",value:totalSupC},
-              {key:"expenses",label:"💸 Expenses",color:"#ef4444",value:totalExpOp},
-              {key:"wastage",label:"🗑️ Wastage",color:"#f97316",value:totalWC},
-              {key:"netprofit",label:"📈 Net P&L",color:netProfit>=0?"#10b981":"#ef4444",value:netProfit},
-            ];
-            // per-section detail rows
-            const revenueRows=deliveries.filter(d=>d.status==="Delivered").sort((a,b)=>b.date.localeCompare(a.date));
-            const supplyRows=[...supplies].sort((a,b)=>b.date?.localeCompare(a.date||""));
-            const expenseRows=[...expenses].sort((a,b)=>b.date?.localeCompare(a.date||""));
-            const wastageRows=[...(wastage||[])].sort((a,b)=>b.date?.localeCompare(a.date||""));
-            // monthly breakdown for net profit
-            const months=[...new Set([
-              ...deliveries.map(d=>d.date?.slice(0,7)),
-              ...supplies.map(s=>s.date?.slice(0,7)),
-              ...expenses.map(e=>e.date?.slice(0,7)),
-            ].filter(Boolean))].sort((a,b)=>b.localeCompare(a));
-            return(
-            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.06)"}}>
-              {/* Gradient Header */}
-              <div style={{background:dm?"linear-gradient(135deg,#0d1830,#0a1f10)":"linear-gradient(135deg,#eff6ff,#f0fdf4)",padding:"16px 20px",borderBottom:`1px solid ${t.border}`,cursor:"pointer"}} onClick={()=>setExpPTOpen(p=>!p)}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-3">
-                    <div style={{width:36,height:36,borderRadius:10,background:dm?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📋</div>
-                    <div>
-                      <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1}}>Financial Paper Trail</p>
-                      <p style={{color:t.sub,fontSize:11,marginTop:2}}>All-time ledger · {months.length} months of data</p>
-                    </div>
-                    {!expPTOpen&&<span style={{background:"#3b82f618",color:"#3b82f6",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,border:"1px solid #3b82f630"}}>tap to expand</span>}
-                  </div>
-                  <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
-                    {expPTOpen&&<>
-                      <button onClick={()=>exportPnLReport({co:settings?.companyName||"Company",periodLabel:"All Time",mData:months.map(m=>({month:m.slice(5)+"/"+m.slice(2,4),monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length})).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0})),totRev:totalRev,totSupC:totalSupC,totExpC:totalExpOp,totWasteC:totalWC,totCost:totalCost,totProfit:netProfit,totMargin:totalRev>0?Math.round(netProfit/totalRev*100):0,totReplDeducted:totalReplDed,collectionRate:customers.reduce((s,c)=>s+(c.paid||0),0)+customers.reduce((s,c)=>s+(c.pending||0),0)>0?Math.round(customers.reduce((s,c)=>s+(c.paid||0),0)/(customers.reduce((s,c)=>s+(c.paid||0),0)+customers.reduce((s,c)=>s+(c.pending||0),0))*100):100,totDue:customers.reduce((s,c)=>s+(c.pending||0),0),totCollected:customers.reduce((s,c)=>s+(c.paid||0),0),avgMonthlyRev:0,avgMonthlyProfit:0,burnRate:0,healthScore:0,healthLabel:"",healthColor:"#10b981",insights:[],filtD:deliveries.filter(d=>d.status==="Delivered"),filtS:supplies,filtE:expenses,filtW:wastage||[],customers,deliveries,expenses,supplies,wastage,products,lineTotal,inr,today_fn:today,settings})} style={{background:"#3b82f618",color:"#3b82f6",border:"1px solid #3b82f640",borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>📄 Report</button>
-                      <button onClick={()=>exportPnLCSV({mData:months.map(m=>({month:m.slice(5)+"/"+m.slice(2,4),monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),expenses:expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0),wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length})).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0})),filtD:deliveries.filter(d=>d.status==="Delivered"),filtE:expenses,filtS:supplies,filtW:wastage||[],customers,deliveries,expenses,supplies,wastage,products,lineTotal,today_fn:today,periodLabel:"All Time"})} style={{background:"#10b98118",color:"#10b981",border:"1px solid #10b98140",borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📊 CSV</button>
-                    </>}
-                    <div style={{width:28,height:28,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",transition:"transform 0.25s",transform:expPTOpen?"rotate(180deg)":"rotate(0deg)"}}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke={t.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          return (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-              {/* Summary strip — always visible */}
-              <div style={{padding:"12px 16px",borderBottom:expPTOpen?`1px solid ${t.border}`:"none"}}>
-                <div className="grid grid-cols-5 gap-2">
-                {PT_SECTIONS.map(s=>(
-                  <button key={s.key} onClick={()=>{setExpPTSection(s.key);if(!expPTOpen)setExpPTOpen(true);}}
-                    style={{background:expPTOpen&&expPTSection===s.key?s.color+"18":t.inp,border:`1.5px solid ${expPTOpen&&expPTSection===s.key?s.color:t.border}`,borderRadius:12,padding:"10px 6px",textAlign:"center",cursor:"pointer",transition:"all .15s",boxShadow:expPTOpen&&expPTSection===s.key?`0 2px 8px ${s.color}25`:"none"}}
-                    onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-1px)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.transform="none";}}>
-                    <p style={{color:s.color,fontSize:12,fontWeight:900,lineHeight:1.2,letterSpacing:"-0.01em"}}>{inr(Math.abs(s.value))}{s.key==="netprofit"&&netProfit<0?"▼":""}</p>
-                    <p style={{color:t.sub,fontSize:9,marginTop:3,fontWeight:600,lineHeight:1.2}}>{s.label}</p>
-                  </button>
-                ))}
-                </div>
-              </div>
-
-              {/* Expanded detail panel */}
-              {expPTOpen&&<div style={{padding:"0 16px 16px 16px"}}>
-                <div style={{height:1,background:t.border,margin:"14px 0"}}/>
-
-                {/* ── REVENUE detail ── */}
-                {expPTSection==="revenue"&&<>
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
-                    <div>
-                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>💰 Revenue Paper Trail — All Delivered Orders</span>
-                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{revenueRows.length} orders · sorted newest first</p>
-                    </div>
-                    <span style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(totalRev)}</span>
-                  </div>
-                  {/* Summary pills */}
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {[
-                      {l:"GROSS REVENUE",v:inr(grossRev),c:"#10b981",bg:"#10b98118",bc:"#10b98140"},
-                      {l:"REPLACEMENTS DEDUCTED",v:`-${inr(totalReplDed)}`,c:"#f97316",bg:"#f9731618",bc:"#f9731640"},
-                      {l:"NET REVENUE",v:inr(totalRev),c:"#10b981",bg:"#10b98118",bc:"#10b98140"},
-                      {l:"DELIVERED ORDERS",v:revenueRows.length,c:"#3b82f6",bg:"#3b82f618",bc:"#3b82f640"},
-                      {l:"AVG PER ORDER",v:inr(revenueRows.length>0?Math.round(totalRev/revenueRows.length):0),c:"#8b5cf6",bg:"#8b5cf618",bc:"#8b5cf640"},
-                    ].map(x=>(
-                      <div key={x.l} style={{background:x.bg,border:`1px solid ${x.bc}`,borderRadius:8,padding:"6px 10px"}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{x.l}</p>
-                        <p style={{color:x.c,fontWeight:900,fontSize:12}}>{x.v}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Ledger table */}
-                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
-                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6}}>
-                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CUSTOMER / DATE / LOGGED BY</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>GROSS</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>REPL.</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>NET</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
-                    </div>
-                    <div style={{maxHeight:360,overflowY:"auto"}}>
-                      {(()=>{
-                        let running=0;
-                        return revenueRows.map((d,i)=>{
-                          const gross=lineTotal(d.orderLines);
-                          const repl=+d.replacement?.amount||0;
-                          const net=gross-repl;
-                          running+=net;
-                          return(
-                          <div key={d.id||i} onClick={()=>setDetailModal({type:"delivery",data:d})} onMouseEnter={ev=>{ev.currentTarget.style.background=dm?"#ffffff08":"#00000006";}} onMouseLeave={ev=>{ev.currentTarget.style.background=i%2===0?"transparent":t.inp+"88";}} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88",cursor:"pointer",transition:"background .12s"}}>
-                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{revenueRows.length-i}</span>
-                            <div>
-                              <p style={{color:t.text,fontSize:12,fontWeight:700,lineHeight:1.2,textDecoration:"underline"}} onClick={ev=>{ev.stopPropagation();const c=customers.find(cx=>cx.id===d.customerId);if(c)setDetailModal({type:"customer",data:c});}}>{d.customer}</p>
-                              <p style={{color:t.sub,fontSize:10}}><span style={{textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:d.date}});}}>📅 {d.date}</span>{d.createdBy?<span style={{textDecoration:"underline",cursor:"pointer",marginLeft:4}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:d.createdBy}});}}> · 👤 {d.createdBy}</span>:""}</p>
-                              {d.replacement?.reason&&<p style={{color:"#f97316",fontSize:9,fontStyle:"italic",marginTop:1}}>↩ {d.replacement.reason}</p>}
-                              {d.orderLines&&Object.values(d.orderLines).filter(l=>l.qty>0).length>0&&(
-                                <p style={{color:t.sub,fontSize:9,marginTop:1}}>{Object.values(d.orderLines).filter(l=>l.qty>0).map(l=>`${l.qty}×${l.name||""}`).join(", ")}</p>
-                              )}
-                            </div>
-                            <p style={{color:"#10b981",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(gross)}</p>
-                            <p style={{color:repl>0?"#f97316":t.sub,fontSize:11,fontWeight:repl>0?700:400,textAlign:"right"}}>{repl>0?`-${inr(repl)}`:"—"}</p>
-                            <p style={{color:"#10b981",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(net)}</p>
-                            <p style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(running)}</p>
-                          </div>);
-                        });
-                      })()}
-                      {revenueRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No delivered orders yet.</p>}
-                    </div>
-                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
-                      <span/>
-                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {revenueRows.length} orders</span>
-                      <span style={{color:"#10b981",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(grossRev)}</span>
-                      <span style={{color:"#f97316",fontSize:12,fontWeight:800,textAlign:"right"}}>{totalReplDed>0?`-${inr(totalReplDed)}`:"—"}</span>
-                      <span style={{color:"#10b981",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalRev)}</span>
-                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalRev)}</span>
-                    </div>
-                  </div>
-                </>}
-
-                {/* ── SUPPLY detail ── */}
-                {expPTSection==="supply"&&<>
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
-                    <div>
-                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>📦 Supply Cost Paper Trail</span>
-                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{supplyRows.length} entries · sorted newest first</p>
-                    </div>
-                    <span style={{color:"#8b5cf6",fontWeight:900,fontSize:14}}>{inr(totalSupC)}</span>
-                  </div>
-                  {/* By category summary */}
-                  {supCatBreak.length>0&&<div className="flex flex-wrap gap-1.5 mb-3">
-                    {supCatBreak.map(([cat,val])=>(
-                      <div key={cat} style={{background:"#8b5cf618",border:"1px solid #8b5cf640",borderRadius:8,padding:"5px 9px"}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{cat.toUpperCase()}</p>
-                        <p style={{color:"#8b5cf6",fontWeight:800,fontSize:11}}>{inr(val)}</p>
-                        <p style={{color:t.sub,fontSize:9}}>{totalSupC>0?Math.round(val/totalSupC*100):0}% of total</p>
-                      </div>
-                    ))}
-                  </div>}
-                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
-                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6}}>
-                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>ITEM / SUPPLIER / DATE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CATEGORY</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>COST</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
-                    </div>
-                    <div style={{maxHeight:360,overflowY:"auto"}}>
-                      {(()=>{
-                        let running=0;
-                        return supplyRows.map((s,i)=>{
-                          running+=(s.cost||0);
-                          return(
-                          <div key={s.id||i} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
-                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{supplyRows.length-i}</span>
-                            <div>
-                              <p style={{color:t.text,fontSize:12,fontWeight:600,lineHeight:1.2}}>{s.item||s.name||"—"}</p>
-                              <p style={{color:t.sub,fontSize:10}}>📅 {s.date}{s.supplier?` · 🏪 ${s.supplier}`:""}</p>
-                              {s.qty&&<p style={{color:t.sub,fontSize:10}}>📦 {s.qty} {s.unit||""}</p>}
-                              {s.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic",marginTop:1}}>{s.notes}</p>}
-                            </div>
-                            <span style={{color:t.sub,fontSize:11,paddingTop:2}}>{s.category||"—"}</span>
-                            <span style={{color:"#8b5cf6",fontSize:12,fontWeight:800,textAlign:"right"}}>{inr(s.cost||0)}</span>
-                            <span style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right"}}>{inr(running)}</span>
-                          </div>);
-                        });
-                      })()}
-                      {supplyRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No supply records yet.</p>}
-                    </div>
-                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 80px 70px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
-                      <span/>
-                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {supplyRows.length} entries</span>
-                      <span/>
-                      <span style={{color:"#8b5cf6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalSupC)}</span>
-                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalSupC)}</span>
-                    </div>
-                  </div>
-                </>}
-
-                {/* ── EXPENSES detail ── */}
-                {expPTSection==="expenses"&&<>
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
-                    <div>
-                      <span style={{color:t.text,fontWeight:700,fontSize:12}}>💸 Operating Expenses Paper Trail</span>
-                      <p style={{color:t.sub,fontSize:10,marginTop:2}}>{expenseRows.length} entries · sorted newest first</p>
-                    </div>
-                    <span style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(totalExpOp)}</span>
-                  </div>
-                  {/* Category summary */}
-                  {catBreakdown.length>0&&<div className="flex flex-wrap gap-1.5 mb-3">
-                    {catBreakdown.map((c,i)=>(
-                      <div key={c.cat} style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:"5px 9px"}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{c.cat.toUpperCase()} · {c.count} entries</p>
-                        <p style={{color:"#ef4444",fontWeight:800,fontSize:11}}>{inr(c.total)}</p>
-                        <p style={{color:t.sub,fontSize:9}}>{totalExpOp>0?Math.round(c.total/totalExpOp*100):0}% of total</p>
-                      </div>
-                    ))}
-                  </div>}
-                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
-                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6}}>
-                      <span style={{color:t.sub,fontSize:9,fontWeight:700}}>#</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>CATEGORY / VENDOR / DATE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>PAYMENT</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>AMOUNT</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>RUNNING</span>
-                    </div>
-                    <div style={{maxHeight:360,overflowY:"auto"}}>
-                      {(()=>{
-                        let running=0;
-                        return expenseRows.map((e,i)=>{
-                          running+=(e.amount||0);
-                          return(
-                          <div key={e.id||i} onClick={()=>setDetailModal({type:"expense",data:e})} onMouseEnter={ev=>{ev.currentTarget.style.background=dm?"#ffffff08":"#00000006";ev.currentTarget.style.cursor="pointer";}} onMouseLeave={ev=>{ev.currentTarget.style.background=i%2===0?"transparent":t.inp+"88";}} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88",cursor:"pointer",transition:"background .12s"}}>
-                            <span style={{color:t.sub,fontSize:9,fontWeight:600,paddingTop:2}}>#{expenseRows.length-i}</span>
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span style={{background:"#ef444420",color:"#ef4444",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.category}</span>
-                                {e.tags&&e.tags.split(",").map(tg=>tg.trim()).filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:600}}>{tg}</span>)}
-                                {e.approvedBy&&<span style={{background:"#10b98120",color:"#10b981",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:600,cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:e.approvedBy}});}}>✅ {e.approvedBy}</span>}
-                              </div>
-                              <p style={{color:t.sub,fontSize:10,marginTop:2}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:e.date}});}}>📅 <span style={{textDecoration:"underline",cursor:"pointer"}}>{e.date}</span>{e.vendor?` · 🏪 ${e.vendor}`:""}</p>
-                              {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic",marginTop:1}}>{e.notes}</p>}
-                              {e.receipt&&<p style={{color:t.sub,fontSize:9,marginTop:1}}>🧾 {e.receipt}</p>}
-                            </div>
-                            <span style={{color:t.sub,fontSize:10,alignSelf:"center"}}>{e.paymentMethod||"Cash"}</span>
-                            <span style={{color:"#ef4444",fontSize:12,fontWeight:800,textAlign:"right",alignSelf:"center"}}>{inr(e.amount||0)}</span>
-                            <span style={{color:"#3b82f6",fontSize:11,fontWeight:700,textAlign:"right",alignSelf:"center"}}>{inr(running)}</span>
-                          </div>);
-                        });
-                      })()}
-                      {expenseRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No expenses recorded yet.</p>}
-                    </div>
-                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"28px 1fr 70px 70px 75px",gap:6,borderTop:`2px solid ${t.border}`}}>
-                      <span/>
-                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {expenseRows.length} entries</span>
-                      <span/>
-                      <span style={{color:"#ef4444",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalExpOp)}</span>
-                      <span style={{color:"#3b82f6",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalExpOp)}</span>
-                    </div>
-                  </div>
-                </>}
-
-                {/* ── WASTAGE detail ── */}
-                {expPTSection==="wastage"&&<>
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
-                    <span style={{color:t.text,fontWeight:700,fontSize:12}}>🗑️ Wastage Loss Breakdown</span>
-                    <span style={{color:"#f97316",fontWeight:800,fontSize:13}}>{inr(totalWC)}</span>
-                  </div>
-                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
-                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8}}>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>PRODUCT / DATE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>TYPE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>QTY</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>COST</span>
-                    </div>
-                    <div style={{maxHeight:320,overflowY:"auto"}}>
-                      {wastageRows.map((w,i)=>(
-                        <div key={w.id||i} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
-                          <div>
-                            <p style={{color:t.text,fontSize:12,fontWeight:600}}>{w.product}</p>
-                            <p style={{color:t.sub,fontSize:10}}>📅 {w.date}{w.loggedBy?` · ${w.loggedBy}`:""}</p>
-                            {w.reason&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{w.reason}</p>}
-                          </div>
-                          <span style={{color:t.sub,fontSize:11,alignSelf:"center"}}>{w.type||"—"}</span>
-                          <span style={{color:"#f97316",fontSize:12,fontWeight:700,textAlign:"right",alignSelf:"center"}}>{w.qty||0} {w.unit||""}</span>
-                          <span style={{color:"#f97316",fontSize:12,fontWeight:800,textAlign:"right",alignSelf:"center"}}>{inr(w.cost||0)}</span>
-                        </div>
-                      ))}
-                      {wastageRows.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:16}}>No wastage records yet.</p>}
-                    </div>
-                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"1fr 60px 60px 70px",gap:8,borderTop:`2px solid ${t.border}`}}>
-                      <span style={{color:t.text,fontSize:12,fontWeight:800}}>TOTAL · {wastageRows.length} entries</span>
-                      <span/><span/>
-                      <span style={{color:"#f97316",fontSize:13,fontWeight:900,textAlign:"right"}}>{inr(totalWC)}</span>
-                    </div>
-                  </div>
-                </>}
-
-                {/* ── NET PROFIT monthly drill-down ── */}
-                {expPTSection==="netprofit"&&<>
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
-                    <span style={{color:t.text,fontWeight:700,fontSize:12}}>📈 Net Profit / Loss — Monthly Ledger</span>
-                    <span style={{color:netProfit>=0?"#10b981":"#ef4444",fontWeight:800,fontSize:13}}>{inr(netProfit)}</span>
-                  </div>
-                  {/* Running total summary */}
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {[
-                      {l:"Total Revenue",v:totalRev,c:"#10b981"},
-                      {l:"Supply Costs",v:totalSupC,c:"#8b5cf6"},
-                      {l:"Op. Expenses",v:totalExpOp,c:"#ef4444"},
-                      {l:"Wastage Loss",v:totalWC,c:"#f97316"},
-                      {l:"Total Costs",v:totalCost,c:"#dc2626"},
-                      {l:"Net Profit",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444"},
-                    ].map(x=>(
-                      <div key={x.l} style={{background:x.c+"18",border:`1px solid ${x.c}40`,borderRadius:8,padding:"6px 10px",minWidth:80}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700}}>{x.l.toUpperCase()}</p>
-                        <p style={{color:x.c,fontWeight:900,fontSize:12}}>{inr(x.v)}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Monthly table */}
-                  <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
-                    <div style={{background:t.inp,padding:"7px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6}}>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>MONTH</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700}}>REVENUE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>SUPPLY</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>EXPENSE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>WASTE</span>
-                      <span style={{color:t.sub,fontSize:10,fontWeight:700,textAlign:"right"}}>NET P&L</span>
-                    </div>
-                    <div style={{maxHeight:360,overflowY:"auto"}}>
-                      {(()=>{
-                        return months.map((m,i)=>{
-                          const mRev=deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0);
-                          const mSup=supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0);
-                          const mExp=expenses.filter(e=>e.date?.startsWith(m)).reduce((s,e)=>s+(e.amount||0),0);
-                          const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0);
-                          const mNet=mRev-mSup-mExp-mWaste;
-                          const mLabel=new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"2-digit"});
-                          return(
-                          <div key={m} style={{padding:"8px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6,borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"88"}}>
-                            <span style={{color:t.text,fontSize:11,fontWeight:700}}>{mLabel}</span>
-                            <span style={{color:"#10b981",fontSize:11,fontWeight:700}}>{inr(mRev)}</span>
-                            <span style={{color:"#8b5cf6",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mSup)}</span>
-                            <span style={{color:"#ef4444",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mExp)}</span>
-                            <span style={{color:"#f97316",fontSize:11,fontWeight:600,textAlign:"right"}}>{inr(mWaste)}</span>
-                            <div style={{textAlign:"right"}}>
-                              <p style={{color:mNet>=0?"#10b981":"#ef4444",fontSize:11,fontWeight:900}}>{inr(mNet)}</p>
-                              <p style={{color:t.sub,fontSize:9}}>{totalRev>0?Math.round(mNet/totalRev*100):0}%</p>
-                            </div>
-                          </div>);
-                        });
-                      })()}
-                    </div>
-                    <div style={{background:t.inp,padding:"8px 12px",display:"grid",gridTemplateColumns:"60px 1fr 70px 70px 70px 70px",gap:6,borderTop:`2px solid ${t.border}`}}>
-                      <span style={{color:t.text,fontSize:11,fontWeight:800}}>ALL</span>
-                      <span style={{color:"#10b981",fontSize:11,fontWeight:900}}>{inr(totalRev)}</span>
-                      <span style={{color:"#8b5cf6",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalSupC)}</span>
-                      <span style={{color:"#ef4444",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalExpOp)}</span>
-                      <span style={{color:"#f97316",fontSize:11,fontWeight:800,textAlign:"right"}}>{inr(totalWC)}</span>
-                      <span style={{color:netProfit>=0?"#10b981":"#ef4444",fontSize:12,fontWeight:900,textAlign:"right"}}>{inr(netProfit)}</span>
-                    </div>
-                  </div>
-                </>}
-              </div>}
-            </div>
-            );
-          })()}
-
-          {/* ── Financial Overview section tabs — hover/click to reveal ── */}
-          <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.06)"}}>
-            {/* Section header — click or hover to toggle */}
-            <div
-              style={{background:dm?"linear-gradient(135deg,#120d24,#0a1424)":"linear-gradient(135deg,#faf5ff,#eff6ff)",padding:"16px 20px",borderBottom:finOvOpen?`1px solid ${t.border}`:"none",cursor:"pointer",userSelect:"none"}}
-              onClick={()=>setFinOvOpen(p=>!p)}
-              onMouseEnter={()=>setFinOvHover(true)}
-              onMouseLeave={()=>setFinOvHover(false)}
-            >
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3">
-                  <div style={{width:36,height:36,borderRadius:10,background:dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📊</div>
-                  <div>
-                    <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1}}>Financial Overview</p>
-                    {!finOvOpen&&<p style={{color:t.sub,fontSize:11,marginTop:2}}>{inr(netProfit)} net · tap to expand</p>}
-                    {finOvOpen&&<p style={{color:t.sub,fontSize:11,marginTop:2}}>Revenue, cost, profit drill-down</p>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {finOvOpen&&<div className="flex gap-1 flex-wrap" onClick={e=>e.stopPropagation()}>
-                    {[["overview","All"],["revenue","Revenue"],["supply","Supply"],["ops","Expenses"],["wastage","Wastage"],["daily","Daily"]].map(([v,l])=>(
-                      <button key={v} onClick={()=>setFinView(v)} style={{background:finView===v?"#8b5cf6":t.inp,color:finView===v?"#fff":t.sub,border:`1.5px solid ${finView===v?"#8b5cf6":t.border}`,padding:"5px 12px",borderRadius:10,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{l}</button>
-                    ))}
-                  </div>}
-                  <div style={{width:28,height:28,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",transition:"transform 0.25s",transform:finOvOpen?"rotate(180deg)":"rotate(0deg)"}}>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke={t.sub} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Hover preview bar — shows when closed but hovered */}
-            {!finOvOpen&&finOvHover&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-2" style={{padding:"12px 16px"}}>
-              {[
-                {l:"Revenue",v:totalRev,c:"#10b981"},
-                {l:"Supply",v:totalSupC,c:"#8b5cf6"},
-                {l:"Expenses",v:totalExpOp,c:"#ef4444"},
-                {l:"Net Profit",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444"},
-              ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center",border:`1px solid ${x.c}20`}}>
-                <p className="font-black text-sm" style={{color:x.c}}>{inr(x.v)}</p>
-                <p style={{color:t.sub}} className="text-[10px] mt-0.5">{x.l}</p>
-              </div>)}
-            </div>}
-            {/* Full expanded content */}
-            {finOvOpen&&<div style={{padding:"16px 20px"}}><div>
-
-            {/* ── ALL OVERVIEW ── */}
-            {finView==="overview"&&(()=>{
-              const cashCollectedFO=customers.reduce((a,c)=>a+(c.paid||0),0);
-              const cashPendingFO=customers.reduce((a,c)=>a+(c.pending||0),0);
-              const totalWC2=(wastage||[]).reduce((s,w)=>s+(w.cost||0),0);
-              const ovRows=[
-                {l:"Total Revenue",v:totalRev,c:"#10b981",icon:"💰",pct:null,tab:"revenue",sub:`${deliveries.filter(d=>d.status==="Delivered").length} delivered orders`},
-                {l:"Supply Costs",v:totalSupC,c:"#8b5cf6",icon:"📦",pct:totalRev>0?Math.round(totalSupC/totalRev*100):0,tab:"supply",sub:`${supplies.length} supply entries`},
-                {l:"Operating Expenses",v:totalExpOp,c:"#ef4444",icon:"💸",pct:totalRev>0?Math.round(totalExpOp/totalRev*100):0,tab:"ops",sub:`${expenses.length} expense entries`},
-                {l:"Wastage Losses",v:totalWC2,c:"#f97316",icon:"🗑️",pct:totalRev>0?Math.round(totalWC2/totalRev*100):0,tab:"wastage",sub:`${(wastage||[]).length} wastage records`},
-                {l:"Net Profit / Loss",v:netProfit,c:netProfit>=0?"#10b981":"#ef4444",icon:"📈",pct:totalRev>0?Math.round(netProfit/totalRev*100):0,tab:null,sub:netProfit>=0?"Business profitable ✓":"In loss — review costs ⚠️"},
-              ];
-              return(<>
-              {/* Summary tiles row */}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
-                {ovRows.map(x=>(
-                  <div key={x.l} onClick={x.tab?()=>setFinView(x.tab):undefined}
-                    onMouseEnter={ev=>{if(x.tab)ev.currentTarget.style.transform="scale(1.03)";}}
-                    onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
-                    style={{background:x.c+"12",border:`1.5px solid ${x.c}30`,borderRadius:14,padding:"10px 10px",textAlign:"center",cursor:x.tab?"pointer":"default",transition:"all .15s"}}>
-                    <span style={{fontSize:18}}>{x.icon}</span>
-                    <p style={{color:x.c,fontWeight:900,fontSize:13,marginTop:4}}>{inr(Math.abs(x.v))}</p>
-                    {x.pct!==null&&<p style={{color:t.sub,fontSize:9}}>{x.pct}%</p>}
-                    <p style={{color:t.sub,fontSize:9,marginTop:2,fontWeight:600}}>{x.l}</p>
-                    {x.tab&&<p style={{color:x.c,fontSize:8,marginTop:2}}>tap to drill →</p>}
-                  </div>
-                ))}
-              </div>
-              {/* Detailed rows */}
-              {ovRows.map((x,i)=>(
-                <div key={x.l} onClick={x.tab?()=>setFinView(x.tab):undefined}
-                  onMouseEnter={ev=>{if(x.tab){ev.currentTarget.style.background=x.c+"08";}}}
-                  onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}
-                  style={{borderBottom:i<ovRows.length-1?`1px solid ${t.border}`:"none",cursor:x.tab?"pointer":"default",borderRadius:8,padding:"4px",transition:"background .15s"}}>
-                  <div className="flex justify-between items-center py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{x.icon}</span>
-                      <div>
-                        <span style={{color:t.text}} className="text-sm font-semibold">{x.l}</span>
-                        <p style={{color:t.sub,fontSize:10}}>{x.sub}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {x.pct!==null&&<span style={{color:t.sub,minWidth:30,textAlign:"right"}} className="text-[11px] font-mono">{x.pct}%</span>}
-                      <span className="font-black text-sm" style={{color:x.c,minWidth:90,textAlign:"right"}}>{inr(x.v)}</span>
-                      {x.tab&&<span style={{color:t.sub,fontSize:11}}>›</span>}
-                    </div>
-                  </div>
-                  {x.pct!==null&&totalRev>0&&<div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden",marginBottom:4}}><div style={{width:`${Math.min(x.pct,100)}%`,background:x.c,height:"100%",borderRadius:4,transition:"width .5s"}}/></div>}
-                </div>
-              ))}
-              {/* Cash flow quick tile */}
-              <div style={{borderTop:`1px solid ${t.border}`,marginTop:10,paddingTop:12}}>
-                <div className="grid grid-cols-2 gap-2">
-                  <div onClick={()=>setFinOvSubModal("cashflow")} onMouseEnter={ev=>{ev.currentTarget.style.transform="scale(1.02)";}} onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
-                    style={{background:"#10b98112",border:"1.5px solid #10b98130",borderRadius:12,padding:"10px 14px",cursor:"pointer",transition:"all .15s"}}>
-                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>💵 Cash Flow</p>
-                    <p style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(cashCollectedFO)}</p>
-                    <p style={{color:"#ef4444",fontSize:10}}>{inr(cashPendingFO)} pending · tap for detail</p>
-                  </div>
-                  <div onClick={()=>setFinOvSubModal("burnrate")} onMouseEnter={ev=>{ev.currentTarget.style.transform="scale(1.02)";}} onMouseLeave={ev=>{ev.currentTarget.style.transform="scale(1)";}}
-                    style={{background:"#ef444412",border:"1.5px solid #ef444430",borderRadius:12,padding:"10px 14px",cursor:"pointer",transition:"all .15s"}}>
-                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>🔥 Burn Rate</p>
-                    {(()=>{
-                      const mths=[...new Set([...deliveries.map(d=>d.date?.slice(0,7)),...expenses.map(e=>e.date?.slice(0,7)),...supplies.map(s=>s.date?.slice(0,7))].filter(Boolean))];
-                      const br=mths.length>0?Math.round((totalExpOp+totalSupC)/mths.length):0;
-                      const avgRev=mths.length>0?Math.round(totalRev/mths.length):0;
-                      return(<><p style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(br)}/mo</p><p style={{color:t.sub,fontSize:10}}>vs {inr(avgRev)} avg rev · tap for detail</p></>);
-                    })()}
-                  </div>
-                </div>
-              </div>
-              {/* Sub-modals */}
-              {finOvSubModal&&(()=>{
-                const cashC=customers.reduce((a,c)=>a+(c.paid||0),0);
-                const cashP=customers.reduce((a,c)=>a+(c.pending||0),0);
-                const mths2=[...new Set([...deliveries.map(d=>d.date?.slice(0,7)),...expenses.map(e=>e.date?.slice(0,7)),...supplies.map(s=>s.date?.slice(0,7))].filter(Boolean))];
-                const br2=mths2.length>0?Math.round((totalExpOp+totalSupC)/mths2.length):0;
-                const avgR=mths2.length>0?Math.round(totalRev/mths2.length):0;
-                const cashPct=cashC+cashP>0?Math.round(cashC/(cashC+cashP)*100):100;
-                return(
-                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9988,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setFinOvSubModal(null)}>
-                  <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:500,maxHeight:"75vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
-                    <div className="flex items-center justify-between mb-4">
-                      <p style={{color:t.text,fontWeight:900,fontSize:15}}>{finOvSubModal==="cashflow"?"💵 Cash Flow Details":"🔥 Burn Rate & Efficiency"}</p>
-                      <button onClick={()=>setFinOvSubModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕</button>
-                    </div>
-                    {finOvSubModal==="cashflow"&&<>
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {[{l:"Total Collected",v:inr(cashC),c:"#10b981"},{l:"Total Pending",v:inr(cashP),c:"#ef4444"},{l:"Collection Rate",v:`${cashPct}%`,c:cashPct>=90?"#10b981":cashPct>=70?"#f59e0b":"#ef4444"},{l:"Total Customers",v:customers.length,c:"#3b82f6"}].map(x=>(
-                          <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}><p style={{color:x.c,fontWeight:900,fontSize:16}}>{x.v}</p><p style={{color:t.sub,fontSize:10,marginTop:2}}>{x.l}</p></div>
-                        ))}
-                      </div>
-                      <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:8}}>
-                        <div style={{width:`${cashPct}%`,background:"#10b981"}}/>
-                        <div style={{width:`${100-cashPct}%`,background:"#ef4444"}}/>
-                      </div>
-                      <div className="flex justify-between mb-4"><span style={{color:"#10b981",fontSize:11,fontWeight:700}}>{cashPct}% collected</span><span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>{100-cashPct}% outstanding</span></div>
-                      <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top Outstanding</p>
-                      {[...customers].filter(c=>c.pending>0).sort((a,b)=>(b.pending||0)-(a.pending||0)).slice(0,5).map(c=>(
-                        <div key={c.id} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
-                          <span style={{color:t.text,fontSize:12,fontWeight:600}}>{c.name}</span>
-                          <span style={{color:"#ef4444",fontWeight:700,fontSize:12}}>{inr(c.pending)}</span>
-                        </div>
-                      ))}
-                    </>}
-                    {finOvSubModal==="burnrate"&&<>
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {[{l:"Monthly Burn",v:inr(br2),c:br2>avgR?"#ef4444":"#f59e0b"},{l:"Avg Monthly Rev",v:inr(avgR),c:"#10b981"},{l:"Monthly Surplus",v:inr(Math.max(0,avgR-br2)),c:avgR>br2?"#10b981":"#ef4444"},{l:"Net Margin",v:`${totalRev>0?Math.round(netProfit/totalRev*100):0}%`,c:netProfit>=0?"#10b981":"#ef4444"}].map(x=>(
-                          <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}><p style={{color:x.c,fontWeight:900,fontSize:16}}>{x.v}</p><p style={{color:t.sub,fontSize:10,marginTop:2}}>{x.l}</p></div>
-                        ))}
-                      </div>
-                      <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Burn rate is calculated as (expenses + supply costs) / active months ({mths2.length} months).</p>
-                      <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Cost Breakdown</p>
-                      {[["Operating Expenses","#ef4444",totalExpOp],["Supply Costs","#8b5cf6",totalSupC],["Wastage"," #f97316",(wastage||[]).reduce((s,w)=>s+(w.cost||0),0)]].map(([l,c,v])=>(
-                        <div key={l} className="mb-2">
-                          <div className="flex justify-between mb-1"><span style={{color:t.text,fontSize:11}}>{l}</span><span style={{color:c.trim(),fontWeight:700,fontSize:11}}>{inr(v)}</span></div>
-                          <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${(totalExpOp+totalSupC)>0?Math.round(v/(totalExpOp+totalSupC)*100):0}%`,background:c.trim(),height:"100%",borderRadius:5}}/></div>
-                        </div>
-                      ))}
-                    </>}
-                  </div>
-                </div>);
-              })()}
-              </>);
-            })()}
-
-            {/* ── REVENUE DRILL-DOWN ── */}
-            {finView==="revenue"&&(()=>{
-              const collected=customers.reduce((a,c)=>a+(c.paid||0),0);
-              const allMonthRevs=Object.entries(delivByMonth).sort((a,b)=>b[0].localeCompare(a[0]));
-              const maxMonthRev=Math.max(...Object.values(delivByMonth),1);
-              const topCusts=[...customers].map(c=>{const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");return{...c,rev:cd.reduce((s,d)=>s+lineTotal(d.orderLines),0),orders:cd.length};}).sort((a,b)=>b.rev-a.rev).slice(0,5);
-              return(<>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
-                  <span style={{color:t.text}} className="text-sm font-bold">💰 Revenue Breakdown</span>
-                </div>
-                <span style={{color:"#10b981",fontWeight:900,fontSize:14}}>{inr(totalRev)}</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                {[
-                  {l:"Collected",v:inr(collected),c:"#10b981",sub:"from customers"},
-                  {l:"Pending",v:inr(totalDue),c:"#f59e0b",sub:"uncollected"},
-                  {l:"Net Revenue",v:inr(totalRev),c:"#3b82f6",sub:"after adjustments"},
-                  {l:"Avg/Delivery",v:inr(deliveries.filter(d=>d.status==="Delivered").length>0?Math.round(totalRev/deliveries.filter(d=>d.status==="Delivered").length):0),c:"#8b5cf6",sub:"per order"},
-                ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
-                  <p className="font-black text-sm" style={{color:x.c}}>{x.v}</p>
-                  <p style={{color:t.sub}} className="text-[10px] mt-0.5">{x.l}</p>
-                  <p style={{color:t.sub,fontSize:9}}>{x.sub}</p>
-                </div>)}
-              </div>
-              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">Monthly Revenue — click to see deliveries</p>
-              {allMonthRevs.slice(0,12).map(([m,v])=>{
-                const mDelivs=deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered");
-                const pct=maxMonthRev>0?Math.round(v/maxMonthRev*100):0;
-                const isEx=plMonthExpanded===("rev_"+m);
-                return(<div key={m}>
-                  <div onClick={()=>setPlMonthExpanded(isEx?null:"rev_"+m)}
-                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}}
-                    onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}
-                    style={{cursor:"pointer",borderRadius:8,padding:"8px 6px",transition:"background .15s"}}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span style={{color:t.text,fontSize:12,fontWeight:600}}>{new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"2-digit"})}</span>
-                      <div className="flex items-center gap-2">
-                        <span style={{color:t.sub,fontSize:10}}>{mDelivs.length} orders</span>
-                        <span style={{color:"#10b981",fontWeight:700,fontSize:12}}>{inr(v)}</span>
-                        <span style={{color:t.sub,fontSize:10}}>{isEx?"▲":"▼"}</span>
-                      </div>
-                    </div>
-                    <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}><div style={{width:`${pct}%`,background:"#10b981",height:"100%",borderRadius:5}}/></div>
-                  </div>
-                  {isEx&&<div style={{background:t.inp+"66",borderRadius:10,padding:"10px 12px",marginBottom:4}}>
-                    {mDelivs.length===0?<p style={{color:t.sub,fontSize:11}}>No deliveries this month.</p>
-                    :mDelivs.sort((a,b)=>b.date.localeCompare(a.date)).map((d,di)=>(
-                      <div key={d.id||di} className="flex justify-between items-start py-1.5" style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border}`:"none",cursor:"pointer"}}
-                        onClick={()=>setDetailModal({type:"delivery",data:d})}
-                        onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
-                        <div>
-                          <p style={{color:t.text,fontSize:11,fontWeight:600,textDecoration:"underline"}}>{d.customer}</p>
-                          <p style={{color:t.sub,fontSize:10}}>📅 <span style={{textDecoration:"underline",cursor:"pointer"}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"date",data:{date:d.date}});}}>{d.date}</span>{d.createdBy?<span style={{textDecoration:"underline",cursor:"pointer",marginLeft:4}} onClick={ev=>{ev.stopPropagation();setDetailModal({type:"agent",data:{name:d.createdBy}});}}> · {d.createdBy}</span>:""}</p>
-                        </div>
-                        <div className="text-right">
-                          <p style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</p>
-                          {(+d.replacement?.amount||0)>0&&<p style={{color:"#f97316",fontSize:9}}>-{inr(+d.replacement.amount)}</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>}
-                </div>);
-              })}
-              {allMonthRevs.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No delivered orders yet.</p>}
-              {topCusts.length>0&&<>
-                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",margin:"12px 0 8px"}}>Top Revenue Customers</p>
-                {topCusts.map((c,ci)=>(
-                  <div key={c.id} className="flex items-center justify-between py-2" style={{borderBottom:`1px solid ${t.border}`,cursor:"pointer"}}
-                    onClick={()=>setDetailModal({type:"customer",data:c})}
-                    onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
-                    <div className="flex items-center gap-2">
-                      <span style={{color:t.sub,fontSize:11,fontWeight:700,minWidth:18}}>#{ci+1}</span>
-                      <div><p style={{color:t.text,fontSize:12,fontWeight:600,textDecoration:"underline"}}>{c.name}</p><p style={{color:t.sub,fontSize:10}}>{c.orders} deliveries · {inr(c.pending||0)} pending</p></div>
-                    </div>
-                    <span style={{color:"#10b981",fontWeight:700,fontSize:12}}>{inr(c.rev)}</span>
-                  </div>
-                ))}
-              </>}
-              </>);
-            })()}
-
-            {/* ── SUPPLY COST DRILL-DOWN ── */}
-            {finView==="supply"&&(<>
-              <div className="flex items-center gap-2 mb-3">
-                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
-                <span style={{color:t.text}} className="text-sm font-bold">Supply Cost Breakdown</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#8b5cf6"}}>{inr(totalSupC)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total Supply Cost</p></div>
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#8b5cf6"}}>{supplies.length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Supply Entries</p></div>
-              </div>
-              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Item / Category</p>
-              {supCatBreak.map(([cat,v],i)=>{
-                const pct=totalSupC>0?Math.round(v/totalSupC*100):0;
-                return(<div key={cat} className="mb-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <span style={{color:t.text}} className="text-sm font-semibold">{cat}</span>
-                    <div className="flex items-center gap-2"><span style={{color:t.sub}} className="text-[11px]">{pct}%</span><span style={{color:"#8b5cf6"}} className="font-bold text-sm">{inr(v)}</span></div>
-                  </div>
-                  <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${pct}%`,background:PALETTE[i%7],height:"100%",borderRadius:4}}/></div>
-                </div>);
-              })}
-              {supCatBreak.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No supplies recorded.</p>}
-            </>)}
-
-            {/* ── OPS EXPENSES DRILL-DOWN ── */}
-            {finView==="ops"&&(<>
-              <div className="flex items-center gap-2 mb-3">
-                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
-                <span style={{color:t.text}} className="text-sm font-bold">Operating Expenses Breakdown</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{inr(totalExpOp)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total</p></div>
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{expenses.length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Entries</p></div>
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#ef4444"}}>{totalRev>0?Math.round(totalExpOp/totalRev*100):0}%</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">of Revenue</p></div>
-              </div>
-              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Category</p>
-              {expCats.map((cat,i)=>{
-                const catTotal=expenses.filter(e=>e.category===cat).reduce((s,e)=>s+(e.amount||0),0);
-                const catCount=expenses.filter(e=>e.category===cat).length;
-                if(!catTotal)return null;
-                const pct=totalExpOp>0?Math.round(catTotal/totalExpOp*100):0;
-                return(<div key={cat} className="mb-3" style={{cursor:"pointer"}} onClick={()=>setDetailModal({type:"category",data:{cat,catExpenses:expenses.filter(e=>e.category===cat),catTotal}})}
-                  onMouseEnter={ev=>{ev.currentTarget.style.opacity="0.85";}} onMouseLeave={ev=>{ev.currentTarget.style.opacity="1";}}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span style={{color:t.text}} className="text-sm font-semibold">{cat} <span style={{color:"#3b82f6",fontSize:9,fontWeight:700}}>tap →</span></span>
-                    <div className="flex items-center gap-2"><span style={{color:t.sub}} className="text-[11px]">{catCount} entries · {pct}%</span><span style={{color:"#ef4444"}} className="font-bold text-sm">{inr(catTotal)}</span></div>
-                  </div>
-                  <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${pct}%`,background:PALETTE[i%7],height:"100%",borderRadius:4}}/></div>
-                </div>);
-              })}
-              {vendorBreakdown.length>0&&<><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-4 mb-2">By Vendor</p>
-              {vendorBreakdown.map(([vendor,v])=>(
-                <div key={vendor} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{color:t.text}} className="text-sm">{vendor}</span>
-                  <span style={{color:"#ef4444"}} className="font-bold text-sm">{inr(v)}</span>
-                </div>
-              ))}</>}
-              {Object.keys(pmMap).length>0&&<><p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mt-4 mb-2">By Payment Method</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(pmMap).map(([pm,v])=>(
-                  <div key={pm} style={{background:t.inp,borderRadius:10,padding:"8px 12px"}}>
-                    <p style={{color:t.text}} className="text-sm font-bold">{pm}</p>
-                    <p style={{color:"#ef4444"}} className="text-xs font-semibold">{inr(v)}</p>
-                  </div>
-                ))}
-              </div></>}
-            </>)}
-
-            {/* ── WASTAGE DRILL-DOWN ── */}
-            {finView==="wastage"&&(<>
-              <div className="flex items-center gap-2 mb-3">
-                <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
-                <span style={{color:t.text}} className="text-sm font-bold">Wastage Loss Breakdown</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#f97316"}}>{inr(totalWasteCost)}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Total Loss</p></div>
-                <div style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p className="font-black text-sm" style={{color:"#f97316"}}>{(wastage||[]).length}</p><p style={{color:t.sub}} className="text-[10px] mt-0.5">Records</p></div>
-              </div>
-              <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-2">By Product</p>
-              {[...new Set((wastage||[]).map(w=>w.product))].map(p=>{
-                const qty=(wastage||[]).filter(w=>w.product===p).reduce((s,w)=>s+(w.qty||0),0);
-                const cost=(wastage||[]).filter(w=>w.product===p).reduce((s,w)=>s+(w.cost||0),0);
-                return(<div key={p} className="flex justify-between items-center py-2" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <div><p style={{color:t.text}} className="text-sm font-semibold">{p}</p><p style={{color:t.sub}} className="text-[11px]">{qty} units wasted</p></div>
-                  <span style={{color:"#f97316"}} className="font-bold text-sm">{inr(cost)}</span>
-                </div>);
-              })}
-              {(wastage||[]).length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No wastage recorded.</p>}
-            </>)}
-
-            {/* ── DAILY SNAPSHOTS ── */}
-            {finView==="daily"&&(<>
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <button onClick={()=>setFinView("overview")} style={{color:t.sub,fontSize:11,fontWeight:600}}>← Back</button>
-                  <span style={{color:t.text}} className="text-sm font-bold">Daily Financial Snapshots</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="date" value={finDailyDate} onChange={e=>setFinDailyDate(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12}}/>
-                  <Btn dm={dm} size="sm" onClick={()=>saveFinSnapshot(finDailyDate)}>📸 Save Snapshot</Btn>
-                </div>
-              </div>
-              <p style={{color:t.sub}} className="text-[11px] mb-3">Save a day-end snapshot to lock in that day's P&amp;L figures for future review. Snapshots are stored in Firebase and accessible from any device.</p>
-              {/* Live preview for selected date */}
-              {(()=>{
-                const dayRev=deliveries.filter(d=>d.date===finDailyDate&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                const daySupply=supplies.filter(s=>s.date===finDailyDate).reduce((s,x)=>s+(x.cost||0),0);
-                const dayExp=expenses.filter(e=>e.date===finDailyDate).reduce((s,e)=>s+(e.amount||0),0);
-                const dayWaste=(wastage||[]).filter(w=>w.date===finDailyDate).reduce((s,w)=>s+(w.cost||0),0);
-                const dayProfit=dayRev-daySupply-dayExp-dayWaste;
-                return(<div style={{background:t.inp,borderRadius:12,padding:14,marginBottom:12}}>
-                  <p style={{color:t.text}} className="text-xs font-bold mb-2">📅 Live Data for {finDailyDate}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[["Revenue","#10b981",dayRev],["Supply Cost","#8b5cf6",daySupply],["Op. Expenses","#ef4444",dayExp],["Wastage","#f97316",dayWaste]].map(([l,c,v])=>(
-                      <div key={l}><p style={{color:t.sub}} className="text-[10px]">{l}</p><p className="font-bold text-sm" style={{color:c}}>{inr(v)}</p></div>
-                    ))}
-                  </div>
-                  <div style={{borderTop:`1px solid ${t.border}`,marginTop:10,paddingTop:8}}>
-                    <p style={{color:t.sub}} className="text-[10px]">Net Profit / Loss</p>
-                    <p className="font-black text-base" style={{color:dayProfit>=0?"#10b981":"#ef4444"}}>{inr(dayProfit)}</p>
-                  </div>
-                </div>);
-              })()}
-              {/* Saved snapshots list */}
-              {savedSnaps.length===0?<p style={{color:t.sub}} className="text-sm text-center py-4">No snapshots saved yet. Select a date and tap "Save Snapshot".</p>
-              :savedSnaps.map(snap=>{
-                const isExp=finExpandedDay===snap.date;
-                return(<div key={snap.date} style={{border:`1.5px solid ${isExp?"#3b82f6":t.border}`,borderRadius:12,marginBottom:8,overflow:"hidden"}}>
-                  <button onClick={()=>setFinExpandedDay(isExp?null:snap.date)} className="w-full text-left" style={{background:t.inp,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-                    <div className="flex items-center gap-2">
-                      <span style={{color:t.text}} className="text-sm font-bold">📅 {snap.date}</span>
-                      <span style={{color:t.sub,fontSize:10}}>by {snap.savedBy}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-black text-sm" style={{color:snap.netProfit>=0?"#10b981":"#ef4444"}}>{inr(snap.netProfit)}</span>
-                      <span style={{color:t.sub,fontSize:11}}>{isExp?"▲":"▼"}</span>
-                    </div>
-                  </button>
-                  {isExp&&<div style={{background:t.card,padding:"12px 14px"}}>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      {[["💰 Revenue","#10b981",snap.revenue],["📦 Supply Cost","#8b5cf6",snap.supplyCost],["💸 Op. Expenses","#ef4444",snap.opExpenses],["🗑️ Wastage","#f97316",snap.wastageCost]].map(([l,c,v])=>(
-                        <div key={l} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}}>
-                          <p style={{color:t.sub}} className="text-[10px] mb-0.5">{l}</p>
-                          <p className="font-bold text-sm" style={{color:c}}>{inr(v||0)}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{background:netProfit>=0?"#10b98118":"#ef444418",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{color:t.text}} className="text-sm font-semibold">Net Profit / Loss</span>
-                      <span className="font-black text-base" style={{color:snap.netProfit>=0?"#10b981":"#ef4444"}}>{inr(snap.netProfit)}</span>
-                    </div>
-                    <p style={{color:t.sub}} className="text-[10px] mt-2 text-right">Saved at {snap.savedAt}</p>
-                  </div>}
-                </div>);
-              })}
-            </>)}
-            </div></div>}
-          </div>
-
-          {/* ── Category Spend Breakdown widget ── */}
-          {expenses.length>0&&catBreakdown.length>0&&<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.05)"}}>
-            {/* Header */}
-            <div style={{background:dm?"linear-gradient(135deg,#1a0a0a,#150505)":"linear-gradient(135deg,#fff1f2,#fef2f2)",padding:"14px 18px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div className="flex items-center gap-3">
-                <div style={{width:32,height:32,borderRadius:9,background:dm?"rgba(239,68,68,0.2)":"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📊</div>
+              {/* ── PAGE HEADER ── */}
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                 <div>
-                  <p style={{color:t.text,fontSize:13,fontWeight:800,lineHeight:1}}>Expenses by Category</p>
-                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Filtered · {filteredExp.length} entries</p>
+                  <p style={{color:t.text,fontWeight:700,fontSize:18,lineHeight:1}}>Expenses</p>
+                  <p style={{color:t.sub,fontSize:12,marginTop:3}}>{filterLabel} · {filteredExp.length} entries</p>
                 </div>
-              </div>
-              <span style={{background:dm?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.08)",color:"#ef4444",fontSize:13,fontWeight:800,padding:"5px 12px",borderRadius:10,border:"1px solid rgba(239,68,68,0.25)"}}>{inr(filtExpTotal)}</span>
-            </div>
-            <div style={{padding:"14px 18px",display:"flex",flexDirection:"column",gap:10}}>
-            {catBreakdown.map((c,i)=>{
-              const pct=Math.round(c.total/maxCatVal*100);
-              const pctOfTotal=filtExpTotal>0?Math.round(c.total/filtExpTotal*100):0;
-              return <div key={c.cat} style={{cursor:"pointer"}} onClick={()=>setExpCatModal(c.cat)}
-                onMouseEnter={ev=>{ev.currentTarget.style.opacity="0.85";ev.currentTarget.style.transform="translateX(2px)";}}
-                onMouseLeave={ev=>{ev.currentTarget.style.opacity="1";ev.currentTarget.style.transform="none";}}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div style={{width:10,height:10,borderRadius:3,background:PALETTE[i%7],flexShrink:0}}/>
-                    <p style={{color:t.text,fontSize:13,fontWeight:700}}>{c.cat}</p>
-                    <span style={{color:PALETTE[i%7],background:PALETTE[i%7]+"18",borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700,border:`1px solid ${PALETTE[i%7]}30`}}>{pctOfTotal}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span style={{color:PALETTE[i%7],fontWeight:800,fontSize:13}}>{inr(c.total)}</span>
-                    <span style={{color:t.sub,fontSize:10,background:t.inp,padding:"2px 7px",borderRadius:6,border:`1px solid ${t.border}`}}>{c.count}×</span>
-                    <span style={{color:t.sub,fontSize:11}}>›</span>
-                  </div>
-                </div>
-                <div style={{background:t.border,height:7,borderRadius:7,overflow:"hidden"}}>
-                  <div style={{width:`${pct}%`,background:`linear-gradient(90deg,${PALETTE[i%7]},${PALETTE[i%7]}bb)`,height:"100%",borderRadius:7,transition:"width 0.4s ease"}}/>
-                </div>
-              </div>;
-            })}
-            </div>
-          </div>}
-
-          {/* ── Filters + Action bar ── */}
-          <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"14px 16px",boxShadow:dm?"0 1px 6px rgba(0,0,0,0.4)":"0 1px 4px rgba(0,0,0,0.05)"}}>
-            {/* Top row: search + toggle filters + add */}
-            <div className="flex gap-2 items-center flex-wrap">
-              <div style={{flex:1,minWidth:140,position:"relative"}}>
-                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,pointerEvents:"none"}}>🔍</span>
-                <input value={expSearch} onChange={e=>setExpSearch(e.target.value)} placeholder="Search expenses…" style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 12px 10px 36px",fontSize:13,width:"100%",outline:"none",minHeight:44}}
-                  onFocus={ev=>{ev.target.style.borderColor=dm?"#ef4444":"#dc2626";ev.target.style.boxShadow="0 0 0 3px rgba(239,68,68,0.12)";}} onBlur={ev=>{ev.target.style.borderColor=t.inpB;ev.target.style.boxShadow="none";}}/>
-              </div>
-              <button onClick={()=>setExpShowFilters(p=>!p)} style={{background:expShowFilters?dm?"rgba(239,68,68,0.15)":"rgba(239,68,68,0.08)":t.inp,border:`1.5px solid ${expShowFilters?"#ef4444":t.border}`,color:expShowFilters?"#ef4444":t.sub,borderRadius:12,padding:"10px 14px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:44,whiteSpace:"nowrap"}}>
-                ⚙ Filters{(expCatFilter!=="all"||expDateFilter!=="all")?" ●":""}
-              </button>
-              <button onClick={()=>{setEf(blkE());setEsh("add");}} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,minHeight:44,whiteSpace:"nowrap"}}>
-                <span style={{fontSize:16,lineHeight:1}}>+</span> Add Expense
-              </button>
-            </div>
-            {/* Expanded filter panel */}
-            {expShowFilters&&<div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div>
-                <label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">Category</label>
-                <select value={expCatFilter} onChange={e=>setExpCatFilter(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}>
-                  <option value="all">All Categories</option>
-                  {expCats.map(c=><option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">Date Range</label>
-                <select value={expDateFilter} onChange={e=>setExpDateFilter(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}>
-                  <option value="all">All Time</option>
-                  <option value="today">Today</option>
-                  <option value="week">Last 7 Days</option>
-                  <option value="month">This Month</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
-              {expDateFilter==="custom"&&<>
-                <div><label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">From</label><input type="date" value={expCustomFrom} onChange={e=>setExpCustomFrom(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}/></div>
-                <div><label style={{color:t.sub}} className="block text-[10px] font-bold uppercase tracking-wider mb-1">To</label><input type="date" value={expCustomTo} onChange={e=>setExpCustomTo(e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:8,padding:"6px 8px",fontSize:12,width:"100%"}}/></div>
-              </>}
-              <div className="flex items-end">
-                <button onClick={()=>{setExpCatFilter("all");setExpDateFilter("all");setExpSearch("");}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",width:"100%"}}>Clear All</button>
-              </div>
-            </div>}
-            {/* Filter summary */}
-            <div className="flex justify-between items-center mt-2">
-              <span style={{color:t.sub}} className="text-[11px]">{filteredExp.length} entries · {inr(filtExpTotal)} total</span>
-              <div className="flex gap-2">
-                <button onClick={()=>exportTabPDF("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Notes",key:"notes"}],settings)} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>📄 PDF</button>
-                <button onClick={()=>exportTabExcel("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Payment",key:"paymentMethod"},{label:"Approved By",key:"approvedBy"},{label:"Receipt",key:"receipt"},{label:"Tags",key:"tags"},{label:"Notes",key:"notes"}],settings)} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>📊 XLS</button>
-                <button onClick={()=>exportCSV(filteredExp,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Payment",key:"paymentMethod"},{label:"Approved By",key:"approvedBy"},{label:"Notes",key:"notes"}])} style={{color:t.sub,fontSize:11,fontWeight:600,cursor:"pointer"}}>CSV</button>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Sort + export row ── */}
-          <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"10px 14px"}} className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span style={{color:t.sub,fontSize:11,fontWeight:600}}>Sort:</span>
-              {[["date","📅 Date"],["amount","₹ Amount"],["category","🏷 Cat."],["vendor","🏪 Vendor"]].map(([v,l])=>(
-                <button key={v} onClick={()=>setExpSortMode(v)} style={{background:expSortMode===v?"#ef4444":t.inp,color:expSortMode===v?"#fff":t.sub,border:`1.5px solid ${expSortMode===v?"#ef4444":t.border}`,padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{l}</button>
-              ))}
-            </div>
-            <div className="flex items-center gap-3">
-              <span style={{color:t.sub,fontSize:12}}>{filteredExp.length} entries · <span style={{color:"#ef4444",fontWeight:700}}>{inr(filtExpTotal)}</span></span>
-              <button onClick={()=>exportTabPDF("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Notes",key:"notes"}],settings)} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>PDF</button>
-              <button onClick={()=>exportTabExcel("Expenses",filteredExp,[{label:"Category",key:"category"},{label:"Amount",key:"amount",num:true},{label:"Date",key:"date"},{label:"Vendor",key:"vendor"},{label:"Payment",key:"paymentMethod"},{label:"Notes",key:"notes"}],settings)} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>XLS</button>
-            </div>
-          </div>
-
-          {/* ── Category Quick-Filter chips (clickable drilldown) ── */}
-          {catBreakdown.length>0&&<div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}} className="flex gap-2">
-            <style>{`.exp-chips::-webkit-scrollbar{display:none}`}</style>
-            <div className="exp-chips flex gap-2 pb-0.5">
-            {catBreakdown.map((c,i)=>(
-              <button key={c.cat} onClick={()=>setExpCatModal(c.cat)}
-                style={{flexShrink:0,background:PALETTE[i%7]+"15",border:`1.5px solid ${PALETTE[i%7]}35`,borderRadius:14,padding:"10px 14px",cursor:"pointer",transition:"all .15s",textAlign:"left",WebkitTapHighlightColor:"transparent"}}
-                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 4px 12px ${PALETTE[i%7]}30`;}}
-                onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
-                <p style={{color:PALETTE[i%7],fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>{c.cat}</p>
-                <p style={{color:t.text,fontSize:14,fontWeight:900,marginTop:2}}>{inr(c.total)}</p>
-                <p style={{color:t.sub,fontSize:9,marginTop:1,whiteSpace:"nowrap"}}>{c.count} entries · drill →</p>
-              </button>
-            ))}
-            </div>
-          </div>}
-
-          {/* ── Category Drilldown Modal ── */}
-          {expCatModal&&(()=>{
-            const catExps=expenses.filter(e=>e.category===expCatModal).sort((a,b)=>b.date.localeCompare(a.date));
-            const catTotal=catExps.reduce((s,e)=>s+(e.amount||0),0);
-            const catVendors={};catExps.forEach(e=>{if(e.vendor)catVendors[e.vendor]=(catVendors[e.vendor]||0)+(e.amount||0);});
-            const catPMs={};catExps.forEach(e=>{const pm=e.paymentMethod||"Cash";catPMs[pm]=(catPMs[pm]||0)+(e.amount||0);});
-            const catMonths={};catExps.forEach(e=>{const m=e.date?.slice(0,7);if(m)catMonths[m]=(catMonths[m]||0)+(e.amount||0);});
-            return(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9990,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setExpCatModal(null)}>
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:600,maxHeight:"88vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p style={{color:t.text,fontWeight:900,fontSize:16}}>🏷 {expCatModal}</p>
-                    <p style={{color:t.sub,fontSize:11}}>{catExps.length} entries · all time</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(catTotal)}</span>
-                    <button onClick={()=>setExpCatModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
-                  </div>
-                </div>
-                {/* Category stats */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[
-                    {l:"Total Spent",v:inr(catTotal),c:"#ef4444"},
-                    {l:"Entries",v:catExps.length,c:"#3b82f6"},
-                    {l:"Avg/Entry",v:inr(catExps.length>0?Math.round(catTotal/catExps.length):0),c:"#f59e0b"},
-                  ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
-                    <p style={{color:x.c,fontWeight:900,fontSize:14}}>{x.v}</p>
-                    <p style={{color:t.sub,fontSize:10}}>{x.l}</p>
-                  </div>)}
-                </div>
-                {/* Vendor breakdown */}
-                {Object.keys(catVendors).length>0&&<div className="mb-4">
-                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>By Vendor</p>
-                  {Object.entries(catVendors).sort((a,b)=>b[1]-a[1]).map(([v,amt])=>(
-                    <div key={v} className="flex items-center justify-between py-1.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                      <button onClick={()=>{setExpCatModal(null);setExpVendorModal(v);}} style={{color:"#3b82f6",fontSize:12,fontWeight:600,background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>{v} →</button>
-                      <span style={{color:"#ef4444",fontWeight:700,fontSize:12}}>{inr(amt)}</span>
-                    </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  {/* Date filter chips */}
+                  {[["all","All time"],["month","This month"],["week","7 days"],["today","Today"],["custom","📅 Custom"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setExpDateFilter(v)}
+                      style={{border:`1px solid ${expDateFilter===v?"#ef4444":t.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",background:expDateFilter===v?(dm?"rgba(239,68,68,0.15)":"#fff1f2"):(t.inp),color:expDateFilter===v?"#ef4444":t.sub,transition:"all .15s"}}>
+                      {l}
+                    </button>
                   ))}
-                </div>}
-                {/* Payment method */}
-                {Object.keys(catPMs).length>0&&<div className="mb-4">
-                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>By Payment Method</p>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(catPMs).map(([pm,amt])=>(
-                      <div key={pm} style={{background:"#8b5cf618",border:"1px solid #8b5cf640",borderRadius:8,padding:"5px 10px"}}>
-                        <p style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{pm}</p>
-                        <p style={{color:t.sub,fontSize:10}}>{inr(amt)}</p>
+                  {/* Search */}
+                  <input value={expSearch} onChange={e=>setExpSearch(e.target.value)} placeholder="🔍 Search…"
+                    style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:20,padding:"5px 12px",fontSize:12,color:t.text,outline:"none",width:140}}/>
+                  {/* Add button */}
+                  <button onClick={()=>{setEsh("add");setEf(blkE());}}
+                    style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    + Add Expense
+                  </button>
+                </div>
+                {/* Custom date range pickers — only shown when "custom" is active */}
+                {expDateFilter==="custom"&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:4,background:dm?"rgba(239,68,68,0.07)":"#fff1f2",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px"}}>
+                    <span style={{color:"#ef4444",fontSize:12,fontWeight:700}}>📅 From</span>
+                    <input type="date" value={expCustomFrom} onChange={e=>setExpCustomFrom(e.target.value)}
+                      style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
+                    <span style={{color:t.sub,fontSize:12,fontWeight:600}}>→ To</span>
+                    <input type="date" value={expCustomTo} onChange={e=>setExpCustomTo(e.target.value)}
+                      style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
+                    {expCustomFrom&&expCustomTo&&(
+                      <span style={{color:"#ef4444",fontSize:11,fontWeight:700,background:"rgba(239,68,68,0.12)",padding:"3px 10px",borderRadius:20,border:"1px solid rgba(239,68,68,0.3)"}}>
+                        {filteredExp.length} entries · {inr(filtExpTotal)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── BUDGET ALERTS ── */}
+              {budgetAlerts.map(({cat,budget,spent,over,pct})=>(
+                <div key={cat} style={{background:over?(dm?"rgba(220,38,38,0.12)":"#fff1f2"):(dm?"rgba(245,158,11,0.12)":"#fffbeb"),border:`1px solid ${over?"#ef4444":"#f59e0b"}`,borderRadius:14,padding:"11px 16px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:16}}>{over?"🚨":"⚠️"}</span>
+                      <div>
+                        <p style={{color:over?"#dc2626":"#d97706",fontWeight:700,fontSize:13}}>
+                          {over ? `${cat} budget exceeded!` : `${cat} budget at ${pct}%`}
+                        </p>
+                        <p style={{color:over?"#dc2626":"#d97706",fontSize:11,opacity:0.8}}>
+                          {inr(spent)} spent of {inr(budget)} this month
+                        </p>
                       </div>
+                    </div>
+                    <span style={{background:over?"#ef444420":"#f59e0b20",color:over?"#dc2626":"#d97706",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,border:`1px solid ${over?"#ef444440":"#f59e0b40"}`,whiteSpace:"nowrap"}}>
+                      {over?"Over budget":`${pct}%`}
+                    </span>
+                  </div>
+                  <div style={{height:7,borderRadius:7,background:over?"rgba(220,38,38,0.15)":"rgba(245,158,11,0.15)",overflow:"hidden"}}>
+                    <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:over?"#ef4444":"#f59e0b",borderRadius:7,transition:"width .5s"}}/>
+                  </div>
+                </div>
+              ))}
+
+              {/* ── 4 KPI CARDS ── */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}>
+                {[
+                  {label:"Op. Expenses",value:inr(totalExpOp),sub:`${expenses.length} entries · ${expRatio}% of rev`,color:"#ef4444",icon:"💸",badge:expRatio>40?"High":"OK",badgeOk:expRatio<=40},
+                  {label:"Supply Costs", value:inr(totalSupC), sub:`${pctSupply}% of revenue`,color:"#8b5cf6",icon:"📦",badge:`${supplies.length} entries`,badgeOk:true},
+                  {label:"Revenue",      value:inr(totalRev),  sub:`${deliveries.filter(d=>d.status==="Delivered").length} delivered`,color:"#10b981",icon:"💰",badge:`Avg ${inr(Math.round(avgExpPerDay))}/day`,badgeOk:true},
+                  {label:"Net Profit",   value:inr(netProfit), sub:isProfitable?"Profitable ✓":"In loss ⚠️",color:isProfitable?"#10b981":"#ef4444",icon:isProfitable?"📈":"📉",badge:`${totalRev>0?Math.round(netProfit/totalRev*100):0}% margin`,badgeOk:isProfitable},
+                ].map(k=>(
+                  <div key={k.label} style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>{k.icon} {k.label}</p>
+                    <p style={{color:k.color,fontSize:22,fontWeight:900,lineHeight:1,letterSpacing:"-0.02em"}}>{k.value}</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:5}}>{k.sub}</p>
+                    <div style={{marginTop:8,height:3,borderRadius:3,background:k.color+"22",overflow:"hidden"}}>
+                      <div style={{width:`${k.label==="Op. Expenses"?Math.min(100,expRatio*2):k.label==="Supply Costs"?Math.min(100,pctSupply):k.label==="Net Profit"?Math.max(0,Math.min(100,pctProfit)):60}%`,height:"100%",background:k.color,borderRadius:3}}/>
+                    </div>
+                    <p style={{color:k.badgeOk?"#10b981":"#f59e0b",fontSize:10,fontWeight:700,marginTop:4}}>{k.badge}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── REVENUE ALLOCATION BAR ── */}
+              {totalRev>0&&(
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"12px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                    <span style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Where does revenue go?</span>
+                    <span style={{color:t.sub,fontSize:11}}>{inr(totalRev)}</span>
+                  </div>
+                  <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",gap:2}}>
+                    <div style={{width:`${pctProfit}%`,background:"#10b981",transition:"width .6s"}} title={`Profit ${pctProfit}%`}/>
+                    <div style={{width:`${pctSupply}%`,background:"#8b5cf6"}} title={`Supply ${pctSupply}%`}/>
+                    <div style={{width:`${pctExp}%`,background:"#ef4444"}} title={`Expenses ${pctExp}%`}/>
+                    <div style={{width:`${pctWaste}%`,background:"#f97316"}} title={`Waste ${pctWaste}%`}/>
+                  </div>
+                  <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+                    {[["#10b981","Profit",pctProfit],["#8b5cf6","Supply",pctSupply],["#ef4444","Expenses",pctExp],["#f97316","Waste",pctWaste]].map(([c,l,p])=>(
+                      <span key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.sub}}>
+                        <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>
+                        {l} <strong style={{color:c}}>{p}%</strong>
+                      </span>
                     ))}
                   </div>
-                </div>}
-                {/* Monthly trend */}
-                {Object.keys(catMonths).length>1&&<div className="mb-4">
-                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Monthly Trend</p>
-                  {Object.entries(catMonths).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([m,amt])=>(
-                    <div key={m} className="mb-2">
-                      <div className="flex justify-between mb-1"><span style={{color:t.text,fontSize:11}}>{m}</span><span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(amt)}</span></div>
-                      <div style={{background:t.border,height:4,borderRadius:4,overflow:"hidden"}}><div style={{width:`${catTotal>0?Math.round(amt/catTotal*100):0}%`,background:"#ef4444",height:"100%",borderRadius:4}}/></div>
-                    </div>
-                  ))}
-                </div>}
-                {/* Entries list */}
-                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>All Entries</p>
-                <div style={{border:`1px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
-                  {catExps.map((e,i)=>(
-                    <div key={e.id||i} style={{padding:"10px 14px",borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"66"}}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span style={{color:t.text,fontSize:12,fontWeight:600}}>{e.vendor||"—"}</span>
-                            {e.tags&&e.tags.split(",").filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:600}}>{tg.trim()}</span>)}
+                </div>
+              )}
+
+              {/* ── TWO-COL: CATEGORIES + INSIGHTS ── */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+
+                {/* Category breakdown */}
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                    <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Spending by category</p>
+                    <span style={{color:t.sub,fontSize:11}}>{inr(filtExpTotal)}</span>
+                  </div>
+                  {catBreakdown.length===0
+                    ? <p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"20px 0"}}>No expenses in this period</p>
+                    : catBreakdown.map(c=>(
+                      <div key={c.cat} style={{marginBottom:10,cursor:"pointer"}}
+                        onClick={()=>setDetailModal({type:"expensecat",data:{cat:c.cat,catExpenses:filteredExp.filter(e=>e.category===c.cat),catTotal:c.total}})}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                          <div style={{display:"flex",alignItems:"center",gap:7}}>
+                            <span style={{width:8,height:8,borderRadius:2,background:c.color,flexShrink:0,display:"inline-block"}}/>
+                            <span style={{color:t.text,fontSize:12,fontWeight:600}}>{c.cat}</span>
+                            {c.budget>0&&<span style={{fontSize:10,color:t.sub}}>of {inr(c.budget)}</span>}
                           </div>
-                          <p style={{color:t.sub,fontSize:10}}>📅 {e.date}{e.paymentMethod?` · ${e.paymentMethod}`:""}{e.approvedBy?` · ✅ ${e.approvedBy}`:""}</p>
-                          {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{e.notes}</p>}
-                          {e.receipt&&<p style={{color:"#f59e0b",fontSize:9}}>🧾 {e.receipt}</p>}
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{color:t.sub,fontSize:11}}>{c.count} entries</span>
+                            <span style={{color:t.text,fontSize:12,fontWeight:700}}>{inr(c.total)}</span>
+                          </div>
                         </div>
-                        <span style={{color:"#ef4444",fontWeight:900,fontSize:14,whiteSpace:"nowrap",marginLeft:8}}>{inr(e.amount)}</span>
+                        <div style={{height:6,borderRadius:6,background:t.inp,overflow:"hidden"}}>
+                          <div style={{width:`${Math.round(c.total/maxCatVal*100)}%`,height:"100%",background:c.color,borderRadius:6,transition:"width .4s"}}/>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+
+                {/* Quick insights */}
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    {icon:"📊",label:"Daily avg",value:inr(Math.round(avgExpPerDay)),sub:"per active day",color:"#f59e0b",show:expAlerts.showDailyAvg!==false},
+                    {icon:"🏆",label:"Top category",value:catBreakdown[0]?.cat||"—",sub:catBreakdown[0]?inr(catBreakdown[0].total)+"  ·  "+catBreakdown[0].count+" entries":"₹0",color:"#ef4444",show:true},
+                    {icon:"💳",label:"Top payment",value:topPM?.[0]||"Cash",sub:topPM?inr(topPM[1]):"₹0",color:"#3b82f6",show:true},
+                    {icon:"🏪",label:"Top vendor",value:vendorBreakdown[0]?vendorBreakdown[0][0]:"None",sub:vendorBreakdown[0]?inr(vendorBreakdown[0][1]):"₹0",color:"#8b5cf6",show:expAlerts.showTopVendor!==false},
+                    {icon:expRatio>40?"⚠️":"✅",label:"Expense ratio",value:`${expRatio}%`,sub:expRatio>40?"Above 40% — review costs":"Looking healthy",color:expRatio>40?"#ef4444":"#10b981",show:true},
+                  ].filter(x=>x.show).map((ins,i)=>(
+                    <div key={i} style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:14,padding:"11px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",flex:1}}>
+                      <div>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:3}}>{ins.icon} {ins.label}</p>
+                        <p style={{color:ins.color,fontSize:15,fontWeight:900,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{ins.value}</p>
+                        <p style={{color:t.sub,fontSize:11,marginTop:2}}>{ins.sub}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>);
-          })()}
 
-          {/* ── Vendor Drilldown Modal ── */}
-          {expVendorModal&&(()=>{
-            const vExps=expenses.filter(e=>e.vendor===expVendorModal).sort((a,b)=>b.date.localeCompare(a.date));
-            const vTotal=vExps.reduce((s,e)=>s+(e.amount||0),0);
-            const vCats={};vExps.forEach(e=>{const c=e.category||"Other";vCats[c]=(vCats[c]||0)+(e.amount||0);});
-            return(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9991,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setExpVendorModal(null)}>
-              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:600,maxHeight:"85vh",overflowY:"auto",padding:20}} onClick={e=>e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p style={{color:t.text,fontWeight:900,fontSize:16}}>🏪 {expVendorModal}</p>
-                    <p style={{color:t.sub,fontSize:11}}>{vExps.length} transactions</p>
+              {/* ── MONTHLY TREND (simple bar chart) ── */}
+              {monthlyTrend.length>1&&(
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 18px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                    <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Monthly trend · last {monthlyTrend.length} months</p>
+                    <span style={{background:expRatio>40?"rgba(239,68,68,0.12)":"rgba(16,185,129,0.12)",color:expRatio>40?"#ef4444":"#10b981",fontSize:11,fontWeight:700,borderRadius:20,padding:"3px 10px",border:`1px solid ${expRatio>40?"rgba(239,68,68,0.3)":"rgba(16,185,129,0.3)"}`}}>
+                      {expRatio}% expense ratio
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(vTotal)}</span>
-                    <button onClick={()=>setExpVendorModal(null)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[{l:"Total Paid",v:inr(vTotal),c:"#ef4444"},{l:"Transactions",v:vExps.length,c:"#3b82f6"},{l:"Avg",v:inr(vExps.length>0?Math.round(vTotal/vExps.length):0),c:"#f59e0b"}].map(x=>(
-                    <div key={x.l} style={{background:t.inp,borderRadius:12,padding:"10px 12px",textAlign:"center"}}><p style={{color:x.c,fontWeight:900,fontSize:14}}>{x.v}</p><p style={{color:t.sub,fontSize:10}}>{x.l}</p></div>
-                  ))}
-                </div>
-                {Object.keys(vCats).length>0&&<div className="flex flex-wrap gap-2 mb-4">
-                  {Object.entries(vCats).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>(
-                    <div key={cat} style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:"5px 10px"}}>
-                      <p style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{cat}</p><p style={{color:t.sub,fontSize:10}}>{inr(amt)}</p>
-                    </div>
-                  ))}
-                </div>}
-                <div style={{border:`1px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
-                  {vExps.map((e,i)=>(
-                    <div key={e.id||i} style={{padding:"10px 14px",borderTop:i>0?`1px solid ${t.border}`:"none",background:i%2===0?"transparent":t.inp+"66"}}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span style={{background:"#ef444420",color:"#ef4444",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.category}</span>
-                          <p style={{color:t.sub,fontSize:10,marginTop:2}}>📅 {e.date}{e.paymentMethod?` · ${e.paymentMethod}`:""}</p>
-                          {e.notes&&<p style={{color:t.sub,fontSize:10,fontStyle:"italic"}}>{e.notes}</p>}
+                  <div style={{display:"flex",alignItems:"flex-end",gap:8,height:100}}>
+                    {monthlyTrend.map(([m,v],i)=>{
+                      const isLast = i===monthlyTrend.length-1;
+                      const barH = Math.round(v/maxMonthly*100);
+                      const label = new Date(m+"-01").toLocaleString("en-IN",{month:"short"});
+                      return(
+                        <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                          <span style={{color:isLast?"#ef4444":t.sub,fontSize:10,fontWeight:isLast?700:400}}>{inr(Math.round(v/1000))+"k"}</span>
+                          <div style={{width:"100%",height:`${barH}%`,background:isLast?"#ef4444":t.border,borderRadius:"4px 4px 0 0",minHeight:4,transition:"height .4s"}}/>
+                          <span style={{color:isLast?t.text:t.sub,fontSize:10,fontWeight:isLast?700:400}}>{label}</span>
                         </div>
-                        <span style={{color:"#ef4444",fontWeight:900,fontSize:14}}>{inr(e.amount)}</span>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── ALL ENTRIES ── */}
+              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden"}}>
+                {/* Header */}
+                <div style={{padding:"13px 16px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+                    All entries
+                  </p>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {/* Category filter */}
+                    <select value={expCatFilter} onChange={e=>setExpCatFilter(e.target.value)}
+                      style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 8px",fontSize:11,color:t.sub,outline:"none",cursor:"pointer"}}>
+                      <option value="all">All categories</option>
+                      {expCats.map(c=><option key={c}>{c}</option>)}
+                    </select>
+                    <span style={{color:t.sub,fontSize:11}}>{filteredExp.length} total</span>
+                  </div>
+                </div>
+
+                {/* Entry rows — scrollable, shows ALL entries */}
+                <div style={{maxHeight:480,overflowY:"auto"}}>
+                {recentExp.length===0
+                  ? <p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"24px 0"}}>No expenses found</p>
+                  : recentExp.map(e=>{
+                      const catColor = PALETTE[expCats.indexOf(e.category)%7] || "#888";
+                      return(
+                        <div key={e.id}
+                          onClick={()=>setDetailModal({type:"expense",data:e})}
+                          style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderBottom:`1px solid ${t.border}`,cursor:"pointer",transition:"background .1s"}}
+                          onMouseEnter={el=>el.currentTarget.style.background=dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)"}
+                          onMouseLeave={el=>el.currentTarget.style.background="transparent"}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
+                            <div style={{width:36,height:36,borderRadius:10,background:catColor+"22",border:`1px solid ${catColor}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <span style={{width:10,height:10,borderRadius:3,background:catColor,display:"inline-block"}}/>
+                            </div>
+                            <div style={{minWidth:0,flex:1}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <p style={{color:t.text,fontWeight:700,fontSize:13}}>{e.category}</p>
+                                {e.tags&&e.tags.split(",").filter(Boolean).map(tag=>(
+                                  <span key={tag} style={{background:t.inp,color:t.sub,fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:8,border:`1px solid ${t.border}`}}>{tag.trim()}</span>
+                                ))}
+                              </div>
+                              <p style={{color:t.sub,fontSize:11,marginTop:2}}>
+                                {e.date}
+                                {e.vendor&&<span> · 🏪 {e.vendor}</span>}
+                                {e.approvedBy&&<span> · 👤 {e.approvedBy}</span>}
+                                {e.notes&&<span style={{fontStyle:"italic"}}> · {e.notes.slice(0,40)}{e.notes.length>40?"…":""}</span>}
+                              </p>
+                              {e.receipt&&<p style={{color:t.sub,fontSize:10,marginTop:1}}>📎 {e.receipt.slice(0,40)}{e.receipt.length>40?"…":""}</p>}
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0,marginLeft:12}}>
+                            <p style={{color:t.text,fontWeight:800,fontSize:15}}>{inr(e.amount)}</p>
+                            <span style={{fontSize:10,color:catColor,background:catColor+"15",padding:"2px 8px",borderRadius:10,fontWeight:700,border:`1px solid ${catColor}30`}}>
+                              {e.paymentMethod||"Cash"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                }
+                </div>
+                {/* Footer: entry count + add button */}
+                <div style={{padding:"10px 16px",borderTop:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <p style={{color:t.sub,fontSize:12}}>{filteredExp.length} {filteredExp.length===1?"entry":"entries"} · {inr(filtExpTotal)} total</p>
+                  <button
+                    onClick={()=>{setEsh("add");setEf(blkE());}}
+                    style={{background:"#ef4444",border:"none",borderRadius:8,padding:"5px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+                    + Add Expense
+                  </button>
                 </div>
               </div>
-            </div>);
-          })()}
 
-          {/* ── Expense cards — Interactive ── */}
-          {filteredExp.length===0?
-          <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,padding:"40px 20px",textAlign:"center"}}>
-            <div style={{fontSize:40,marginBottom:12}}>💸</div>
-            <p style={{color:t.text,fontSize:15,fontWeight:700,marginBottom:4}}>{expSearch||expCatFilter!=="all"?"No results found":"No expenses yet"}</p>
-            <p style={{color:t.sub,fontSize:13,marginBottom:16}}>{expSearch||expCatFilter!=="all"?"Try adjusting your filters":"Start logging your operating expenses"}</p>
-            {!expSearch&&expCatFilter==="all"&&<button onClick={()=>{setEf(blkE());setEsh("add");}} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Add First Expense</button>}
-          </div>
-          :(()=>{
-            const sorted=[...filteredExp].sort((a,b)=>{
-              if(expSortMode==="amount") return (b.amount||0)-(a.amount||0);
-              if(expSortMode==="category") return (a.category||"").localeCompare(b.category||"");
-              if(expSortMode==="vendor") return (a.vendor||"").localeCompare(b.vendor||"");
-              return b.date.localeCompare(a.date);
-            });
-            return <div className="flex flex-col gap-3">{sorted.map(e=>{
-              const isExp=expCardExpanded===e.id;
-              const catIdx=(settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"]).indexOf(e.category);
-              const catColor=PALETTE[catIdx>=0?catIdx%7:0];
-              const catPct=filtExpTotal>0?Math.round((e.amount||0)/filtExpTotal*100):0;
-              return(
-              <div key={e.id}
-                onClick={()=>setExpCardExpanded(isExp?null:e.id)}
-                style={{background:t.card,border:`1.5px solid ${isExp?catColor:t.border}`,borderRadius:18,overflow:"hidden",cursor:"pointer",transition:"all .18s ease",boxShadow:isExp?`0 4px 20px ${catColor}22`:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)"}}>
-                {/* Color accent strip on left */}
-                <div style={{display:"flex"}}>
-                  <div style={{width:4,background:catColor,flexShrink:0}}/>
-                  <div style={{flex:1,padding:"14px 16px"}}>
-                    {/* Main row */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <span style={{background:catColor+"22",color:catColor,borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:700,border:`1px solid ${catColor}44`}}>{e.category}</span>
-                          {e.paymentMethod&&<span style={{background:dm?"rgba(59,130,246,0.15)":"rgba(59,130,246,0.08)",color:"#3b82f6",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:600,border:"1px solid rgba(59,130,246,0.25)"}}>{e.paymentMethod}</span>}
-                          {e.approvedBy&&<span style={{background:dm?"rgba(16,185,129,0.15)":"rgba(16,185,129,0.08)",color:"#10b981",borderRadius:6,padding:"3px 7px",fontSize:10,fontWeight:600}}>✅ {e.approvedBy}</span>}
-                        </div>
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <span style={{color:t.sub,fontSize:12}}>📅 {e.date}</span>
-                          {e.vendor&&<button onClick={ev=>{ev.stopPropagation();setExpVendorModal(e.vendor);}} style={{color:"#3b82f6",fontSize:12,fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>🏪 {e.vendor} →</button>}
-                        </div>
-                        {e.notes&&<p style={{color:t.sub,fontSize:12,marginTop:4,lineHeight:1.4}}>{e.notes}</p>}
+              {/* ── VENDOR BREAKDOWN (if any) ── */}
+              {vendorBreakdown.length>0&&(
+                <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>Top vendors</p>
+                  {vendorBreakdown.map(([vendor,amt],i)=>(
+                    <div key={vendor} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<vendorBreakdown.length-1?10:0}}>
+                      <span style={{color:t.sub,fontSize:11,minWidth:14,textAlign:"right"}}>{i+1}</span>
+                      <span style={{color:t.text,fontSize:12,flex:1,fontWeight:600}}>{vendor}</span>
+                      <div style={{height:6,borderRadius:6,background:t.inp,overflow:"hidden",width:120}}>
+                        <div style={{width:`${Math.round(amt/vendorBreakdown[0][1]*100)}%`,height:"100%",background:"#8b5cf6",borderRadius:6}}/>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
-                        <span style={{color:"#ef4444",fontWeight:900,fontSize:18,lineHeight:1}}>{inr(e.amount)}</span>
-                        {catPct>0&&<span style={{color:t.sub,fontSize:10,fontWeight:600}}>{catPct}% of total</span>}
-                        <span style={{color:t.sub,fontSize:10,marginTop:2}}>{isExp?"▲":"▼"}</span>
-                      </div>
+                      <span style={{color:t.text,fontSize:12,fontWeight:700,minWidth:70,textAlign:"right"}}>{inr(amt)}</span>
                     </div>
-                    {/* Cost bar indicator */}
-                    {filtExpTotal>0&&<div style={{marginTop:10,height:3,background:t.border,borderRadius:3,overflow:"hidden"}}><div style={{width:`${catPct}%`,background:catColor,height:"100%",borderRadius:3,transition:"width 0.4s"}}/></div>}
-                    {/* Expanded detail panel */}
-                    {isExp&&<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.border}`}} onClick={ev=>ev.stopPropagation()}>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                        {[
-                          {l:"Amount",v:inr(e.amount),c:"#ef4444"},
-                          {l:"Category",v:e.category,c:catColor},
-                          {l:"Payment",v:e.paymentMethod||"Cash",c:"#3b82f6"},
-                          {l:"Date",v:e.date,c:t.text},
-                        ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
-                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>{x.l}</p>
-                          <p style={{color:x.c,fontWeight:700,fontSize:12}}>{x.v}</p>
-                        </div>)}
-                      </div>
-                      {e.vendor&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Vendor</p>
-                        <div className="flex items-center justify-between">
-                          <p style={{color:t.text,fontSize:13,fontWeight:700}}>{e.vendor}</p>
-                          <button onClick={()=>setExpVendorModal(e.vendor)} style={{color:"#3b82f6",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>All vendor expenses →</button>
-                        </div>
-                      </div>}
-                      {e.receipt&&<div style={{background:"#f59e0b15",border:"1px solid #f59e0b35",borderRadius:10,padding:"8px 12px",marginBottom:8}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Receipt / Ref</p>
-                        <p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>🧾 {e.receipt}</p>
-                      </div>}
-                      {e.notes&&<div style={{background:t.inp,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Notes</p>
-                        <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{e.notes}</p>
-                      </div>}
-                      {e.tags&&<div className="flex flex-wrap gap-1.5 mb-3">{e.tags.split(",").filter(Boolean).map(tg=><span key={tg} style={{background:"#8b5cf618",color:"#8b5cf6",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:600}}>#{tg.trim()}</span>)}</div>}
-                      {(()=>{
-                        const catTotal2=expenses.filter(ex=>ex.category===e.category).reduce((s,ex)=>s+(ex.amount||0),0);
-                        const pctOfCat=catTotal2>0?Math.round((e.amount||0)/catTotal2*100):0;
-                        return catTotal2>0&&<div style={{background:catColor+"12",border:`1px solid ${catColor}30`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
-                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Share of {e.category} spend</p>
-                          <div className="flex items-center gap-3">
-                            <p style={{color:catColor,fontWeight:800,fontSize:13}}>{pctOfCat}%</p>
-                            <div style={{flex:1,height:5,background:t.border,borderRadius:5,overflow:"hidden"}}><div style={{width:`${pctOfCat}%`,background:catColor,height:"100%",borderRadius:5}}/></div>
-                            <p style={{color:t.sub,fontSize:10}}>of {inr(catTotal2)}</p>
-                          </div>
-                        </div>;
-                      })()}
-                      <div className="flex gap-2">
-                        <button onClick={()=>{setEf({...e,amount:String(e.amount),vendor:e.vendor||"",paymentMethod:e.paymentMethod||"Cash",approvedBy:e.approvedBy||"",tags:e.tags||""});setEsh(e);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,padding:"10px 14px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>✏️ Edit</button>
-                        <button onClick={()=>delE(e)} style={{background:dm?"rgba(220,38,38,0.15)":"rgba(220,38,38,0.08)",color:"#ef4444",border:"1.5px solid rgba(220,38,38,0.3)",padding:"10px 14px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🗑️ Delete</button>
-                      </div>
-                    </div>}
-                  </div>
+                  ))}
                 </div>
-              </div>);
-            })}</div>;
-          })()}
-        </>);
+              )}
+
+            </div>
+          );
         })()}
+
 
         {/* WASTAGE */}
         {tab==="Wastage"&&(<>
@@ -7486,173 +6640,254 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const periodLabel=plPeriod==="custom"?`${plCustomFrom||"—"} → ${plCustomTo}`:PL_PERIODS.find(p=>p[0]===plPeriod)?.[1]||"";
 
           return <>
-            {/* ── PERIOD SELECTOR + EXPORT ── */}
-            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,overflow:"hidden",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.06)"}}>
-              <div style={{background:dm?"linear-gradient(135deg,#0d1225,#0d1f10)":"linear-gradient(135deg,#eff6ff,#f0fdf4)",padding:"16px 20px",borderBottom:`1px solid ${t.border}`}}>
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-3">
-                    <div style={{width:40,height:40,borderRadius:12,background:dm?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>📈</div>
-                    <div>
-                      <p style={{color:t.text,fontWeight:900,fontSize:18,lineHeight:1,letterSpacing:"-0.02em"}}>Profit & Loss</p>
-                      <p style={{color:t.sub,fontSize:11,marginTop:3}}>INR · Accrual · {periodLabel}</p>
-                    </div>
+            {/* ══════════════════════════════════════════════════════
+                P&L HEADER — Period Selector + Title + Export
+            ══════════════════════════════════════════════════════ */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 4px 20px rgba(0,0,0,0.45)":"0 2px 12px rgba(0,0,0,0.07)"}}>
+              {/* Title bar */}
+              <div style={{background:dm?"linear-gradient(135deg,#0c1a30,#091a0e)":"linear-gradient(135deg,#f0f9ff,#f0fdf4)",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,borderBottom:`1px solid ${t.border}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:44,height:44,borderRadius:14,background:totProfit>=0?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)",border:`1.5px solid ${totProfit>=0?"rgba(16,185,129,0.35)":"rgba(239,68,68,0.35)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{totProfit>=0?"📈":"📉"}</div>
+                  <div>
+                    <p style={{color:t.text,fontWeight:900,fontSize:17,lineHeight:1,letterSpacing:"-0.02em"}}>Profit & Loss</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:3}}>
+                      {periodLabel} · INR · Accrual ·&nbsp;
+                      <span style={{color:healthColor,fontWeight:700}}>{healthLabel}</span>
+                      <span style={{color:t.sub}}> ({healthScore}/100)</span>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 CSV</Btn>
-                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  {momProfit!==null&&(
+                    <span style={{background:momProfit>=0?"rgba(16,185,129,0.12)":"rgba(239,68,68,0.12)",color:momProfit>=0?"#10b981":"#ef4444",border:`1px solid ${momProfit>=0?"rgba(16,185,129,0.3)":"rgba(239,68,68,0.3)"}`,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:800}}>
+                      {momProfit>=0?"▲":"▼"} {Math.abs(momProfit)}% profit MoM
+                    </span>
+                  )}
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 Export CSV</Btn>
                 </div>
               </div>
               {/* Period pills */}
-              <div style={{padding:"10px 16px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",borderBottom:`1px solid ${t.border}`}}>
-                <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginRight:4}}>Period:</span>
+              <div style={{padding:"12px 16px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",borderBottom:plPeriod==="custom"?`1px solid ${t.border}`:"none"}}>
+                <span style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginRight:2}}>Period</span>
                 {PL_PERIODS.map(([v,l])=>(
                   <button key={v} onClick={()=>setPlPeriod(v)}
                     style={plPeriod===v
-                      ?{background:"#3b82f6",color:"#fff",borderRadius:10,padding:"6px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(59,130,246,0.35)"}
-                      :{background:t.inp,color:t.sub,borderRadius:10,padding:"6px 14px",fontSize:12,fontWeight:600,border:`1.5px solid ${t.border}`,cursor:"pointer"}}>{l}</button>
+                      ?{background:totProfit>=0?"#10b981":"#ef4444",color:"#fff",borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:800,border:"none",cursor:"pointer",boxShadow:`0 2px 10px ${totProfit>=0?"rgba(16,185,129,0.4)":"rgba(239,68,68,0.4)"}`}
+                      :{background:t.inp,color:t.sub,borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:600,border:`1.5px solid ${t.border}`,cursor:"pointer"}}>{l}
+                  </button>
                 ))}
               </div>
+              {/* Custom date range — inline below pills */}
+              {plPeriod==="custom"&&(
+                <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:dm?"rgba(16,185,129,0.05)":"rgba(16,185,129,0.03)"}}>
+                  <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>📅 From</span>
+                  <input type="date" value={plCustomFrom} onChange={e=>setPlCustomFrom(e.target.value)}
+                    style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:13,color:t.text,outline:"none",cursor:"pointer"}}/>
+                  <span style={{color:t.sub,fontSize:13,fontWeight:700}}>→</span>
+                  <input type="date" value={plCustomTo} max={today()} onChange={e=>setPlCustomTo(e.target.value)}
+                    style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:13,color:t.text,outline:"none",cursor:"pointer"}}/>
+                  {plCustomFrom&&plCustomTo&&(
+                    <span style={{background:"rgba(16,185,129,0.12)",color:"#10b981",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:800,border:"1px solid rgba(16,185,129,0.3)"}}>
+                      ✓ {Math.round((new Date(plCustomTo)-new Date(plCustomFrom))/86400000)+1} days selected
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            {/* ── Custom date inputs ── */}
-            {plPeriod==="custom"&&<div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-              <span style={{color:t.sub,fontSize:12,fontWeight:600}}>From</span>
-              <input type="date" value={plCustomFrom} onChange={e=>setPlCustomFrom(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none",touchAction:"manipulation"}}/>
-              <span style={{color:t.sub,fontSize:12,fontWeight:600}}>To</span>
-              <input type="date" value={plCustomTo} max={today()} onChange={e=>setPlCustomTo(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none",touchAction:"manipulation"}}/>
-              {plCustomFrom&&plCustomTo&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ {Math.round((new Date(plCustomTo)-new Date(plCustomFrom))/86400000)+1} days</span>}
-            </div>}
 
-            {/* ── HERO KPI BANNER ── */}
-            <div style={{background:dm?"linear-gradient(135deg,#0a1628,#0d1f12)":"linear-gradient(135deg,#eff6ff,#f0fdf4)",border:dm?"1px solid #1e3a5f":"1px solid #bfdbfe",borderRadius:20,padding:"22px 24px",boxShadow:dm?"0 4px 24px rgba(0,0,0,0.4)":"0 4px 16px rgba(59,130,246,0.08)"}}>
-              {/* Health badge row */}
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <div style={{display:"flex",alignItems:"center",gap:8,background:healthColor+"18",border:`1px solid ${healthColor}35`,borderRadius:12,padding:"6px 14px"}}>
+            {/* ══════════════════════════════════════════════════════
+                INCOME STATEMENT — Classic P&L layout
+            ══════════════════════════════════════════════════════ */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 2px 16px rgba(0,0,0,0.35)":"0 2px 10px rgba(0,0,0,0.05)"}}>
+              {/* Statement header */}
+              <div style={{padding:"14px 20px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <p style={{color:t.text,fontWeight:800,fontSize:13}}>📋 Income Statement</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>{periodLabel} · all figures INR</p>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,background:healthColor+"15",border:`1px solid ${healthColor}35`,borderRadius:12,padding:"6px 14px"}}>
                   <div style={{width:8,height:8,borderRadius:"50%",background:healthColor}}/>
-                  <span style={{color:healthColor,fontWeight:700,fontSize:12}}>{healthLabel}</span>
-                  <span style={{color:t.sub,fontSize:11}}>·</span>
-                  <span style={{color:t.sub,fontSize:11}}>Health <strong style={{color:healthColor}}>{healthScore}/100</strong></span>
+                  <span style={{color:healthColor,fontWeight:800,fontSize:12}}>{healthLabel} · {healthScore}/100</span>
                 </div>
-                {momProfit!==null&&<span style={{color:momProfit>=0?"#10b981":"#ef4444",background:momProfit>=0?"#10b98115":"#ef444415",border:`1px solid ${momProfit>=0?"#10b98130":"#ef444430"}`,borderRadius:10,padding:"5px 12px",fontSize:11,fontWeight:700}}>{momProfit>=0?"▲":"▼"} {Math.abs(momProfit)}% profit MoM</span>}
               </div>
-              {/* Big profit number */}
-              <p style={{color:totProfit>=0?"#10b981":"#ef4444",fontSize:32,fontWeight:900,lineHeight:1,letterSpacing:"-0.03em",marginBottom:4}}>{inr(totProfit)}</p>
-              <p style={{color:t.sub,fontSize:12,marginBottom:20}}>Net profit · {totMargin}% margin · last {plRange} months</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:0}}>
+                {/* Revenue line */}
                 {[
-                  {label:"Net Revenue",val:inr(totRev),color:"#10b981",icon:"💰",sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% MoM`:totReplDeducted>0?`−${inr(totReplDeducted)} replacements`:null},
-                  {label:"Total Costs",val:inr(totCost),color:"#ef4444",icon:"💸",sub:`avg ${inr(avgMonthlyCost)}/mo`},
-                  {label:"Collection Rate",val:`${collectionRate}%`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",icon:"💳",sub:`${inr(totDue)} due`},
-                  {label:"Avg Monthly Rev",val:inr(avgMonthlyRev),color:"#f59e0b",icon:"📅",sub:`avg profit ${inr(avgMonthlyProfit)}/mo`},
-                ].map(x=><div key={x.label}
-                  style={{background:dm?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.8)",borderRadius:14,padding:"12px 14px",border:`1px solid ${x.color}20`,backdropFilter:"blur(4px)",transition:"all .18s ease"}}
-                  onMouseEnter={ev=>{ev.currentTarget.style.transform="translateY(-2px)";ev.currentTarget.style.boxShadow=`0 6px 20px ${x.color}25`;}}
-                  onMouseLeave={ev=>{ev.currentTarget.style.transform="none";ev.currentTarget.style.boxShadow="none";}}>
-                  <p style={{color:x.color,fontSize:15,fontWeight:900,lineHeight:1,letterSpacing:"-0.01em"}}>{x.val}</p>
-                  <p style={{color:t.sub,fontSize:10,fontWeight:600,marginTop:4}}>{x.icon} {x.label}</p>
-                  {x.sub&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{x.sub}</p>}
-                </div>)}
-              </div>
-              {/* Revenue vs cost stacked bar */}
-              {totRev>0&&<div style={{marginTop:16}}>
-                <div className="flex justify-between mb-1.5"><span style={{color:t.sub,fontSize:10,fontWeight:600}}>Revenue allocation</span><span style={{color:t.sub,fontSize:10}}>{inr(totRev)} total</span></div>
-                <div style={{height:12,borderRadius:12,overflow:"hidden",display:"flex",gap:1}}>
-                  <div title="Profit" style={{width:`${Math.max(0,Math.round(totProfit/totRev*100))}%`,background:"#10b981",borderRadius:"12px 0 0 12px",transition:"width 0.6s ease"}}/>
-                  <div title="Supply" style={{width:`${Math.round(totSupC/totRev*100)}%`,background:"#8b5cf6"}}/>
-                  <div title="Expenses" style={{width:`${Math.round(totExpC/totRev*100)}%`,background:"#ef4444"}}/>
-                  <div title="Waste" style={{width:`${Math.round(totWasteC/totRev*100)}%`,background:"#f97316",borderRadius:"0 12px 12px 0"}}/>
-                </div>
-                <div className="flex gap-3 mt-2 flex-wrap">
-                  {[["#10b981","Profit",Math.max(0,totMargin)],["#8b5cf6","Supply",Math.round(totSupC/totRev*100)],["#ef4444","Expenses",Math.round(totExpC/totRev*100)],["#f97316","Waste",Math.round(totWasteC/totRev*100)]].map(([c,l,p])=>(
-                    <div key={l} className="flex items-center gap-1.5"><div style={{width:10,height:10,borderRadius:3,background:c}}/><span style={{color:t.sub,fontSize:10,fontWeight:600}}>{l} <strong style={{color:c}}>{p}%</strong></span></div>
-                  ))}
-                </div>
-              </div>}
-            </div>
-
-            {/* ── SMART INSIGHTS — Interactive ── */}
-            {insights.length>0&&<div style={{background:t.card,border:`1.5px solid ${plInsightExpanded?"#3b82f6":t.border}`,borderRadius:16,padding:"14px 16px",cursor:"pointer",transition:"border-color .15s"}} onClick={()=>setPlInsightExpanded(p=>!p)}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-widest">💡 Smart Insights</p>
-                  <span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"1px 7px",fontSize:9,fontWeight:700}}>{insights.length} insights</span>
-                </div>
-                <span style={{color:t.sub,fontSize:13,transition:"transform .2s",display:"inline-block",transform:plInsightExpanded?"rotate(180deg)":"rotate(0deg)"}}>⌄</span>
-              </div>
-              {/* Preview — always show first insight */}
-              {!plInsightExpanded&&<div className="flex items-start gap-2">
-                <span style={{fontSize:14,lineHeight:1.4}}>{insights[0].icon}</span>
-                <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{insights[0].text}</p>
-              </div>}
-              {!plInsightExpanded&&insights.length>1&&<p style={{color:"#3b82f6",fontSize:10,fontWeight:600,marginTop:6}}>+{insights.length-1} more — tap to expand</p>}
-              {/* Full expanded */}
-              {plInsightExpanded&&<div className="flex flex-col gap-3" onClick={e=>e.stopPropagation()}>
-                {insights.map((ins,i)=>(
-                  <div key={i} style={{background:t.inp,borderRadius:10,padding:"10px 12px"}} className="flex items-start gap-2">
-                    <span style={{fontSize:16,lineHeight:1.3,flexShrink:0}}>{ins.icon}</span>
-                    <div>
-                      <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
+                  {label:"Gross Revenue",val:totRev+(totReplDeducted||0),color:"#10b981",indent:0,bold:false,border:false},
+                  ...(totReplDeducted>0?[{label:"(−) Replacement Deductions",val:-totReplDeducted,color:"#f97316",indent:1,bold:false,border:false}]:[]),
+                  {label:"Net Revenue",val:totRev,color:"#10b981",indent:0,bold:true,border:true},
+                  {label:"(−) Supply Costs",val:-totSupC,color:"#8b5cf6",indent:1,bold:false,border:false},
+                  {label:"(−) Operating Expenses",val:-totExpC,color:"#ef4444",indent:1,bold:false,border:false},
+                  {label:"(−) Wastage Losses",val:-totWasteC,color:"#f97316",indent:1,bold:false,border:false},
+                  {label:"Total Costs",val:-totCost,color:"#ef4444",indent:0,bold:true,border:true},
+                  {label:totProfit>=0?"Net Profit":"Net Loss",val:totProfit,color:totProfit>=0?"#10b981":"#ef4444",indent:0,bold:true,border:true,big:true},
+                ].map((row,ri)=>(
+                  <div key={ri} style={{
+                    display:"flex",alignItems:"center",justifyContent:"space-between",
+                    padding:`${row.big?"14px":"9px"} 12px`,
+                    paddingLeft:row.indent?28:12,
+                    borderTop:row.border?`2px solid ${t.border}`:"none",
+                    marginTop:row.border?4:0,
+                    background:row.big?(row.val>=0?"rgba(16,185,129,0.06)":"rgba(239,68,68,0.06)"):"transparent",
+                    borderRadius:row.big?12:0,
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      {row.indent>0&&<span style={{color:t.border,fontSize:10}}>└</span>}
+                      <span style={{color:row.bold?t.text:t.sub,fontSize:row.big?14:12,fontWeight:row.big?900:row.bold?700:400}}>{row.label}</span>
                     </div>
+                    <span style={{color:row.color,fontSize:row.big?20:13,fontWeight:row.big?900:row.bold?800:500,letterSpacing:row.big?"-0.02em":"0"}}>
+                      {row.val<0?`(${inr(Math.abs(row.val))})`:inr(Math.abs(row.val))}
+                    </span>
                   </div>
                 ))}
-                {/* Action recommendations */}
-                <div style={{background:"#3b82f612",border:"1px solid #3b82f630",borderRadius:10,padding:"10px 12px"}}>
-                  <p style={{color:"#3b82f6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recommended Actions</p>
-                  {netProfit<0&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Review highest-cost expense categories and identify reduction opportunities.</p>}
-                  {totalDue>totalRev*0.1&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Follow up on outstanding payments — {customers.filter(c=>c.pending>0).length} customers owe {inr(totalDue)}.</p>}
-                  {(wastage||[]).length>0&&<p style={{color:t.text,fontSize:11,lineHeight:1.5}}>• Investigate top wastage products to reduce {inr((wastage||[]).reduce((s,w)=>s+(w.cost||0),0))} in losses.</p>}
+                {/* Margin strip */}
+                {totRev>0&&(
+                  <div style={{marginTop:12,padding:"10px 12px",background:t.inp,borderRadius:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    {[
+                      {label:"Net Margin",val:`${totMargin}%`,color:totMargin>=30?"#10b981":totMargin>=15?"#f59e0b":"#ef4444"},
+                      {label:"Gross Margin",val:`${mData.length>0?Math.round(mData.reduce((s,m)=>s+m.grossMargin,0)/mData.length):0}%`,color:"#8b5cf6"},
+                      {label:"Cost Ratio",val:`${totRev>0?Math.round(totCost/totRev*100):0}%`,color:"#ef4444"},
+                      {label:"Expense Ratio",val:`${totRev>0?Math.round(totExpC/totRev*100):0}%`,color:"#f97316"},
+                    ].map(m=>(
+                      <div key={m.label} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,minWidth:60}}>
+                        <span style={{color:m.color,fontWeight:900,fontSize:15}}>{m.val}</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:600,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>{m.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Revenue allocation bar */}
+              {totRev>0&&(
+                <div style={{padding:"0 20px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                    <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Where revenue goes</span>
+                    <span style={{color:t.sub,fontSize:10}}>{inr(totRev)}</span>
+                  </div>
+                  <div style={{height:14,borderRadius:14,overflow:"hidden",display:"flex",gap:1}}>
+                    <div title={`Profit ${Math.max(0,totMargin)}%`} style={{width:`${Math.max(0,Math.round(totProfit/totRev*100))}%`,background:"linear-gradient(90deg,#10b981,#34d399)",borderRadius:"14px 0 0 14px",transition:"width .7s ease"}}/>
+                    <div title={`Supply ${Math.round(totSupC/totRev*100)}%`} style={{width:`${Math.round(totSupC/totRev*100)}%`,background:"#8b5cf6"}}/>
+                    <div title={`Expenses ${Math.round(totExpC/totRev*100)}%`} style={{width:`${Math.round(totExpC/totRev*100)}%`,background:"#ef4444"}}/>
+                    <div title={`Waste ${Math.round(totWasteC/totRev*100)}%`} style={{width:`${Math.round(totWasteC/totRev*100)}%`,background:"#f97316",borderRadius:"0 14px 14px 0"}}/>
+                  </div>
+                  <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+                    {[["#10b981","Profit ✓",Math.max(0,totMargin)],["#8b5cf6","Supply",Math.round(totSupC/totRev*100)],["#ef4444","Expenses",Math.round(totExpC/totRev*100)],["#f97316","Waste",Math.round(totWasteC/totRev*100)]].map(([c,l,p])=>(
+                      <span key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.sub}}>
+                        <span style={{width:9,height:9,borderRadius:2,background:c,display:"inline-block"}}/>
+                        {l} <strong style={{color:c}}>{p}%</strong>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>}
-            </div>}
+              )}
+            </div>
 
-            {/* ── CASH FLOW + BURN RATE ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* ══════════════════════════════════════════════════════
+                6 KEY METRIC TILES
+            ══════════════════════════════════════════════════════ */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10}}>
+              {[
+                {label:"Net Revenue",val:inr(totRev),sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% vs last month`:totReplDeducted>0?`After ${inr(totReplDeducted)} replacements`:`${filtD.length} deliveries`,color:"#10b981",icon:"💰"},
+                {label:"Total Costs",val:inr(totCost),sub:`avg ${inr(avgMonthlyCost)}/mo`,color:"#ef4444",icon:"💸"},
+                {label:"Net Profit",val:inr(totProfit),sub:`${totMargin}% net margin`,color:totProfit>=0?"#10b981":"#ef4444",icon:totProfit>=0?"📈":"📉"},
+                {label:"Collection Rate",val:`${collectionRate}%`,sub:`${inr(totDue)} outstanding`,color:collectionRate>=90?"#10b981":collectionRate>=70?"#f59e0b":"#ef4444",icon:"💳"},
+                {label:"Avg Monthly Rev",val:inr(avgMonthlyRev),sub:`avg profit ${inr(avgMonthlyProfit)}/mo`,color:"#f59e0b",icon:"📅"},
+                {label:"Burn Rate",val:inr(burnRate),sub:burnRate>avgMonthlyRev?"⚠️ Exceeds revenue":"Within revenue",color:burnRate>avgMonthlyRev?"#ef4444":"#10b981",icon:"🔥"},
+              ].map(x=>(
+                <div key={x.label}
+                  style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:16,padding:"13px 14px",cursor:"default",transition:"all .18s"}}
+                  onMouseEnter={ev=>{ev.currentTarget.style.transform="translateY(-2px)";ev.currentTarget.style.boxShadow=`0 6px 20px ${x.color}22`;ev.currentTarget.style.borderColor=x.color+"40";}}
+                  onMouseLeave={ev=>{ev.currentTarget.style.transform="none";ev.currentTarget.style.boxShadow="none";ev.currentTarget.style.borderColor=t.border;}}>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>{x.icon} {x.label}</p>
+                  <p style={{color:x.color,fontSize:17,fontWeight:900,lineHeight:1,letterSpacing:"-0.02em"}}>{x.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:5,lineHeight:1.3}}>{x.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* ══════════════════════════════════════════════════════
+                SMART INSIGHTS — always expanded, colour coded
+            ══════════════════════════════════════════════════════ */}
+            {insights.length>0&&(
+              <div style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:18,padding:"16px 18px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                  <span style={{fontSize:16}}>💡</span>
+                  <p style={{color:t.text,fontWeight:800,fontSize:13}}>Smart Insights</p>
+                  <span style={{background:"rgba(59,130,246,0.12)",color:"#3b82f6",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:800,border:"1px solid rgba(59,130,246,0.25)"}}>{insights.length}</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {insights.map((ins,i)=>{
+                    const isBad=ins.icon==="⚠️"||ins.icon==="🔴"||ins.icon==="📉"||ins.icon==="🔥"||ins.icon==="💸";
+                    const isGood=ins.icon==="✅"||ins.icon==="📈";
+                    const bc=isBad?"rgba(239,68,68,0.08)":isGood?"rgba(16,185,129,0.08)":"rgba(245,158,11,0.08)";
+                    const brd=isBad?"rgba(239,68,68,0.2)":isGood?"rgba(16,185,129,0.2)":"rgba(245,158,11,0.2)";
+                    return(
+                      <div key={i} style={{background:bc,border:`1px solid ${brd}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
+                        <span style={{fontSize:16,flexShrink:0,lineHeight:1.3}}>{ins.icon}</span>
+                        <p style={{color:t.text,fontSize:12,lineHeight:1.6}}>{ins.text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Recommended Actions */}
+                <div style={{background:"rgba(59,130,246,0.07)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:12,padding:"10px 14px",marginTop:10}}>
+                  <p style={{color:"#3b82f6",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recommended Actions</p>
+                  {totProfit<0&&<p style={{color:t.text,fontSize:11,lineHeight:1.6,marginBottom:3}}>• Review highest-cost expense categories and cut where possible.</p>}
+                  {totDue>totRev*0.1&&<p style={{color:t.text,fontSize:11,lineHeight:1.6,marginBottom:3}}>• {customers.filter(c=>c.pending>0).length} customers owe {inr(totDue)} — follow up on collections.</p>}
+                  {totWasteC>totCost*0.1&&<p style={{color:t.text,fontSize:11,lineHeight:1.6}}>• Investigate top wastage products to reduce {inr(totWasteC)} in losses.</p>}
+                  {totProfit>=0&&totWasteC<=totCost*0.1&&totDue<=totRev*0.1&&<p style={{color:"#10b981",fontSize:11,lineHeight:1.6}}>✓ Business is healthy. Keep monitoring margins and collection rates.</p>}
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════
+                CASH FLOW + BURN RATE (side by side)
+            ══════════════════════════════════════════════════════ */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               {/* Cash Flow */}
-              <div style={{background:dm?"linear-gradient(135deg,#051a0a,#05142a)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:dm?"1px solid rgba(16,185,129,0.2)":"1px solid #bbf7d0",borderRadius:18,padding:"18px 20px",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.3)":"0 2px 8px rgba(16,185,129,0.08)"}}>
-                <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>💵 Cash Flow Status</p>
-                <div className="flex items-end justify-between mb-4">
+              <div style={{background:dm?"linear-gradient(135deg,#041a0a,#04142a)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:dm?"1px solid rgba(16,185,129,0.2)":"1px solid #bbf7d0",borderRadius:18,padding:"18px 20px"}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>💵 Cash Flow</p>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
-                    <p style={{color:"#10b981",fontSize:24,fontWeight:900,lineHeight:1,letterSpacing:"-0.02em"}}>{inr(cashCollected)}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Collected from customers</p>
+                    <p style={{color:"#10b981",fontSize:22,fontWeight:900,lineHeight:1}}>{inr(cashCollected)}</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Collected</p>
                   </div>
-                  <div className="text-right">
+                  <div style={{textAlign:"right"}}>
                     <p style={{color:cashPending>0?"#ef4444":"#10b981",fontSize:18,fontWeight:900,lineHeight:1}}>{inr(cashPending)}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Pending / due</p>
+                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Pending</p>
                   </div>
                 </div>
-                <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",background:t.border,marginBottom:8}}>
-                  <div style={{width:`${cashFlowPct}%`,background:"linear-gradient(90deg,#10b981,#34d399)",borderRadius:"10px 0 0 10px",transition:"width 0.6s"}}/>
+                <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:8}}>
+                  <div style={{width:`${cashFlowPct}%`,background:"linear-gradient(90deg,#10b981,#34d399)",borderRadius:"10px 0 0 10px",transition:"width .6s"}}/>
                   <div style={{width:`${100-cashFlowPct}%`,background:"linear-gradient(90deg,#f87171,#ef4444)",borderRadius:"0 10px 10px 0"}}/>
                 </div>
-                <div className="flex justify-between">
+                <div style={{display:"flex",justifyContent:"space-between"}}>
                   <span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ {cashFlowPct}% collected</span>
-                  <span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>⏳ {100-cashFlowPct}% outstanding</span>
+                  <span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>⏳ {100-cashFlowPct}% due</span>
                 </div>
               </div>
               {/* Burn Rate */}
-              <div style={{background:dm?"linear-gradient(135deg,#1a0505,#150f05)":"linear-gradient(135deg,#fff7ed,#fef2f2)",border:dm?"1px solid rgba(239,68,68,0.2)":"1px solid #fecaca",borderRadius:18,padding:"18px 20px",boxShadow:dm?"0 2px 12px rgba(0,0,0,0.3)":"0 2px 8px rgba(239,68,68,0.06)"}}>
-                <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>🔥 Burn Rate & Efficiency</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(255,255,255,0.6)",borderRadius:12,padding:"10px 12px",border:`1px solid ${burnRate>avgMonthlyRev?"rgba(239,68,68,0.2)":"rgba(245,158,11,0.2)"}`}}>
-                    <p style={{color:burnRate>avgMonthlyRev?"#ef4444":"#f59e0b",fontSize:18,fontWeight:900,lineHeight:1}}>{inr(burnRate)}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Monthly burn</p>
-                  </div>
-                  <div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(255,255,255,0.6)",borderRadius:12,padding:"10px 12px",border:"1px solid rgba(16,185,129,0.2)"}}>
-                    <p style={{color:"#10b981",fontSize:18,fontWeight:900,lineHeight:1}}>{inr(avgMonthlyRev)}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Avg monthly rev</p>
-                  </div>
-                  <div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(255,255,255,0.6)",borderRadius:12,padding:"10px 12px",border:`1px solid ${totMargin>=15?"rgba(16,185,129,0.2)":"rgba(239,68,68,0.2)"}`}}>
-                    <p style={{color:totMargin>=15?"#10b981":"#ef4444",fontSize:18,fontWeight:900,lineHeight:1}}>{totMargin}%</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Net margin</p>
-                  </div>
-                  <div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(255,255,255,0.6)",borderRadius:12,padding:"10px 12px",border:"1px solid rgba(139,92,246,0.2)"}}>
-                    <p style={{color:"#8b5cf6",fontSize:18,fontWeight:900,lineHeight:1}}>{inr(Math.max(0,avgMonthlyRev-burnRate))}</p>
-                    <p style={{color:t.sub,fontSize:10,marginTop:3}}>Monthly surplus</p>
-                  </div>
+              <div style={{background:dm?"linear-gradient(135deg,#1a0505,#15100a)":"linear-gradient(135deg,#fff7ed,#fef2f2)",border:dm?"1px solid rgba(239,68,68,0.2)":"1px solid #fecaca",borderRadius:18,padding:"18px 20px"}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>🔥 Burn & Efficiency</p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {[
+                    {label:"Monthly burn",val:inr(burnRate),color:burnRate>avgMonthlyRev?"#ef4444":"#f59e0b"},
+                    {label:"Avg rev/mo",val:inr(avgMonthlyRev),color:"#10b981"},
+                    {label:"Net margin",val:`${totMargin}%`,color:totMargin>=15?"#10b981":"#ef4444"},
+                    {label:"Mo. surplus",val:inr(Math.max(0,avgMonthlyRev-burnRate)),color:"#8b5cf6"},
+                  ].map(x=>(
+                    <div key={x.label} style={{background:dm?"rgba(0,0,0,0.2)":"rgba(255,255,255,0.65)",borderRadius:10,padding:"9px 11px",border:`1px solid ${x.color}25`}}>
+                      <p style={{color:x.color,fontSize:16,fontWeight:900,lineHeight:1}}>{x.val}</p>
+                      <p style={{color:t.sub,fontSize:9,marginTop:3}}>{x.label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* ── PAYMENT BREAKDOWN (replacements, partial, pending) ── */}
+            {/* ══════════════════════════════════════════════════════
+                PAYMENT BREAKDOWN
+            ══════════════════════════════════════════════════════ */}
             {(()=>{
               const delivPB=deliveries.filter(d=>dateFrom<=d.date&&d.date<=dateTo);
               const replCount=delivPB.filter(d=>d.replacement?.done).length;
@@ -7665,155 +6900,66 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               const netAfterRepl=totalPBOrders-replAmtPB;
               const pendingAmt=Math.max(0,netAfterRepl-partialAmt);
               const manualLedgerAmt=(paymentLedger||[]).filter(e=>e.date>=dateFrom&&e.date<=dateTo).reduce((s,e)=>s+e.amount,0);
-              return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
-                <div className="flex items-center justify-between mb-3">
-                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>💳 Payment Breakdown — {periodLabel}</p>
-                  <button onClick={()=>setTab("Payments")} style={{background:"#3b82f615",color:"#3b82f6",border:"none",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
+              return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"16px 18px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <p style={{color:t.text,fontWeight:800,fontSize:13}}>💳 Payment Breakdown</p>
+                  <button onClick={()=>setTab("Payments")} style={{background:"rgba(59,130,246,0.1)",color:"#3b82f6",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
                   {[
                     {label:"Total Orders",val:inr(totalPBOrders),color:t.text},
-                    {label:"Repl Deducted",val:`−${inr(replAmtPB)}`,color:"#f97316",sub:`${replCount} replacements`},
+                    {label:"Replacements",val:`−${inr(replAmtPB)}`,color:"#f97316",sub:`${replCount} deductions`},
                     {label:"Net Billed",val:inr(netAfterRepl),color:"#10b981"},
                     {label:"Collected",val:inr(partialAmt+manualLedgerAmt),color:"#10b981",sub:`${partialCount} deliveries`},
                     {label:"Manual Paid",val:inr(manualLedgerAmt),color:"#3b82f6"},
                     {label:"Still Pending",val:inr(pendingAmt),color:pendingAmt>0?"#ef4444":"#10b981"},
                   ].map(({label,val,color,sub})=>(
-                    <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
-                      <p style={{color,fontWeight:800,fontSize:12,lineHeight:1}}>{val}</p>
-                      <p style={{color:t.sub,fontSize:9,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
-                      {sub&&<p style={{color:t.sub,fontSize:9,marginTop:1}}>{sub}</p>}
+                    <div key={label} style={{background:t.inp,borderRadius:12,padding:"10px 12px",border:`1px solid ${color}18`}}>
+                      <p style={{color,fontWeight:900,fontSize:13,lineHeight:1}}>{val}</p>
+                      <p style={{color:t.sub,fontSize:9,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em",fontWeight:700}}>{label}</p>
+                      {sub&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{sub}</p>}
                     </div>
                   ))}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {fullyPaidCount>0&&<span style={{background:"#10b98115",color:"#10b981",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>✓ {fullyPaidCount} fully paid deliveries</span>}
-                  {partialCount>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⚡ {partialCount} partial payments</span>}
-                  {unpaidCount>0&&<span style={{background:"#ef444415",color:"#ef4444",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⏳ {unpaidCount} unpaid deliveries</span>}
-                  {replCount>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>🔄 {replCount} replacements · {inr(replAmtPB)} off</span>}
+                  {fullyPaidCount>0&&<span style={{background:"#10b98115",color:"#10b981",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,border:"1px solid rgba(16,185,129,0.2)"}}>✓ {fullyPaidCount} fully paid</span>}
+                  {partialCount>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,border:"1px solid rgba(245,158,11,0.2)"}}>⚡ {partialCount} partial</span>}
+                  {unpaidCount>0&&<span style={{background:"#ef444415",color:"#ef4444",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,border:"1px solid rgba(239,68,68,0.2)"}}>⏳ {unpaidCount} unpaid</span>}
+                  {replCount>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,border:"1px solid rgba(249,115,22,0.2)"}}>🔄 {replCount} replacements · {inr(replAmtPB)}</span>}
                 </div>
               </div>;
             })()}
 
-            {/* ── MONTH HIGHLIGHTS ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* ══════════════════════════════════════════════════════
+                MONTH HIGHLIGHTS (Best / Worst / Trend)
+            ══════════════════════════════════════════════════════ */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10}}>
               {[
                 {label:"🏆 Best Month",name:bestMonth?.monthFull,val:inr(bestMonth?.profit||0),color:"#10b981",sub:"highest profit",month:bestMonth?.month},
                 {label:"📉 Weakest Month",name:worstMonth?.monthFull,val:inr(worstMonth?.profit||0),color:(worstMonth?.profit||0)>=0?"#10b981":"#ef4444",sub:"lowest profit",month:worstMonth?.month},
                 {label:"📊 Revenue Trend",name:trendUp?"Growing ▲":"Declining ▼",val:inr(Math.round(recentRevAvg)),color:trendUp?"#10b981":"#ef4444",sub:"recent avg/month",month:null},
-              ].map(x=><div key={x.label}
-                onMouseEnter={ev=>{ev.currentTarget.style.transform="translateY(-2px)";ev.currentTarget.style.boxShadow=`0 6px 20px ${x.color}25`;ev.currentTarget.style.borderColor=x.color+"60";}}
-                onMouseLeave={ev=>{ev.currentTarget.style.transform="translateY(0)";ev.currentTarget.style.boxShadow="none";ev.currentTarget.style.borderColor=t.border;}}
-                onClick={x.month?()=>setPlMonthExpanded(plMonthExpanded===x.month?null:x.month):undefined}
-                style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",cursor:x.month?"pointer":"default",transition:"all .18s ease"}}>
-                <p style={{color:t.sub}} className="text-[10px] font-bold uppercase tracking-wider mb-1">{x.label}</p>
-                <p style={{color:t.text}} className="font-black text-base leading-none">{x.name||"—"}</p>
-                <p style={{color:x.color}} className="font-semibold text-sm mt-0.5">{x.val} <span style={{color:t.sub,fontWeight:400,fontSize:10}}>{x.sub}</span></p>
-                {x.month&&<p style={{color:x.color,fontSize:9,marginTop:4}}>tap to view month detail →</p>}
-              </div>)}
+              ].map(x=>(
+                <div key={x.label}
+                  onMouseEnter={ev=>{ev.currentTarget.style.transform="translateY(-2px)";ev.currentTarget.style.boxShadow=`0 6px 20px ${x.color}25`;ev.currentTarget.style.borderColor=x.color+"60";}}
+                  onMouseLeave={ev=>{ev.currentTarget.style.transform="translateY(0)";ev.currentTarget.style.boxShadow="none";ev.currentTarget.style.borderColor=t.border;}}
+                  onClick={x.month?()=>setPlMonthExpanded(plMonthExpanded===x.month?null:x.month):undefined}
+                  style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",cursor:x.month?"pointer":"default",transition:"all .18s ease"}}>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{x.label}</p>
+                  <p style={{color:t.text,fontWeight:900,fontSize:14,lineHeight:1.2}}>{x.name||"—"}</p>
+                  <p style={{color:x.color,fontWeight:700,fontSize:13,marginTop:4}}>{x.val} <span style={{color:t.sub,fontWeight:400,fontSize:10}}>{x.sub}</span></p>
+                  {x.month&&<p style={{color:x.color,fontSize:9,marginTop:6,fontWeight:600}}>tap to view detail →</p>}
+                </div>
+              ))}
             </div>
 
-            {/* ── STANDALONE MONTH DETAIL PANEL (shown when best/worst card clicked) ── */}
-            {plMonthExpanded&&(()=>{
-              const selM=mData.find(m=>m.month===plMonthExpanded);
-              if(!selM) return null;
-              const mKey=selM.rawMonth||selM.month;
-              const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey)&&d.status==="Delivered");
-              const mExps=expenses.filter(e=>e.date?.startsWith(mKey));
-              const mSups=supplies.filter(s=>s.date?.startsWith(mKey));
-              const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(mKey));
-              // Check if this month is already visible in the table below
-              const isInTable=mData.some(m=>m.month===plMonthExpanded);
-              // Only show standalone panel if the month is NOT clickable in the table
-              // (i.e., always show here since the table may not be visible / user may have scrolled)
-              return <div style={{background:dm?"#0a1f0a":"#f0fff4",border:`2px solid #10b98140`,borderRadius:16,padding:"14px 16px",position:"relative"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>📋 {selM.monthFull} — Full Breakdown</p>
-                  <button onClick={()=>setPlMonthExpanded(null)} style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
-                </div>
-                {/* Mini KPIs */}
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                  {[["Revenue","#10b981",inr(selM.revenue),`${selM.deliveriesCount} orders`],["Supply","#8b5cf6",inr(selM.supplyCost),`${mSups.length} entries`],["Expenses","#ef4444",inr(selM.expenses),`${mExps.length} entries`],["Wastage","#f97316",inr(selM.wasteCost),`${mWaste.length} records`]].map(([l,c,v,sub])=>(
-                    <div key={l} style={{background:c+"12",border:`1px solid ${c}30`,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                      <p style={{color:c,fontWeight:900,fontSize:12}}>{v}</p>
-                      <p style={{color:t.sub,fontSize:9}}>{l}</p>
-                      <p style={{color:t.sub,fontSize:8}}>{sub}</p>
-                    </div>
-                  ))}
-                </div>
-                <div style={{marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:t.sub,fontSize:10}}>Revenue allocation</span><span style={{color:selM.profit>=0?"#10b981":"#ef4444",fontWeight:700,fontSize:10}}>{selM.margin}% margin</span></div>
-                  <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
-                    <div style={{width:`${Math.max(0,selM.margin)}%`,background:"#10b981"}}/>
-                    <div style={{width:`${selM.revenue>0?Math.round(selM.supplyCost/selM.revenue*100):0}%`,background:"#8b5cf6"}}/>
-                    <div style={{width:`${selM.revenue>0?Math.round(selM.expenses/selM.revenue*100):0}%`,background:"#ef4444"}}/>
-                    <div style={{width:`${selM.revenue>0?Math.round(selM.wasteCost/selM.revenue*100):0}%`,background:"#f97316"}}/>
-                  </div>
-                </div>
-                {/* Products sold */}
-                {(()=>{
-                  const mProdMap={};
-                  mDelivs.forEach(d=>{Object.entries(safeO(d.orderLines)).forEach(([pid,l])=>{if(l.qty>0){if(!mProdMap[pid])mProdMap[pid]={name:l.name||products.find(p=>p.id===pid)?.name||pid,qty:0,rev:0};mProdMap[pid].qty+=l.qty;mProdMap[pid].rev+=(l.qty||0)*(l.priceAmount||0);}});});
-                  const mProdArr=Object.values(mProdMap).sort((a,b)=>b.rev-a.rev);
-                  if(!mProdArr.length) return null;
-                  return <div style={{marginBottom:10}}>
-                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>🛒 Products Sold ({mProdArr.length} SKUs)</p>
-                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                      {mProdArr.map(p=>(<div key={p.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:t.inp,borderRadius:8,padding:"5px 10px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:t.text,fontSize:11,fontWeight:600}}>{p.name}</span><span style={{color:t.sub,fontSize:10}}>{p.qty} units</span></div><span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(p.rev)}</span></div>))}
-                    </div>
-                  </div>;
-                })()}
-                {/* Deliveries */}
-                {mDelivs.length>0&&<div style={{marginBottom:8}}>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Deliveries ({mDelivs.length})</p>
-                  <div style={{maxHeight:200,overflowY:"auto"}}>
-                    {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
-                      const plInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
-                      const plRcptNo=plInvNo?`RCP-${plInvNo.replace(/^[A-Z]+-/,"")}`:null;
-                      const linkedBatches=(prodTargets||[]).filter(pt=>pt.date===d.date&&(pt.linkedInvoices||[]).includes(plInvNo));
-                      const batchLabels=linkedBatches.length>0?linkedBatches.map(b=>b.batchLabel||"Batch").join(", "):null;
-                      const dItems=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const pn=products.find(p=>p.id===pid);return `${l.qty}×${pn?pn.name:(l.name||pid)}`;}).join(", ");
-                      return <div key={d.id||di} style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer",padding:"6px 4px"}} onClick={()=>setDetailModal({type:"delivery",data:d})}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                          <div style={{minWidth:0}}>
-                            <span style={{color:t.text,fontSize:11,fontWeight:700}}>{d.customer}</span>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:2}}>
-                              {plInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.07)",borderRadius:3,padding:"1px 5px"}}>📄 {plInvNo}</span>}
-                              {plRcptNo&&<span style={{color:"#0ea5e9",fontSize:9,fontFamily:"monospace",background:dm?"rgba(14,165,233,0.12)":"rgba(14,165,233,0.07)",borderRadius:3,padding:"1px 5px"}}>🧾 {plRcptNo}</span>}
-                              {batchLabels&&<span style={{color:"#7c3aed",fontSize:9,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:3,padding:"1px 5px"}}>🏭 {batchLabels}</span>}
-                            </div>
-                            {dItems&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{dItems}</p>}
-                          </div>
-                          <span style={{color:"#10b981",fontWeight:700,fontSize:11,flexShrink:0,marginLeft:8}}>{inr(lineTotal(d.orderLines))}</span>
-                        </div>
-                      </div>;
-                    })}
-                  </div>
-                </div>}
-                {/* Supplies */}
-                {mSups.length>0&&<div style={{marginBottom:8}}>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Supplies ({mSups.length})</p>
-                  <div style={{maxHeight:80,overflowY:"auto"}}>
-                    {mSups.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((s,si)=>(<div key={s.id||si} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:si<mSups.length-1?`1px solid ${t.border+"44"}`:"none"}}><span style={{color:t.text,fontSize:11}}>{s.item}{s.supplier?` · ${s.supplier}`:""}</span><span style={{color:"#8b5cf6",fontWeight:700,fontSize:11}}>{inr(s.cost||0)}</span></div>))}
-                  </div>
-                </div>}
-                {/* Expenses */}
-                {mExps.length>0&&<div>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>💸 Expenses ({mExps.length})</p>
-                  <div style={{maxHeight:100,overflowY:"auto"}}>
-                    {mExps.sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(<div key={e.id||ei} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:ei<mExps.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}} onClick={()=>setDetailModal({type:"expense",data:e})}><span style={{color:t.text,fontSize:11}}>{e.category}{e.vendor?` · ${e.vendor}`:""}</span><span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(e.amount)}</span></div>))}
-                  </div>
-                </div>}
-                {isInTable&&<p style={{color:t.sub,fontSize:10,marginTop:10,textAlign:"center"}}>↓ Also visible in the monthly table below</p>}
-              </div>;
-            })()}
+
 
             {/* ── MONTHLY P&L CHART ── */}
             <Card dm={dm} className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p style={{color:t.text}} className="font-bold text-sm">Revenue · Cost · Profit — {plRange} Month View</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Stacked monthly breakdown</p>
+                  <p style={{color:t.text}} className="font-bold text-sm">Revenue · Cost · Profit — {periodLabel}</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Stacked monthly breakdown · tap a bar for detail</p>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={240}>
@@ -7850,7 +6996,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
             {/* ── COST STRUCTURE ── */}
             <Card dm={dm} className="p-4">
-              <p style={{color:t.text}} className="font-bold text-sm mb-4">Cost Structure — {plRange}-Month Total</p>
+              <p style={{color:t.text}} className="font-bold text-sm mb-4">Cost Structure — {periodLabel}</p>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
                   {label:"Supply Costs",val:totSupC,color:"#8b5cf6",pct:totCost>0?Math.round(totSupC/totCost*100):0,sub:"Raw material"},
@@ -8467,8 +7613,30 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <div style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:14,padding:"12px 16px"}}>
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                 <div>
-                  <p style={{color:t.text}} className="font-black text-base">Analytics</p>
-                  <p style={{color:t.sub}} className="text-xs">{anlLabel}</p>
+                  <p style={{color:t.text}} className="font-black text-base">📊 Analytics</p>
+                  <p style={{color:t.sub}} className="text-xs">Period: {anlLabel} · {totalDelivered} deliveries · {inr(totalNetRevenue)} net revenue</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={()=>setAnlShowInsights(v=>!v)} style={{background:anlShowInsights?"#8b5cf620":t.inp,color:anlShowInsights?"#8b5cf6":t.sub,border:`1px solid ${anlShowInsights?"#8b5cf650":t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>💡 Insights</button>
+                  <div style={{display:"flex",gap:3,background:t.inp,borderRadius:8,padding:3,border:`1px solid ${t.border}`}}>
+                    {[["bar","▮▮ Bar"],["line","╱ Line"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setAnlChartType(v)} style={{background:anlChartType===v?t.card:t.inp,color:anlChartType===v?t.text:t.sub,border:anlChartType===v?`1px solid ${t.border}`:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l}</button>
+                    ))}
+                  </div>
+                  <div style={{position:"relative"}}>
+                    <button onClick={()=>setAnlExportOpen(anlExportOpen==="all"?null:"all")} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export All ▾</button>
+                    {anlExportOpen==="all"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:180,boxShadow:"0 4px 24px rgba(0,0,0,0.18)"}}>
+                      {[
+                        ["📊 Overview CSV",()=>exportCSV([{period:anlLabel,revenue:totalNetRevenue,gross:totalGrossRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,cancellation:`${cancelRate}%`,replacement:`${replRate}%`,avgOrder:avgRevPerDeliv,outstanding:totalOutstanding}],"analytics_overview",[{label:"Period",key:"period"},{label:"Net Revenue",key:"revenue"},{label:"Gross Revenue",key:"gross"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Cancellation Rate",key:"cancellation"},{label:"Replacement Rate",key:"replacement"},{label:"Avg Order (₹)",key:"avgOrder"},{label:"Outstanding (₹)",key:"outstanding"}])],
+                        ["👥 Customer CSV",()=>exportCSV(custRev,"customers_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"totalOrders"},{label:"Revenue (₹)",key:"totalRev"},{label:"Outstanding (₹)",key:"outstandingBalance"}])],
+                        ["📦 Products CSV",()=>exportCSV(prodSales,"products_analytics",[{label:"Product",key:"name"},{label:"Qty Sold",key:"totalQty"},{label:"Revenue (₹)",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])],
+                        ["💸 Expenses CSV",()=>exportCSV(expCatData,"expenses_breakdown",[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount"},{label:"Count",key:"count"}])],
+                        ["📈 14-Day Trend CSV",()=>exportCSV(dailyData,"14day_trend",[{label:"Date",key:"date"},{label:"Scheduled",key:"scheduled"},{label:"Delivered",key:"delivered"},{label:"Revenue (₹)",key:"revenue"},{label:"Expenses (₹)",key:"expenses"}])],
+                      ].map(([lbl,fn])=>(
+                        <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none",borderBottom:`1px solid ${t.border}`}}>{lbl}</button>
+                      ))}
+                    </div>}
+                  </div>
                 </div>
               </div>
               <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2,flexWrap:"wrap"}}>
@@ -8495,7 +7663,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
             {/* ── SECTION TABS ── */}
             <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",gap:2,overflowX:"auto"}}>
-              {[["overview","📊 Overview"],["customers","👥 Customers"],["products","📦 Products"],["operations","🏭 Operations"],["financials","💰 Financials"]].map(([k,l])=>(
+              {[["overview","📊 Overview"],["customers","👥 Customers"],["products","📦 Products"],["operations","🏭 Operations"],["financials","💰 Financials"],["trends","📈 Trends"]].map(([k,l])=>(
                 <button key={k} onClick={()=>setAnlActiveSection(k)}
                   style={anlActiveSection===k
                     ?{background:dm?"#1e1e2e":t.card,color:t.text,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:`1px solid ${t.border}`,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
@@ -8504,12 +7672,15 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>
 
             {/* ── SMART ANALYTICS INSIGHTS ── */}
-            {analyticsInsights.length>0&&<div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:16,padding:"14px 18px"}}>
-              <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>🔍 Analytics Insights</p>
+            {anlShowInsights&&analyticsInsights.length>0&&<div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:16,padding:"14px 18px"}}>
+              <div className="flex items-center justify-between mb-2">
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>💡 Smart Insights ({analyticsInsights.length})</p>
+                <button onClick={()=>setAnlShowInsights(false)} style={{color:t.sub,background:"transparent",border:"none",fontSize:12,cursor:"pointer",fontWeight:700}}>✕ Dismiss</button>
+              </div>
               <div className="flex flex-col gap-2">
                 {analyticsInsights.map((ins,i)=>(
-                  <div key={i} className="flex items-start gap-2">
-                    <span style={{fontSize:14,lineHeight:1.5}}>{ins.icon}</span>
+                  <div key={i} style={{background:dm?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.7)",borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"flex-start",gap:8}}>
+                    <span style={{fontSize:16,lineHeight:1.4,flexShrink:0}}>{ins.icon}</span>
                     <p style={{color:t.text,fontSize:12,lineHeight:1.5}}>{ins.text}</p>
                   </div>
                 ))}
@@ -8518,21 +7689,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
             {/* ══════════ OVERVIEW SECTION ══════════ */}
             {anlActiveSection==="overview"&&<>
-            {/* Export dropdown */}
-            <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap",marginBottom:4}}>
-              <div style={{position:"relative"}}>
-                <button onClick={()=>setAnlExportOpen(anlExportOpen==="overview"?null:"overview")} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export ▾</button>
-                {anlExportOpen==="overview"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:140,boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
-                  {[["CSV",()=>exportCSV([{revenue:totalNetRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,outstanding:inr(totalOutstanding),avgOrder:inr(avgRevPerDeliv)}],"overview_summary",[{label:"Revenue",key:"revenue"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Outstanding",key:"outstanding"},{label:"Avg Order",key:"avgOrder"}])],].map(([lbl,fn])=>
-                    <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none"}}>{lbl}</button>
-                  )}
-                </div>}
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                {[["revenue","Revenue"],["deliveries","Deliveries"],["fulfillment","Fulfillment"]].map(([v,lbl])=>
-                  <button key={v} onClick={()=>setAnlOverviewMetric(v)} style={{background:anlOverviewMetric===v?"#f59e0b":t.inp,color:anlOverviewMetric===v?"#fff":t.sub,border:`1px solid ${anlOverviewMetric===v?"#f59e0b":t.border}`,borderRadius:16,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{lbl}</button>
-                )}
-              </div>
+            {/* Overview metric quick-filter */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{color:t.sub,fontSize:11,fontWeight:600}}>Highlight:</span>
+              {[["revenue","💰 Revenue"],["deliveries","🚚 Deliveries"],["fulfillment","✅ Fulfillment"]].map(([v,lbl])=>
+                <button key={v} onClick={()=>setAnlOverviewMetric(v)} style={{background:anlOverviewMetric===v?"#f59e0b":t.inp,color:anlOverviewMetric===v?"#fff":t.sub,border:`1px solid ${anlOverviewMetric===v?"#f59e0b":t.border}`,borderRadius:16,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{lbl}</button>
+              )}
             </div>
             <div style={{background:dm?"linear-gradient(135deg,#0d1628,#140d1f)":"linear-gradient(135deg,#eff6ff,#faf5ff)",border:dm?"1px solid #1e2a5f":"1px solid #c4b5fd",borderRadius:20,padding:"18px 20px"}}>
               <p style={{color:t.sub,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>📊 30-Day Performance vs Prior Period</p>
@@ -8645,21 +7807,38 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <div>
                   <p style={{color:t.text}} className="font-bold text-sm">Daily Revenue & Delivery Trend — 14 Days</p>
-                  <p style={{color:t.sub}} className="text-[11px]">Revenue bars (left axis) · deliveries line (right axis)</p>
+                  <p style={{color:t.sub}} className="text-[11px]">Revenue (left axis) · Deliveries (right axis) · Expenses (purple)</p>
                 </div>
-                <span style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>{inr(recentRevTotal)} total</span>
+                <div className="flex items-center gap-2">
+                  <span style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>{inr(recentRevTotal)} total</span>
+                  <button onClick={()=>exportCSV(dailyData,"14day_trend",[{label:"Date",key:"date"},{label:"Scheduled",key:"scheduled"},{label:"Delivered",key:"delivered"},{label:"Revenue (₹)",key:"revenue"},{label:"Expenses (₹)",key:"expenses"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                </div>
               </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={dailyData} margin={{top:4,right:4,left:-10,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
-                  <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
-                  <YAxis yAxisId="left" tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
-                  <YAxis yAxisId="right" orientation="right" tick={{fontSize:9,fill:t.sub}}/>
-                  <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
-                  <Legend wrapperStyle={{fontSize:10,paddingTop:6}}/>
-                  <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="#10b981" radius={[3,3,0,0]}/>
-                  <Bar yAxisId="right" dataKey="delivered" name="Deliveries" fill="#f59e0b" radius={[3,3,0,0]}/>
-                </BarChart>
+              <ResponsiveContainer width="100%" height={220}>
+                {anlChartType==="line"
+                  ?<LineChart data={dailyData} margin={{top:4,right:4,left:-10,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
+                    <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
+                    <YAxis yAxisId="left" tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{fontSize:9,fill:t.sub}}/>
+                    <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
+                    <Legend wrapperStyle={{fontSize:10,paddingTop:6}}/>
+                    <Line yAxisId="left" type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" strokeWidth={2.5} dot={{r:3}} activeDot={{r:5}}/>
+                    <Line yAxisId="left" type="monotone" dataKey="expenses" name="Expenses" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 2" dot={false}/>
+                    <Line yAxisId="right" type="monotone" dataKey="delivered" name="Deliveries" stroke="#f59e0b" strokeWidth={2} dot={{r:3}} activeDot={{r:5}}/>
+                  </LineChart>
+                  :<BarChart data={dailyData} margin={{top:4,right:4,left:-10,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
+                    <XAxis dataKey="date" tick={{fontSize:9,fill:t.sub}}/>
+                    <YAxis yAxisId="left" tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{fontSize:9,fill:t.sub}}/>
+                    <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
+                    <Legend wrapperStyle={{fontSize:10,paddingTop:6}}/>
+                    <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="#10b981" radius={[3,3,0,0]}/>
+                    <Bar yAxisId="left" dataKey="expenses" name="Expenses" fill="#8b5cf6" radius={[3,3,0,0]}/>
+                    <Bar yAxisId="right" dataKey="delivered" name="Deliveries" fill="#f59e0b" radius={[3,3,0,0]}/>
+                  </BarChart>
+                }
               </ResponsiveContainer>
             </Card>
 
@@ -9164,6 +8343,105 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </Card>}
               </>;
             })()}
+
+            {/* ══════════ TRENDS SECTION ══════════ */}
+            {anlActiveSection==="trends"&&<>
+              <div style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:14,padding:"14px 16px"}}>
+                <p style={{color:t.text,fontWeight:800,fontSize:14,marginBottom:4}}>📈 Trend Explorer</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Compare metrics over 30 days broken into weekly buckets, or view the day-of-week distribution to find your best operating patterns.</p>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                  {[["revenue","💰 Revenue"],["deliveries","🚚 Deliveries"],["expenses","💸 Expenses"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setAnlTrendMetric(v)} style={{background:anlTrendMetric===v?"#8b5cf6":t.inp,color:anlTrendMetric===v?"#fff":t.sub,border:`1px solid ${anlTrendMetric===v?"#8b5cf6":t.border}`,borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
+                  ))}
+                </div>
+                {(()=>{
+                  const weeks=Array.from({length:4},(_,wi)=>{
+                    const wDays=Array.from({length:7},(_,di)=>{const d=new Date();d.setDate(d.getDate()-(wi*7+di));return d.toISOString().slice(0,10);}).reverse();
+                    const label=`W${4-wi}: ${wDays[0].slice(5)} – ${wDays[6].slice(5)}`;
+                    const val=anlTrendMetric==="revenue"?deliveries.filter(d=>wDays.includes(d.date)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0)
+                      :anlTrendMetric==="deliveries"?deliveries.filter(d=>wDays.includes(d.date)&&d.status==="Delivered").length
+                      :expenses.filter(e=>wDays.includes(e.date)).reduce((s,e)=>s+(e.amount||0),0);
+                    return {label,val};
+                  }).reverse();
+                  const maxVal=Math.max(...weeks.map(w=>w.val),1);
+                  const color=anlTrendMetric==="revenue"?"#10b981":anlTrendMetric==="deliveries"?"#f59e0b":"#8b5cf6";
+                  return <div>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>4-Week Comparison</p>
+                    <div className="flex flex-col gap-3">
+                      {weeks.map((w,i)=>{
+                        const pct=Math.round(w.val/maxVal*100);
+                        return <div key={i}>
+                          <div className="flex justify-between mb-1">
+                            <span style={{color:t.text,fontSize:12,fontWeight:600}}>{w.label}</span>
+                            <span style={{color,fontSize:12,fontWeight:800}}>{anlTrendMetric==="revenue"?inr(w.val):w.val}</span>
+                          </div>
+                          <div style={{height:10,borderRadius:6,background:t.inp,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:6,transition:"width 0.5s"}}/>
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  </div>;
+                })()}
+              </div>
+
+              <Card dm={dm} className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>📅 Revenue by Day of Week</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Best day: <strong style={{color:"#f59e0b"}}>{bestDow.day}</strong> · {inr(bestDow.revenue)}</p>
+                <ResponsiveContainer width="100%" height={140}>
+                  <BarChart data={dowData} margin={{top:4,right:0,left:-20,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false}/>
+                    <XAxis dataKey="day" tick={{fontSize:11,fill:t.sub}}/>
+                    <YAxis tick={{fontSize:9,fill:t.sub}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:`${v}`}/>
+                    <Tooltip contentStyle={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:11}} formatter={(v,n)=>n==="Revenue"?[inr(v),n]:[v,n]}/>
+                    <Bar dataKey="revenue" name="Revenue" radius={[4,4,0,0]}>
+                      {dowData.map((entry,index)=><Cell key={index} fill={entry.revenue===Math.max(...dowData.map(d=>d.revenue))?"#f59e0b":dm?"#3a3a44":"#e2e4e8"}/>)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+
+              <Card dm={dm} className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>📦 Revenue Concentration (Pareto)</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Top {top20pct} customers ({Math.round(top20pct/Math.max(1,custRev.length)*100)}% of base) generate <strong style={{color:"#f59e0b"}}>{top20share}%</strong> of revenue</p>
+                <div className="flex flex-col gap-2">
+                  {custRev.slice(0,8).map((c,i)=>{
+                    const pct=totalPortfolioRev>0?Math.round(c.totalRev/totalPortfolioRev*100):0;
+                    const colors=["#10b981","#f59e0b","#8b5cf6","#0ea5e9","#f97316","#ec4899","#ef4444","#6b7280"];
+                    return <div key={c.id}>
+                      <div className="flex justify-between mb-0.5">
+                        <span style={{color:t.text,fontSize:11,fontWeight:600}}>#{i+1} {c.name}</span>
+                        <span style={{color:colors[i],fontSize:11,fontWeight:700}}>{inr(c.totalRev)} · {pct}%</span>
+                      </div>
+                      <div style={{height:6,borderRadius:4,background:t.inp,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:colors[i],borderRadius:4,transition:"width 0.5s"}}/>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </Card>
+
+              <Card dm={dm} className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>🔄 Period Summary Scorecard</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    {label:"Gross Revenue",val:inr(totalGrossRevenue),color:"#10b981",icon:"💰"},
+                    {label:"Net Revenue",val:inr(totalNetRevenue),color:"#059669",icon:"✅"},
+                    {label:"Total Expenses",val:inr(totalExpenses),color:"#ef4444",icon:"💸"},
+                    {label:"Wastage Cost",val:inr(totalWasteCost),color:"#f97316",icon:"🗑️"},
+                    {label:"Supply Cost",val:inr(totalSupplyCost),color:"#8b5cf6",icon:"📦"},
+                    {label:"Outstanding",val:inr(totalOutstanding),color:"#f59e0b",icon:"⏳"},
+                    {label:"Fulfillment Rate",val:`${fulfillmentRate}%`,color:fulfillmentRate>=90?"#10b981":"#f59e0b",icon:"🚚"},
+                    {label:"QC Pass Rate",val:filtQC.length>0?`${qcPassRate}%`:"—",color:qcPassRate>=90?"#10b981":"#f59e0b",icon:"🧪"},
+                  ].map(x=>(
+                    <div key={x.label} style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>{x.icon} {x.label}</p>
+                      <p style={{color:x.color,fontWeight:900,fontSize:18,lineHeight:1.2,marginTop:4}}>{x.val}</p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>}
 
             {/* ── ACTIVITY LOG ── always visible ── */}
             <Card dm={dm} className="overflow-hidden">
@@ -10826,6 +10104,37 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
 
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+              <p style={{color:t.text}} className="text-sm font-bold">🖼️ Company Logo</p>
+              <p style={{color:t.sub}} className="text-[11px]">Upload your logo to display it on invoices, receipts, and PDF exports. Recommended: PNG or JPG, square or landscape, under 500KB.</p>
+              {settings?.companyLogo&&<div style={{background:t.inp,borderRadius:12,padding:12,display:"flex",alignItems:"center",gap:12,border:`1.5px solid ${t.border}`}}>
+                <img src={settings.companyLogo} alt="Logo" style={{maxHeight:60,maxWidth:120,objectFit:"contain",borderRadius:8,background:"#fff",padding:4,border:`1px solid ${t.border}`}}/>
+                <div className="flex-1">
+                  <p style={{color:t.text,fontSize:12,fontWeight:700}}>Logo uploaded ✓</p>
+                  <p style={{color:t.sub,fontSize:10}}>Used on invoices, receipts, and PDF exports</p>
+                </div>
+                <button onClick={()=>setSettings(s=>({...s,companyLogo:""}))} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Remove</button>
+              </div>}
+              <label style={{display:"flex",alignItems:"center",gap:10,background:t.inp,border:`2px dashed ${t.inpB}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",transition:"border-color 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor="#f59e0b"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=t.inpB}>
+                <span style={{fontSize:28}}>📁</span>
+                <div>
+                  <p style={{color:t.text,fontSize:13,fontWeight:700}}>{settings?.companyLogo?"Replace logo":"Upload logo"}</p>
+                  <p style={{color:t.sub,fontSize:11}}>PNG, JPG, SVG · max 500KB</p>
+                </div>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                  const file=e.target.files?.[0];
+                  if(!file)return;
+                  if(file.size>600000){alert("File too large. Please use an image under 500KB.");return;}
+                  const reader=new FileReader();
+                  reader.onload=ev=>setSettings(s=>({...s,companyLogo:ev.target.result}));
+                  reader.readAsDataURL(file);
+                  e.target.value="";
+                }}/>
+              </label>
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">🎨 App Identity</p>
               <Inp dm={dm} label="App Name" value={settings?.appName||""} onChange={e=>setSettings(s=>({...s,appName:e.target.value}))} placeholder="TAS Healthy World"/>
               <Inp dm={dm} label="Subtitle" value={settings?.appSubtitle||""} onChange={e=>setSettings(s=>({...s,appSubtitle:e.target.value}))} placeholder="Paratha Factory · Operations"/>
@@ -10848,6 +10157,17 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <Inp dm={dm} label="Address" value={settings?.companyAddress||""} onChange={e=>setSettings(s=>({...s,companyAddress:e.target.value}))} placeholder="123 Factory Road, Goa 403001"/>
               <Inp dm={dm} label="Phone" value={settings?.companyPhone||""} onChange={e=>setSettings(s=>({...s,companyPhone:e.target.value}))} placeholder="+91 98765 43210"/>
               <Inp dm={dm} label="GST Number" value={settings?.companyGST||""} onChange={e=>setSettings(s=>({...s,companyGST:e.target.value}))} placeholder="22AAAAA0000A1Z5"/>
+              <Inp dm={dm} label="Email" value={settings?.companyEmail||""} onChange={e=>setSettings(s=>({...s,companyEmail:e.target.value}))} placeholder="info@yourbusiness.com"/>
+              <Inp dm={dm} label="Website" value={settings?.companyWebsite||""} onChange={e=>setSettings(s=>({...s,companyWebsite:e.target.value}))} placeholder="www.yourbusiness.com"/>
+              <Inp dm={dm} label="Invoice Footer Note (optional)" value={settings?.invoiceFooterNote||""} onChange={e=>setSettings(s=>({...s,invoiceFooterNote:e.target.value}))} placeholder="Thank you for your business! Payment due within 7 days."/>
+              <div>
+                <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Payment Terms</label>
+                <div className="flex gap-2 flex-wrap">
+                  {["Immediate","Net 7","Net 15","Net 30","COD"].map(pt=>(
+                    <button key={pt} onClick={()=>setSettings(s=>({...s,paymentTerms:pt}))} style={{background:settings?.paymentTerms===pt?"#10b981":t.inp,color:settings?.paymentTerms===pt?"#fff":t.sub,border:`1.5px solid ${settings?.paymentTerms===pt?"#10b981":t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{pt}</button>
+                  ))}
+                </div>
+              </div>
             </div></Card>
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">🌤 Weather Widget Location</p>
@@ -11483,19 +10803,47 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       </Sheet>
 
       {/* Expense Sheet */}
-      <Sheet dm={dm} open={!!eSh} onClose={()=>setEsh(null)} title={eSh==="add"?"Log Expense":"Edit Expense"}>
-        <Sel dm={dm} label="Category" value={eF.category} onChange={e=>setEf({...eF,category:e.target.value})}>
-          {expCats.map(c=><option key={c}>{c}</option>)}
-        </Sel>
-        <Inp dm={dm} label="Amount (₹) *" type="number" value={eF.amount} onChange={e=>setEf({...eF,amount:e.target.value})}/>
-        <Inp dm={dm} label="Date" type="date" value={eF.date} onChange={e=>setEf({...eF,date:e.target.value})}/>
-        <Inp dm={dm} label="Notes" value={eF.notes} onChange={e=>setEf({...eF,notes:e.target.value})}/>
-        <div>
-          <label style={{color:t.sub}} className="block text-[11px] font-semibold uppercase tracking-wider mb-1">Receipt / Reference Note</label>
-          <input value={eF.receipt||""} onChange={e=>setEf({...eF,receipt:e.target.value})} placeholder="Bill no., vendor name, or short description…" style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text}} className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400 transition-all placeholder:opacity-30"/>
-          <p style={{color:t.sub}} className="text-[11px] mt-1">📎 Add bill number, vendor name, or any reference for this expense</p>
+      <Sheet dm={dm} open={!!eSh} onClose={()=>setEsh(null)} title={eSh==="add"?"💸 Log Expense":"✏️ Edit Expense"}>
+        {/* Category + Amount — most important, top row */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Sel dm={dm} label="Category *" value={eF.category} onChange={e=>setEf({...eF,category:e.target.value})}>
+            {expCats.map(c=><option key={c}>{c}</option>)}
+          </Sel>
+          <Inp dm={dm} label="Amount (₹) *" type="number" value={eF.amount} onChange={e=>setEf({...eF,amount:e.target.value})} placeholder="0"/>
         </div>
-        <Btn dm={dm} onClick={saveE} className="w-full">Save Expense</Btn>
+        {/* Date + Payment Method */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp dm={dm} label="Date *" type="date" value={eF.date} onChange={e=>setEf({...eF,date:e.target.value})}/>
+          <Sel dm={dm} label="Payment Method" value={eF.paymentMethod||"Cash"} onChange={e=>setEf({...eF,paymentMethod:e.target.value})}>
+            {["Cash","UPI","Card","Bank Transfer","Credit","Cheque","Other"].map(m=><option key={m}>{m}</option>)}
+          </Sel>
+        </div>
+        {/* Vendor */}
+        <Inp dm={dm} label="Vendor / Supplier" value={eF.vendor||""} onChange={e=>setEf({...eF,vendor:e.target.value})} placeholder="e.g. Ramesh Traders, Shell Gas Station…"/>
+        {/* Notes */}
+        <Inp dm={dm} label="Notes" value={eF.notes||""} onChange={e=>setEf({...eF,notes:e.target.value})} placeholder="Brief description of this expense…"/>
+        {/* Receipt / Reference */}
+        <div>
+          <label style={{color:t.sub,display:"block",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Receipt / Bill Reference</label>
+          <input value={eF.receipt||""} onChange={e=>setEf({...eF,receipt:e.target.value})}
+            placeholder="Bill no., invoice ref, or short description…"
+            style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,width:"100%",borderRadius:12,padding:"10px 14px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        {/* Approved By + Tags in one row */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp dm={dm} label="Approved By" value={eF.approvedBy||""} onChange={e=>setEf({...eF,approvedBy:e.target.value})} placeholder="Name or role…"/>
+          <Inp dm={dm} label="Tags" value={eF.tags||""} onChange={e=>setEf({...eF,tags:e.target.value})} placeholder="e.g. urgent, recurring…"/>
+        </div>
+        {/* Amount preview chip */}
+        {eF.amount&&+eF.amount>0&&(
+          <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{color:t.sub,fontSize:12}}>You're logging</span>
+            <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(+eF.amount)}</span>
+          </div>
+        )}
+        <Btn dm={dm} onClick={saveE} className="w-full" style={{background:"#ef4444",color:"#fff"}}>
+          {eSh==="add"?"✓ Save Expense":"✓ Update Expense"}
+        </Btn>
       </Sheet>
 
       {/* Product Sheet */}
