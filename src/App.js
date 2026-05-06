@@ -1197,7 +1197,10 @@ ${type==="customer"?`
 
 // ─── HIGH-QUALITY TAB EXPORT — PDF ──────────────────────────────────────────
 function exportTabPDF(tabName, data, columns, settings, extraHtml="") {
-  const co  = settings?.companyName||"TAS Healthy World";
+  const co     = settings?.companyName||"TAS Healthy World";
+  const cosub  = settings?.companySubtitle||"";
+  const gst    = settings?.companyGST||"";
+  const coPhone= settings?.companyPhone||"";
   const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const rows = data.map(row=>
     `<tr>${columns.map(c=>{
@@ -1240,9 +1243,19 @@ tbody tr:nth-child(even) td{background:#f8fafc}
 @media print{@page{size:A4 landscape;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cover{padding:28px 36px}.no-print{display:none!important}}
 </style></head><body>
 <div class="cover">
-  <div class="co-name">🫓 ${co}</div>
-  <div class="report-title">${tabName}<br>Report</div>
-  <div class="report-meta">Exported on ${now} &nbsp;·&nbsp; ${data.length} records</div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="co-name">🫓 ${co}</div>
+      ${cosub?`<div style="font-size:11px;opacity:0.5;margin-bottom:4px">${cosub}</div>`:""}
+      ${gst?`<div style="font-size:11px;opacity:0.5;margin-bottom:2px">GST: ${gst}</div>`:""}
+      ${coPhone?`<div style="font-size:11px;opacity:0.5">📞 ${coPhone}</div>`:""}
+    </div>
+    <div style="text-align:right;opacity:0.5;font-size:10px;margin-top:4px">
+      <div>Exported: ${now}</div>
+      <div>${data.length} records</div>
+    </div>
+  </div>
+  <div class="report-title" style="margin-top:16px">${tabName}<br>Report</div>
 </div>
 <div class="content">
   ${extraHtml}
@@ -1253,7 +1266,7 @@ tbody tr:nth-child(even) td{background:#f8fafc}
 </div>
 <div class="print-bar no-print" style="position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.4);gap:12px"><span style="font-weight:700">📊 ${tabName} Report — ${co}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;" style="background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">🖨 Print / Save PDF</a><a href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='${tabName.replace(/\s+/g,'_')}_export.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;" style="background:#059669;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">⬇ Download</a></div></div>
 <div class="footer">
-  <span>${co} &mdash; Confidential</span>
+  <span>${co}${gst?` &nbsp;·&nbsp; GST: ${gst}`:""}${coPhone?` &nbsp;·&nbsp; ${coPhone}`:""} &mdash; Confidential</span>
   <span>${tabName} Export &nbsp;·&nbsp; ${today()}</span>
 </div>
 </body></html>`;
@@ -4601,7 +4614,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
                   const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
                   const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
-                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_lastDays:lastDays,_cDelivs:cDelivs};
+                  const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
+                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_lastDays:lastDays,_cDelivs:cDelivs,_createdBy:createdByList};
                 });
                 const totalColl=customers.reduce((s,c)=>s+(c.paid||0),0);
                 const totalOut=customers.reduce((s,c)=>s+(c.pending||0),0);
@@ -4616,7 +4630,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
     <span style="font-size:11px;color:#64748b">${c._orders} orders &nbsp;·&nbsp; Paid: ₹${(c.paid||0).toLocaleString("en-IN")} &nbsp;·&nbsp; Due: <span style="color:${c.pending>0?"#dc2626":"#059669"};font-weight:700">₹${(c.pending||0).toLocaleString("en-IN")}</span></span>
   </div>
   <table><thead><tr>
-    <th>Date</th><th>Status</th><th>Items</th><th class="r">Order Total</th><th class="r">Repl Deducted</th><th class="r">Net Amount</th><th class="r">Paid</th><th class="r">Remaining</th>
+    <th>Invoice No</th><th>Receipt No</th><th>Date</th><th>Status</th><th>Items</th><th class="r">Order Total</th><th class="r">Repl Deducted</th><th class="r">Net Amount</th><th class="r">Paid</th><th class="r">Remaining</th><th>Agent</th>
   </tr></thead><tbody>
   ${sorted.map((d,i)=>{
     const tot=lineTotal(d.orderLines);
@@ -4626,7 +4640,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
     const rem=net-dpaid;
     const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ")||"—";
     const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
+    const dInvNo=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+    const dRcptNo=`RCP-${dInvNo.replace(/^[A-Z]+-/,"")}`;
     return`<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+      <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#7c3aed;font-weight:700">${dInvNo}</td>
+      <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#0ea5e9;font-weight:700">${dRcptNo}</td>
       <td style="white-space:nowrap">${d.date}</td>
       <td><span style="background:${sc}18;color:${sc};padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700">${d.status}</span></td>
       <td style="font-size:11px;color:#475569">${items}${d.replacement?.done?` <span style="color:#f97316;font-weight:600">[🔄 ${d.replacement.item||"repl"}]</span>`:""}</td>
@@ -4635,6 +4653,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       <td class="r" style="font-weight:700">₹${net.toLocaleString("en-IN")}</td>
       <td class="r" style="color:#059669">₹${dpaid.toLocaleString("en-IN")}</td>
       <td class="r" style="color:${rem>0?"#dc2626":"#059669"};font-weight:700">₹${rem.toLocaleString("en-IN")}</td>
+      <td style="font-size:11px;color:#64748b">${d.createdBy||"—"}</td>
     </tr>`;
   }).join("")}
   </tbody></table></div>`;
@@ -4651,9 +4670,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   {label:"Repl. Deducted (₹)",key:"_replAmt",num:true},
                   {label:"Revenue (₹)",key:"_revenue",num:true},
                   {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                  {label:"Partial Paid (₹)",val:r=>r.partialPay||0,num:true},
                   {label:"Paid (₹)",key:"paid",num:true},
                   {label:"Pending (₹)",key:"pending",num:true},
                   {label:"Last Order",key:"_lastDate"},
+                  {label:"Agent / Created By",key:"_createdBy"},
                   {label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},
                   {label:"Since",key:"joinDate"}
                 ],settings,`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
@@ -4699,6 +4720,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {label:"Pending (₹)",key:"pending",num:true},
                   {label:"Net Total (₹)",key:"_netTotal",num:true},
                   {label:"Last Order Date",key:"_lastDate"},
+                  {label:"Agent / Created By",key:"_createdBy"},
                   {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
                   {label:"Notes",key:"notes"}
                 ],settings);
@@ -4715,7 +4737,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                   const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
                   const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
-                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||""};
+                  const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
+                  return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_createdBy:createdByList};
                 });
                 exportCSV(enriched,"customers",[
                   {label:"Name",key:"name"},
@@ -4736,6 +4759,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {label:"Pending (₹)",key:"pending"},
                   {label:"Net Total (₹)",key:"_netTotal"},
                   {label:"Last Order Date",key:"_lastDate"},
+                  {label:"Agent / Created By",key:"_createdBy"},
                   {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
                   {label:"Notes",key:"notes"}
                 ]);
@@ -7132,7 +7156,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             wasteCost:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.cost||0),0),
             replDeducted:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+(+d.replacement?.amount||0),0),
             deliveriesCount:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").length,
-          })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0}));
+            prodActual:(prodTargets||[]).filter(p=>p.date?.startsWith(m)).reduce((s,p)=>s+(+p.actual||0),0),
+            prodTarget:(prodTargets||[]).filter(p=>p.date?.startsWith(m)).reduce((s,p)=>s+(+p.target||0),0),
+            wastageQty:(wastage||[]).filter(w=>w.date?.startsWith(m)).reduce((s,w)=>s+(w.qty||0),0),
+          })).map(m=>({...m,totalCost:m.supplyCost+m.expenses+m.wasteCost,profit:m.revenue-m.supplyCost-m.expenses-m.wasteCost,margin:m.revenue>0?Math.round((m.revenue-m.supplyCost-m.expenses-m.wasteCost)/m.revenue*100):0,grossMargin:m.revenue>0?Math.round((m.revenue-m.supplyCost)/m.revenue*100):0,prodEfficiency:m.prodTarget>0?Math.round(m.prodActual/m.prodTarget*100):0}));
 
           // ── Period-filtered totals ──────────────────────────────────
           const filtD=deliveries.filter(d=>d.date>=dateFrom&&d.date<=dateTo&&d.status==="Delivered");
@@ -7496,7 +7523,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead><tr style={{borderBottom:`2px solid ${t.border}`,background:dm?"#111":"#f9f9f8"}}>
-                    {["Month","Deliveries","Revenue","Supply","Expenses","Waste","Total Cost","Profit / Loss","Margin"].map(h=><th key={h} style={{color:t.sub}} className="px-3 py-2.5 text-left font-bold uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>)}
+                    {["Month","Deliveries","Revenue","Supply","Expenses","Waste","Total Cost","Profit / Loss","Margin","Prod Actual","Prod Eff."].map(h=><th key={h} style={{color:t.sub}} className="px-3 py-2.5 text-left font-bold uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {mData.map((m,i)=>{
@@ -7521,9 +7548,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <span style={{background:m.margin>=30?"#10b98122":m.margin>=15?"#f59e0b22":"#ef444422",color:m.margin>=30?"#10b981":m.margin>=15?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 8px",fontWeight:800,fontSize:10}}>{m.margin}%</span>
                         </td>
+                        <td style={{color:"#8b5cf6"}} className="px-3 py-2.5 whitespace-nowrap">{m.prodActual>0?m.prodActual:"—"}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {m.prodTarget>0?<span style={{background:m.prodEfficiency>=95?"#10b98122":m.prodEfficiency>=80?"#f59e0b22":"#ef444422",color:m.prodEfficiency>=95?"#10b981":m.prodEfficiency>=80?"#f59e0b":"#ef4444",borderRadius:6,padding:"2px 8px",fontWeight:800,fontSize:10}}>{m.prodEfficiency}%</span>:<span style={{color:t.sub}}>—</span>}
+                        </td>
                       </tr>,
                       isRowEx&&<tr key={m.month+"_exp"} style={{background:dm?"#0a1f0a":"#f0fff4",borderBottom:`2px solid #10b98140`}}>
-                        <td colSpan={9} style={{padding:"0 0 0 0"}}>
+                        <td colSpan={11} style={{padding:"0 0 0 0"}}>
                           {(()=>{
                             const mKey=mData.find(x=>x.month===m.month);
                             const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey?.monthFull?m.month:"")&&d.status==="Delivered");
@@ -7619,9 +7650,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const custPL=customers.map(c=>{
                     const cd=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered");
                     const rev=cd.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                    return {name:c.name,phone:c.phone||"",orders:deliveries.filter(d=>d.customerId===c.id).length,delivered:cd.length,revenue:rev,collected:c.paid||0,pending:c.pending||0,avgOrder:cd.length>0?Math.round(rev/cd.length):0};
+                    return {name:c.name,phone:c.phone||"",orders:deliveries.filter(d=>d.customerId===c.id).length,delivered:cd.length,revenue:rev,collected:c.paid||0,pending:c.pending||0,avgOrder:cd.length>0?Math.round(rev/cd.length):0,agents:[...new Set(deliveries.filter(d=>d.customerId===c.id).map(d=>d.createdBy).filter(Boolean))].join(", ")||"—"};
                   }).sort((a,b)=>b.revenue-a.revenue);
-                  exportCSV(custPL,"customer_pl",[{label:"Customer",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"orders"},{label:"Delivered",key:"delivered"},{label:"Revenue",key:"revenue"},{label:"Collected",key:"collected"},{label:"Pending",key:"pending"},{label:"Avg Order",key:"avgOrder"}]);
+                  exportCSV(custPL,"customer_pl",[{label:"Customer",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"orders"},{label:"Delivered",key:"delivered"},{label:"Revenue",key:"revenue"},{label:"Collected",key:"collected"},{label:"Pending",key:"pending"},{label:"Avg Order",key:"avgOrder"},{label:"Agent / Created By",key:"agents"}]);
                 }}>📊 CSV</Btn>
               </div>
               <Hr dm={dm}/>
@@ -7782,6 +7813,58 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>
                   </div>
                 ))}
+              </Card>;
+            })()}
+
+            {/* ── PRODUCTION SUMMARY IN P&L ── */}
+            {(prodTargets||[]).length>0&&(()=>{
+              const filtProdPL=(prodTargets||[]).filter(p=>p.date>=dateFrom&&p.date<=dateTo);
+              const plProdActual=filtProdPL.reduce((s,p)=>s+(+p.actual||0),0);
+              const plProdTarget=filtProdPL.reduce((s,p)=>s+(+p.target||0),0);
+              const plProdEff=plProdTarget>0?Math.round(plProdActual/plProdTarget*100):0;
+              const plWasteQty=filtW.reduce((s,w)=>s+(w.qty||0),0);
+              const plWasteCost=filtW.reduce((s,w)=>s+(w.cost||0),0);
+              const prodByProdPL=[...new Set(filtProdPL.map(p=>p.product).filter(Boolean))].map(prod=>({
+                product:prod,
+                actual:filtProdPL.filter(p=>p.product===prod).reduce((s,p)=>s+(+p.actual||0),0),
+                target:filtProdPL.filter(p=>p.product===prod).reduce((s,p)=>s+(+p.target||0),0),
+              })).sort((a,b)=>b.actual-a.actual);
+              return <Card dm={dm} className="overflow-hidden">
+                <div className="px-4 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p style={{color:t.text}} className="font-bold text-sm">🏭 Production & Wastage — {periodLabel}</p>
+                    <p style={{color:t.sub}} className="text-[11px]">Factory output and loss for the period</p>
+                  </div>
+                  <button onClick={()=>setTab("Production")} style={{background:"#8b5cf615",color:"#8b5cf6",border:"none",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Full Production →</button>
+                </div>
+                <Hr dm={dm}/>
+                <div style={{padding:"12px 16px"}}>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    {[
+                      {label:"Units Produced",val:plProdActual,color:"#8b5cf6"},
+                      {label:"Production Target",val:plProdTarget,color:"#6b7280"},
+                      {label:"Efficiency",val:`${plProdEff}%`,color:plProdEff>=95?"#10b981":plProdEff>=80?"#f59e0b":"#ef4444"},
+                      {label:"Wastage Cost",val:inr(plWasteCost),color:"#f97316",sub:`${plWasteQty} units wasted`},
+                    ].map(x=><div key={x.label} style={{background:t.inp,borderRadius:12,padding:"10px 12px",borderTop:`2px solid ${x.color}`}}>
+                      <p style={{color:x.color}} className="font-black text-base leading-none">{x.val}</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:3}}>{x.label}</p>
+                      {x.sub&&<p style={{color:t.sub,fontSize:9,marginTop:1}}>{x.sub}</p>}
+                    </div>)}
+                  </div>
+                  {prodByProdPL.length>0&&<>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>By Product</p>
+                    {prodByProdPL.map(p=>{
+                      const eff=p.target>0?Math.round(p.actual/p.target*100):0;
+                      return <div key={p.product} className="flex items-center gap-3 py-2" style={{borderBottom:`1px solid ${t.border}`}}>
+                        <div style={{flex:1}}>
+                          <div className="flex justify-between mb-1"><span style={{color:t.text,fontSize:12,fontWeight:600}}>{p.product}</span><span style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{p.actual} units</span></div>
+                          <div style={{height:4,background:t.border,borderRadius:4,overflow:"hidden"}}><div style={{width:`${Math.min(100,eff)}%`,background:eff>=95?"#10b981":eff>=80?"#f59e0b":"#ef4444",height:"100%",borderRadius:4}}/></div>
+                        </div>
+                        <span style={{color:eff>=95?"#10b981":eff>=80?"#f59e0b":"#ef4444",fontWeight:700,fontSize:11,minWidth:36,textAlign:"right"}}>{p.target>0?`${eff}%`:"—"}</span>
+                      </div>;
+                    })}
+                  </>}
+                </div>
               </Card>;
             })()}
           </>;
@@ -8056,8 +8139,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Best Seller" value={prodSales[0]?.name||"—"} sub={prodSales[0]?`${inr(prodSales[0].totalRev)} revenue`:"No data"} accent="#f59e0b"/>
               <StatCard dm={dm} label="Top Customer" value={custRev[0]?.name||"—"} sub={custRev[0]?inr(custRev[0].totalRev)+" revenue":"No data"} accent="#10b981"/>
-              <StatCard dm={dm} label="Revenue Concentration" value={`${top20share}%`} sub={`Top ${top20pct} customers`} accent={top20share>=80?"#ef4444":top20share>=60?"#f59e0b":"#10b981"}/>
-              <StatCard dm={dm} label="Active Products" value={prodSales.filter(p=>p.totalQty>0).length} sub={`of ${products.length} in catalogue`} accent="#8b5cf6"/>
+              <StatCard dm={dm} label="Production Efficiency" value={prodEfficiency>0?`${prodEfficiency}%`:"—"} sub={prodTotalActual>0?`${prodTotalActual} units produced`:"No production data"} accent={prodEfficiency>=90?"#10b981":prodEfficiency>=70?"#f59e0b":"#8b5cf6"}/>
+              <StatCard dm={dm} label="Wastage Cost" value={inr(totalWasteCost)} sub={`${wastageByType.reduce((s,w)=>s+w.qty,0)} units wasted`} accent={totalWasteCost>0?"#f97316":"#10b981"}/>
             </div>
 
             {/* ── PAYMENT HEALTH ── */}
@@ -8208,7 +8291,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <p style={{color:t.text}} className="font-bold text-sm">Customer Analytics</p>
                       <p style={{color:t.sub}} className="text-[11px]">Top {top20pct} customers · {top20share}% of revenue{top20share>=80?" — concentration risk":""}</p>
                     </div>
-                    <button onClick={()=>exportCSV(filtCust2,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Partial Collected",key:"partialCollected"},{label:"Outstanding",key:"outstandingBalance"},{label:"Paid",key:"paid"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                    <button onClick={()=>exportCSV(filtCust2,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Gross Revenue",key:"grossRev"},{label:"Repl Deducted",key:"replDeducted"},{label:"Partial Collected",key:"partialCollected"},{label:"Outstanding",key:"outstandingBalance"},{label:"Paid",key:"paid"},{label:"Agent / Created By",val:r=>[...new Set((deliveries.filter(d=>d.customerId===r.id).map(d=>d.createdBy).filter(Boolean)))].join(", ")||"—"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <input value={anlCustSearch} onChange={e=>setAnlCustSearch(e.target.value)} placeholder="Search customer…" style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:12,flex:1,minWidth:120,outline:"none"}}/>
@@ -8327,7 +8410,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <option value="qty">Sort: Quantity</option>
                         <option value="deliveries">Sort: Deliveries</option>
                       </select>
-                      <button onClick={()=>exportCSV(sortedProds,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                      <button onClick={()=>exportCSV(sortedProds,"product_analytics",[{label:"Product",key:"name"},{label:"Unit",key:"unit"},{label:"Total Qty",key:"totalQty"},{label:"Total Revenue",key:"totalRev"},{label:"Gross Revenue",key:"grossRev"},{label:"Repl Deducted",key:"replDeducted"},{label:"Deliveries",key:"deliveryCount"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                     </div>
                   </div>
                 </div>
@@ -8479,7 +8562,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <div>
                     <p style={{color:t.text}} className="font-bold text-sm">🏭 Production by Product</p>
                   </div>
-                  <button onClick={()=>exportCSV(prodByProduct,"production_by_product",[{label:"Product",key:"product"},{label:"Batches",key:"batches"},{label:"Actual",key:"actual"},{label:"Target",key:"target"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                  <button onClick={()=>exportCSV(prodByProduct,"production_by_product",[{label:"Product",key:"product"},{label:"Batches",key:"batches"},{label:"Actual",key:"actual"},{label:"Target",key:"target"},{label:"Efficiency %",val:r=>r.target>0?Math.round(r.actual/r.target*100):0}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                 </div>
                 <div className="flex flex-col gap-3">
                   {prodByProduct.map((p,i)=>{
