@@ -3230,13 +3230,17 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [delivStatusFilter,setDelivStatusFilter]=useState("all");
   const fCust=useMemo(()=>customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone?.includes(q)||c.address?.toLowerCase().includes(q)),[customers,q]);
   const fDeliv=useMemo(()=>deliveries.filter(d=>{
-    const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q);
+    const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
+    const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+    const batchLabels=(prodTargets||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
+    const productNames=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>l.name||"").join(" ");
+    const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
     const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
     // Agents only see their own deliveries (assigned or created by them)
     const matchAgent=sess.role!=="agent"||(d.agentId===sess.id||d.agent===sess.name||d.createdBy===sess.name||d.agent===displayName||d.createdBy===displayName);
     return matchSearch&&matchStatus&&matchAgent;
-  }),[deliveries,q,delivStatusFilter,sess.role,sess.id,sess.name,displayName]);
-  const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)),[supplies,q]);
+  }),[deliveries,invRegistry,prodTargets,q,delivStatusFilter,sess.role,sess.id,sess.name,displayName]);
+  const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)||s.date?.includes(q)||(s.notes||"").toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
@@ -5103,7 +5107,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">🚚 Set In Transit</button>
             </div>
           </div>}
-          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status…"/>
+          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status, invoice, receipt, batch…"/>
 
           {/* CALENDAR VIEW */}
           {delivCalendar&&(()=>{
@@ -5562,7 +5566,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <Btn dm={dm} size="sm" onClick={()=>{setSf(blkS());setSsh("add");}}>+ Supply</Btn>
             </div>
           </div>
-          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search item, supplier…"/>
+          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search item, supplier, date…"/>
           {fSup.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No supplies found.</p>}
           {fSup.map(s=>(
             <Card key={s.id} dm={dm}><div className="p-4">
@@ -7149,6 +7153,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
           const mData=months.map(m=>({
             month:m.slice(5)+"/"+m.slice(2,4),
+            rawMonth:m,
             monthFull:new Date(m+"-01").toLocaleString("en-IN",{month:"short",year:"numeric"}),
             revenue:deliveries.filter(d=>d.date?.startsWith(m)&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines)-(+d.replacement?.amount||0),0),
             supplyCost:supplies.filter(s=>s.date?.startsWith(m)).reduce((s,x)=>s+(x.cost||0),0),
@@ -7188,8 +7193,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const avgMonthlyRev=activeMonths.length>0?Math.round(totRev/activeMonths.length):0;
           const avgMonthlyProfit=activeMonths.length>0?Math.round(totProfit/activeMonths.length):0;
           const avgMonthlyCost=activeMonths.length>0?Math.round(totCost/activeMonths.length):0;
-          const bestMonth=mData.reduce((b,m)=>m.profit>b.profit?m:b,mData[0]||{profit:0,monthFull:"—"});
-          const worstMonth=mData.reduce((b,m)=>m.profit<b.profit?m:b,mData[0]||{profit:0,monthFull:"—"});
+          const bestMonth=mData.reduce((b,m)=>m.profit>b.profit?m:b,mData[0]||{profit:0,monthFull:"—",month:null,rawMonth:null});
+          const worstMonth=mData.reduce((b,m)=>m.profit<b.profit?m:b,mData[0]||{profit:0,monthFull:"—",month:null,rawMonth:null});
+
+          // ── Products sold in period ──────────────────────────────────────
+          const periodProdMap={};
+          filtD.forEach(d=>{Object.entries(safeO(d.orderLines)).forEach(([pid,l])=>{if(l.qty>0){if(!periodProdMap[pid])periodProdMap[pid]={name:l.name||products.find(p=>p.id===pid)?.name||pid,qty:0,rev:0};periodProdMap[pid].qty+=l.qty;periodProdMap[pid].rev+=(l.qty||0)*(l.priceAmount||0);}});});
+          const periodProdArr=Object.values(periodProdMap).sort((a,b)=>b.rev-a.rev);
           const recentHalf=mData.slice(Math.floor(mData.length/2));
           const olderHalf=mData.slice(0,Math.floor(mData.length/2));
           const recentRevAvg=recentHalf.length>0?recentHalf.reduce((s,m)=>s+m.revenue,0)/recentHalf.length:0;
@@ -7443,6 +7453,101 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div>)}
             </div>
 
+            {/* ── STANDALONE MONTH DETAIL PANEL (shown when best/worst card clicked) ── */}
+            {plMonthExpanded&&(()=>{
+              const selM=mData.find(m=>m.month===plMonthExpanded);
+              if(!selM) return null;
+              const mKey=selM.rawMonth||selM.month;
+              const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey)&&d.status==="Delivered");
+              const mExps=expenses.filter(e=>e.date?.startsWith(mKey));
+              const mSups=supplies.filter(s=>s.date?.startsWith(mKey));
+              const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(mKey));
+              // Check if this month is already visible in the table below
+              const isInTable=mData.some(m=>m.month===plMonthExpanded);
+              // Only show standalone panel if the month is NOT clickable in the table
+              // (i.e., always show here since the table may not be visible / user may have scrolled)
+              return <div style={{background:dm?"#0a1f0a":"#f0fff4",border:`2px solid #10b98140`,borderRadius:16,padding:"14px 16px",position:"relative"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <p style={{color:"#10b981",fontWeight:800,fontSize:13}}>📋 {selM.monthFull} — Full Breakdown</p>
+                  <button onClick={()=>setPlMonthExpanded(null)} style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✕ Close</button>
+                </div>
+                {/* Mini KPIs */}
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[["Revenue","#10b981",inr(selM.revenue),`${selM.deliveriesCount} orders`],["Supply","#8b5cf6",inr(selM.supplyCost),`${mSups.length} entries`],["Expenses","#ef4444",inr(selM.expenses),`${mExps.length} entries`],["Wastage","#f97316",inr(selM.wasteCost),`${mWaste.length} records`]].map(([l,c,v,sub])=>(
+                    <div key={l} style={{background:c+"12",border:`1px solid ${c}30`,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                      <p style={{color:c,fontWeight:900,fontSize:12}}>{v}</p>
+                      <p style={{color:t.sub,fontSize:9}}>{l}</p>
+                      <p style={{color:t.sub,fontSize:8}}>{sub}</p>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:t.sub,fontSize:10}}>Revenue allocation</span><span style={{color:selM.profit>=0?"#10b981":"#ef4444",fontWeight:700,fontSize:10}}>{selM.margin}% margin</span></div>
+                  <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
+                    <div style={{width:`${Math.max(0,selM.margin)}%`,background:"#10b981"}}/>
+                    <div style={{width:`${selM.revenue>0?Math.round(selM.supplyCost/selM.revenue*100):0}%`,background:"#8b5cf6"}}/>
+                    <div style={{width:`${selM.revenue>0?Math.round(selM.expenses/selM.revenue*100):0}%`,background:"#ef4444"}}/>
+                    <div style={{width:`${selM.revenue>0?Math.round(selM.wasteCost/selM.revenue*100):0}%`,background:"#f97316"}}/>
+                  </div>
+                </div>
+                {/* Products sold */}
+                {(()=>{
+                  const mProdMap={};
+                  mDelivs.forEach(d=>{Object.entries(safeO(d.orderLines)).forEach(([pid,l])=>{if(l.qty>0){if(!mProdMap[pid])mProdMap[pid]={name:l.name||products.find(p=>p.id===pid)?.name||pid,qty:0,rev:0};mProdMap[pid].qty+=l.qty;mProdMap[pid].rev+=(l.qty||0)*(l.priceAmount||0);}});});
+                  const mProdArr=Object.values(mProdMap).sort((a,b)=>b.rev-a.rev);
+                  if(!mProdArr.length) return null;
+                  return <div style={{marginBottom:10}}>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>🛒 Products Sold ({mProdArr.length} SKUs)</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                      {mProdArr.map(p=>(<div key={p.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:t.inp,borderRadius:8,padding:"5px 10px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:t.text,fontSize:11,fontWeight:600}}>{p.name}</span><span style={{color:t.sub,fontSize:10}}>{p.qty} units</span></div><span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(p.rev)}</span></div>))}
+                    </div>
+                  </div>;
+                })()}
+                {/* Deliveries */}
+                {mDelivs.length>0&&<div style={{marginBottom:8}}>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Deliveries ({mDelivs.length})</p>
+                  <div style={{maxHeight:200,overflowY:"auto"}}>
+                    {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
+                      const plInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                      const plRcptNo=plInvNo?`RCP-${plInvNo.replace(/^[A-Z]+-/,"")}`:null;
+                      const linkedBatches=(prodTargets||[]).filter(pt=>pt.date===d.date&&(pt.linkedInvoices||[]).includes(plInvNo));
+                      const batchLabels=linkedBatches.length>0?linkedBatches.map(b=>b.batchLabel||"Batch").join(", "):null;
+                      const dItems=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const pn=products.find(p=>p.id===pid);return `${l.qty}×${pn?pn.name:(l.name||pid)}`;}).join(", ");
+                      return <div key={d.id||di} style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer",padding:"6px 4px"}} onClick={()=>setDetailModal({type:"delivery",data:d})}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                          <div style={{minWidth:0}}>
+                            <span style={{color:t.text,fontSize:11,fontWeight:700}}>{d.customer}</span>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:2}}>
+                              {plInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.07)",borderRadius:3,padding:"1px 5px"}}>📄 {plInvNo}</span>}
+                              {plRcptNo&&<span style={{color:"#0ea5e9",fontSize:9,fontFamily:"monospace",background:dm?"rgba(14,165,233,0.12)":"rgba(14,165,233,0.07)",borderRadius:3,padding:"1px 5px"}}>🧾 {plRcptNo}</span>}
+                              {batchLabels&&<span style={{color:"#7c3aed",fontSize:9,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:3,padding:"1px 5px"}}>🏭 {batchLabels}</span>}
+                            </div>
+                            {dItems&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{dItems}</p>}
+                          </div>
+                          <span style={{color:"#10b981",fontWeight:700,fontSize:11,flexShrink:0,marginLeft:8}}>{inr(lineTotal(d.orderLines))}</span>
+                        </div>
+                      </div>;
+                    })}
+                  </div>
+                </div>}
+                {/* Supplies */}
+                {mSups.length>0&&<div style={{marginBottom:8}}>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Supplies ({mSups.length})</p>
+                  <div style={{maxHeight:80,overflowY:"auto"}}>
+                    {mSups.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((s,si)=>(<div key={s.id||si} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:si<mSups.length-1?`1px solid ${t.border+"44"}`:"none"}}><span style={{color:t.text,fontSize:11}}>{s.item}{s.supplier?` · ${s.supplier}`:""}</span><span style={{color:"#8b5cf6",fontWeight:700,fontSize:11}}>{inr(s.cost||0)}</span></div>))}
+                  </div>
+                </div>}
+                {/* Expenses */}
+                {mExps.length>0&&<div>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>💸 Expenses ({mExps.length})</p>
+                  <div style={{maxHeight:100,overflowY:"auto"}}>
+                    {mExps.sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(<div key={e.id||ei} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:ei<mExps.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}} onClick={()=>setDetailModal({type:"expense",data:e})}><span style={{color:t.text,fontSize:11}}>{e.category}{e.vendor?` · ${e.vendor}`:""}</span><span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(e.amount)}</span></div>))}
+                  </div>
+                </div>}
+                {isInTable&&<p style={{color:t.sub,fontSize:10,marginTop:10,textAlign:"center"}}>↓ Also visible in the monthly table below</p>}
+              </div>;
+            })()}
+
             {/* ── MONTHLY P&L CHART ── */}
             <Card dm={dm} className="p-4">
               <div className="flex items-center justify-between mb-4">
@@ -7556,10 +7661,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       isRowEx&&<tr key={m.month+"_exp"} style={{background:dm?"#0a1f0a":"#f0fff4",borderBottom:`2px solid #10b98140`}}>
                         <td colSpan={11} style={{padding:"0 0 0 0"}}>
                           {(()=>{
-                            const mDelivs=deliveries.filter(d=>d.date?.startsWith(m.month)&&d.status==="Delivered");
-                            const mExps=expenses.filter(e=>e.date?.startsWith(m.month));
-                            const mSups=supplies.filter(s=>s.date?.startsWith(m.month));
-                            const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(m.month));
+                            const mKey=m.rawMonth||m.month;
+                            const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey)&&d.status==="Delivered");
+                            const mExps=expenses.filter(e=>e.date?.startsWith(mKey));
+                            const mSups=supplies.filter(s=>s.date?.startsWith(mKey));
+                            const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(mKey));
                             return(<div style={{padding:"12px 16px"}}>
                               <p style={{color:"#10b981",fontWeight:800,fontSize:12,marginBottom:10}}>📋 {m.monthFull} — Full Breakdown</p>
                               {/* Mini KPIs */}
