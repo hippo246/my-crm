@@ -5302,7 +5302,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <span style={{background:remaining>0?"#f59e0b15":"#10b98115",borderRadius:6,padding:"3px 8px",color:remaining>0?"#f59e0b":"#10b981"}}>Due: <b>{inr(remaining)}</b></span>
                           </div>}
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            <button onClick={e=>{e.stopPropagation();setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();const _dm=d.date>today()?"future":d.date<today()?"past":"today";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode:_dm,_futureOrder:_dm==="future"});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
                             <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
                             {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
                             {can("deliv_markDone")&&d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>}
@@ -5502,7 +5502,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         {/* Action buttons */}
                         <div className="flex gap-2 overflow-x-auto pb-0.5" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flexWrap:"nowrap"}}>
                           {d.address&&<a href={mapU(d.address,d.lat,d.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e9",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,WebkitTapHighlightColor:"transparent",textDecoration:"none",flexShrink:0}}>📍 Nav</a>}
-                          <button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
+                          <button onClick={()=>{const _dm=d.date>today()?"future":d.date<today()?"past":"today";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode:_dm,_futureOrder:_dm==="future"});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Edit</button>
                           <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
                           {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
                           {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
@@ -11111,14 +11111,42 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-widest ml-0.5">Order Date</label>
-              {dSh==="add"&&<button onClick={()=>setDf(f=>({...f,_futureOrder:!f._futureOrder,date:f._futureOrder?today():f.date}))} style={{fontSize:10,fontWeight:700,color:dF._futureOrder?"#f59e0b":t.sub,background:dF._futureOrder?"#f59e0b20":"transparent",border:`1px solid ${dF._futureOrder?"#f59e0b40":t.border}`,borderRadius:6,padding:"2px 7px",cursor:"pointer"}}>
-                {dF._futureOrder?"Future order":"Same day"}
-              </button>}
+              {dSh==="add"&&(()=>{
+                // _dateMode: "today" | "past" | "future"
+                const mode = dF._dateMode || "today";
+                const modes = [
+                  {key:"today",  label:"Today",   color:"#10b981"},
+                  {key:"past",   label:"📅 Past",  color:"#8b5cf6"},
+                  {key:"future", label:"Future",   color:"#f59e0b"},
+                ];
+                return (
+                  <div style={{display:"flex",gap:2,background:t.inp,borderRadius:8,padding:2,border:`1px solid ${t.border}`}}>
+                    {modes.map(m=>(
+                      <button key={m.key} onClick={()=>{
+                        const next = m.key;
+                        setDf(f=>({...f,_dateMode:next,_futureOrder:next==="future",date:next==="today"?today():f.date}));
+                      }}
+                        style={{fontSize:9,fontWeight:700,cursor:"pointer",borderRadius:6,padding:"2px 6px",border:"none",
+                          background:mode===m.key?m.color+"22":"transparent",
+                          color:mode===m.key?m.color:t.sub,
+                          transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
-            {(dSh!=="add"||dF._futureOrder)
-              ?<input type="date" value={dF.date} onChange={e=>setDf({...dF,date:e.target.value})} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:14,width:"100%",outline:"none"}}/>
+            {(dSh!=="add"||(dF._dateMode==="past"||dF._dateMode==="future"||dF._futureOrder))
+              ?<input type="date"
+                  value={dF.date}
+                  max={dF._dateMode==="past"||(!dF._dateMode&&!dF._futureOrder) ? today() : undefined}
+                  onChange={e=>setDf({...dF,date:e.target.value})}
+                  style={{background:t.inp,border:`1px solid ${dF._dateMode==="past"?"#8b5cf680":dF._dateMode==="future"||dF._futureOrder?"#f59e0b80":t.inpB}`,color:t.text,borderRadius:12,padding:"10px 14px",fontSize:14,width:"100%",outline:"none"}}/>
               :<div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:12,padding:"10px 14px",fontSize:13,color:t.sub}}>Today ({today()})</div>
             }
+            {dSh==="add"&&dF._dateMode==="past"&&<p style={{color:"#8b5cf6",fontSize:10,marginTop:4,fontWeight:600}}>📅 Logging a past order — pick the actual date it happened</p>}
+            {dSh==="add"&&(dF._dateMode==="future"||dF._futureOrder)&&<p style={{color:"#f59e0b",fontSize:10,marginTop:4,fontWeight:600}}>⏳ Future order — will appear as scheduled</p>}
           </div>
           <Inp dm={dm} label="Deliver By (optional)" type="date" value={dF.deliveryDate||""} onChange={e=>setDf({...dF,deliveryDate:e.target.value})}/>
         </div>
