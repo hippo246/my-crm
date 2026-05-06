@@ -7556,8 +7556,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       isRowEx&&<tr key={m.month+"_exp"} style={{background:dm?"#0a1f0a":"#f0fff4",borderBottom:`2px solid #10b98140`}}>
                         <td colSpan={11} style={{padding:"0 0 0 0"}}>
                           {(()=>{
-                            const mKey=mData.find(x=>x.month===m.month);
-                            const mDelivs=deliveries.filter(d=>d.date?.startsWith(mKey?.monthFull?m.month:"")&&d.status==="Delivered");
+                            const mDelivs=deliveries.filter(d=>d.date?.startsWith(m.month)&&d.status==="Delivered");
                             const mExps=expenses.filter(e=>e.date?.startsWith(m.month));
                             const mSups=supplies.filter(s=>s.date?.startsWith(m.month));
                             const mWaste=(wastage||[]).filter(w=>w.date?.startsWith(m.month));
@@ -7583,29 +7582,74 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                   <div style={{width:`${m.revenue>0?Math.round(m.wasteCost/m.revenue*100):0}%`,background:"#f97316"}}/>
                                 </div>
                               </div>
-                              {/* Top deliveries */}
+                              {/* Products sold this month */}
+                              {(()=>{
+                                const mProdMap={};
+                                mDelivs.forEach(d=>{Object.entries(safeO(d.orderLines)).forEach(([pid,l])=>{if(l.qty>0){if(!mProdMap[pid])mProdMap[pid]={name:l.name||products.find(p=>p.id===pid)?.name||pid,qty:0,rev:0};mProdMap[pid].qty+=l.qty;mProdMap[pid].rev+=(l.qty||0)*(l.priceAmount||0);}});});
+                                const mProdArr=Object.values(mProdMap).sort((a,b)=>b.rev-a.rev);
+                                if(!mProdArr.length) return null;
+                                return <div className="mb-3">
+                                  <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>🛒 Products Sold ({mProdArr.length} SKUs)</p>
+                                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                                    {mProdArr.map(p=>(
+                                      <div key={p.name} className="flex items-center justify-between" style={{background:t.inp,borderRadius:8,padding:"5px 10px"}}>
+                                        <div className="flex items-center gap-2">
+                                          <span style={{color:t.text,fontSize:11,fontWeight:600}}>{p.name}</span>
+                                          <span style={{color:t.sub,fontSize:10}}>{p.qty} units</span>
+                                        </div>
+                                        <span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(p.rev)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>;
+                              })()}
+                              {/* Top deliveries with inv/receipt/batch */}
                               {mDelivs.length>0&&<div className="mb-2">
-                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Deliveries ({mDelivs.length})</p>
-                                <div style={{maxHeight:120,overflowY:"auto"}}>
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Deliveries ({mDelivs.length})</p>
+                                <div style={{maxHeight:180,overflowY:"auto"}}>
                                   {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
                                     const plInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                                    const plRcptNo=plInvNo?`RCP-${plInvNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+                                    const dDate=d.date||"";
+                                    const linkedBatches=(prodTargets||[]).filter(pt=>pt.date===dDate&&(pt.linkedInvoices||[]).includes(plInvNo));
+                                    const batchLabels=linkedBatches.length>0?linkedBatches.map(b=>b.batchLabel||"Batch").join(", "):null;
+                                    const dItems=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const pn=products.find(p=>p.id===pid);return `${l.qty}×${pn?pn.name:(l.name||pid)}`;}).join(", ");
                                     return (
-                                    <div key={d.id||di} className="flex justify-between items-center py-1" style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
+                                    <div key={d.id||di} style={{borderBottom:di<mDelivs.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer",padding:"6px 4px",transition:"background .1s"}}
                                       onClick={()=>setDetailModal({type:"delivery",data:d})}
                                       onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
-                                      <div>
-                                        <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{d.customer}</span>
-                                        {plInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",marginLeft:6,background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.07)",borderRadius:3,padding:"1px 4px"}}>{plInvNo}</span>}
+                                      <div className="flex justify-between items-start">
+                                        <div style={{minWidth:0}}>
+                                          <span style={{color:t.text,fontSize:11,fontWeight:700}}>{d.customer}</span>
+                                          <div className="flex flex-wrap gap-1 mt-0.5">
+                                            {plInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.07)",borderRadius:3,padding:"1px 5px"}}>📄 {plInvNo}</span>}
+                                            {plInvNo&&<span style={{color:"#0ea5e9",fontSize:9,fontFamily:"monospace",background:dm?"rgba(14,165,233,0.12)":"rgba(14,165,233,0.07)",borderRadius:3,padding:"1px 5px"}}>🧾 {plRcptNo}</span>}
+                                            {batchLabels&&<span style={{color:"#7c3aed",fontSize:9,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:3,padding:"1px 5px"}}>🏭 {batchLabels}</span>}
+                                          </div>
+                                          {dItems&&<p style={{color:t.sub,fontSize:9,marginTop:2}}>{dItems}</p>}
+                                        </div>
+                                        <span style={{color:"#10b981",fontWeight:700,fontSize:11,flexShrink:0,marginLeft:8}}>{inr(lineTotal(d.orderLines))}</span>
                                       </div>
-                                      <span style={{color:"#10b981",fontWeight:700,fontSize:11}}>{inr(lineTotal(d.orderLines))}</span>
                                     </div>
                                     );
                                   })}
                                 </div>
                               </div>}
+                              {/* Supplies this month */}
+                              {mSups.length>0&&<div className="mb-2">
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Supplies ({mSups.length})</p>
+                                <div style={{maxHeight:80,overflowY:"auto"}}>
+                                  {mSups.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((s,si)=>(
+                                    <div key={s.id||si} className="flex justify-between items-center py-1" style={{borderBottom:si<mSups.length-1?`1px solid ${t.border+"44"}`:"none"}}>
+                                      <span style={{color:t.text,fontSize:11}}>{s.item}{s.supplier?` · ${s.supplier}`:""}</span>
+                                      <span style={{color:"#8b5cf6",fontWeight:700,fontSize:11}}>{inr(s.cost||0)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>}
                               {/* Top expenses */}
                               {mExps.length>0&&<div>
-                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Expenses ({mExps.length})</p>
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>💸 Expenses ({mExps.length})</p>
                                 <div style={{maxHeight:100,overflowY:"auto"}}>
                                   {mExps.sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(
                                     <div key={e.id||ei} className="flex justify-between items-center py-1" style={{borderBottom:ei<mExps.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
@@ -7613,6 +7657,18 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                       onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
                                       <span style={{color:t.text,fontSize:11,textDecoration:"underline"}}>{e.category}{e.vendor?` · ${e.vendor}`:""}</span>
                                       <span style={{color:"#ef4444",fontWeight:700,fontSize:11}}>{inr(e.amount)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>}
+                              {/* Wastage this month */}
+                              {mWaste.length>0&&<div className="mt-2">
+                                <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>🗑 Wastage ({mWaste.length})</p>
+                                <div style={{maxHeight:80,overflowY:"auto"}}>
+                                  {mWaste.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((w,wi)=>(
+                                    <div key={w.id||wi} className="flex justify-between items-center py-1" style={{borderBottom:wi<mWaste.length-1?`1px solid ${t.border+"44"}`:"none"}}>
+                                      <span style={{color:t.text,fontSize:11}}>{w.product} · {w.qty} {w.unit}</span>
+                                      <span style={{color:"#f97316",fontWeight:700,fontSize:11}}>{w.cost>0?inr(w.cost):"—"}</span>
                                     </div>
                                   ))}
                                 </div>
