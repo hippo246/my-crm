@@ -3367,6 +3367,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [anlChartType,setAnlChartType]=useState("bar"); // "bar" | "line"
   const [anlTrendMetric,setAnlTrendMetric]=useState("revenue"); // "revenue" | "deliveries" | "expenses"
   const [anlShowInsights,setAnlShowInsights]=useState(true);
+  // Deliveries date range export
+  const [delivExportFrom,setDelivExportFrom]=useState("");
+  const [delivExportTo,setDelivExportTo]=useState(today());
+  const [delivExportOpen,setDelivExportOpen]=useState(false);
   // Production search + auto-deduct toggle
   const [ptSearch,setPtSearch]=useState("");
   const [ptShiftFilter,setPtShiftFilter]=useState("all");
@@ -4591,12 +4595,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             </Card>;
           })()}
 
-          {/* Summary bar — 4-up on desktop */}
-          {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+          {/* Summary bar — enhanced 6-up grid */}
+          {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
             <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.filter(c=>!c.active).length} inactive`} accent="#d97706"/>
             <StatCard dm={dm} label="Total Collected" value={inr(customers.reduce((s,c)=>s+(c.paid||0),0))} sub="All time" accent="#10b981"/>
             <StatCard dm={dm} label="Outstanding" value={inr(customers.reduce((s,c)=>s+(c.pending||0),0))} sub={`${customers.filter(c=>c.pending>0).length} unpaid`} accent="#ef4444"/>
             <StatCard dm={dm} label="Total Customers" value={customers.length} sub={`${activeC.length} active`} accent="#8b5cf6"/>
+            <StatCard dm={dm} label="Replacements" value={deliveries.filter(d=>d.replacement?.done).length} sub={`${inr(deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} deducted`} accent="#f97316"/>
+            <StatCard dm={dm} label="Partial Payments" value={deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length} sub={`${inr(deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0))} collected`} accent="#f59e0b"/>
           </div>}
           {/* ── UNIFIED TOOLBAR ── */}
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -4906,6 +4912,19 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             </div>
                           ))}
                         </div>
+                        {/* Second stats row for financial details */}
+                        {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                          {[
+                            {label:"Repl. Deducted",val:inr(cReplAmt),color:cReplAmt>0?"#f97316":t.sub},
+                            {label:"Partial Paid",val:inr(partialPaid),color:partialPaid>0?"#f59e0b":t.sub},
+                            {label:"Pending",val:inr(c.pending||0),color:(c.pending||0)>0?"#ef4444":"#10b981"},
+                          ].map(({label,val,color})=>(
+                            <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 6px",textAlign:"center"}}>
+                              <p style={{color,fontWeight:800,fontSize:13,lineHeight:1}}>{val}</p>
+                              <p style={{color:t.sub,fontSize:9,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
+                            </div>
+                          ))}
+                        </div>}
 
                         {/* Delivery rate bar */}
                         {cDelivs.length>0&&<div>
@@ -5098,9 +5117,34 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
             {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
+            {can("deliv_export")&&<div style={{position:"relative"}}>
+              <button onClick={()=>setDelivExportOpen(v=>!v)} style={{background:"#3b82f615",color:"#3b82f6",border:"1.5px solid #3b82f640",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📅 Date Export ▾</button>
+              {delivExportOpen&&<div style={{position:"absolute",left:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:14,zIndex:99,padding:"14px 16px",boxShadow:"0 8px 30px rgba(0,0,0,0.18)",minWidth:280}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>📅 Export by Date Range</p>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{color:t.sub,fontSize:12,minWidth:32}}>From</span>
+                    <input type="date" value={delivExportFrom} onChange={e=>setDelivExportFrom(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 10px",fontSize:13,outline:"none"}}/>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{color:t.sub,fontSize:12,minWidth:32}}>To</span>
+                    <input type="date" value={delivExportTo} max={today()} onChange={e=>setDelivExportTo(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 10px",fontSize:13,outline:"none"}}/>
+                  </div>
+                  {delivExportFrom&&delivExportTo&&<p style={{color:"#3b82f6",fontSize:11,fontWeight:600,textAlign:"center"}}>✓ {Math.round((new Date(delivExportTo)-new Date(delivExportFrom))/86400000)+1} days · {deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo).length} deliveries</p>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {[
+                    ["📊 CSV",()=>{const dr=delivExportFrom&&delivExportTo?deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo):deliveries;exportCSV(dr,`deliveries_${delivExportFrom||"all"}_to_${delivExportTo}`,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Deducted (₹)",val:r=>r.replacement?.amount||0},{label:"Net (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Collected (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}]);}],
+                    ["📋 XLS",()=>{const dr=delivExportFrom&&delivExportTo?deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo):deliveries;exportTabExcel(`Deliveries ${delivExportFrom||""} to ${delivExportTo}`,dr,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Deducted",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Collected",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}],settings);}],
+                  ].map(([lbl,fn])=>(
+                    <button key={lbl} onClick={()=>{fn();setDelivExportOpen(false);}} style={{background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>{lbl} {delivExportFrom&&delivExportTo?"(Date Range)":"(All)"}</button>
+                  ))}
+                </div>
+              </div>}
+            </div>}
           </div>
           {/* BULK ACTION BAR */}
           {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
@@ -5463,10 +5507,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
                         {/* Replacement block */}
                         {d.replacement?.done&&<div style={{background:"#f9731618",border:"1px solid #f9731640",borderRadius:10,padding:"8px 12px",marginBottom:10}}>
-                          <p style={{color:"#f97316",fontWeight:800,fontSize:11,marginBottom:4}}>🔄 Replacement Made</p>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
+                            <p style={{color:"#f97316",fontWeight:800,fontSize:11}}>🔄 Replacement Made</p>
+                            {d.replacement?.type&&<span style={{background:"#f9731622",color:"#f97316",fontSize:9,fontWeight:700,padding:"1px 7px",borderRadius:99,border:"1px solid #f9731640"}}>{d.replacement.type}</span>}
+                          </div>
                           <div className="flex flex-wrap gap-x-4 gap-y-1">
                             {d.replacement.item&&<span style={{color:t.text,fontSize:11}}>Item: <b>{d.replacement.item}</b></span>}
-                            {d.replacement.qty&&<span style={{color:t.text,fontSize:11}}>Qty returned: <b>{d.replacement.qty}</b></span>}
+                            {d.replacement.qty&&<span style={{color:t.text,fontSize:11}}>Qty: <b>{d.replacement.qty}</b></span>}
                             {canSeePrices&&replAmt>0&&<span style={{color:"#f97316",fontWeight:700,fontSize:11}}>Deducted: −{inr(replAmt)}</span>}
                             {d.replacement.reason&&<span style={{color:t.sub,fontSize:11,fontStyle:"italic"}}>Reason: {d.replacement.reason}</span>}
                           </div>
@@ -7625,13 +7672,17 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   </div>
                   <div style={{position:"relative"}}>
                     <button onClick={()=>setAnlExportOpen(anlExportOpen==="all"?null:"all")} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export All ▾</button>
-                    {anlExportOpen==="all"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:180,boxShadow:"0 4px 24px rgba(0,0,0,0.18)"}}>
+                    {anlExportOpen==="all"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:200,boxShadow:"0 4px 24px rgba(0,0,0,0.18)"}}>
+                      <div style={{padding:"8px 14px 6px",borderBottom:`1px solid ${t.border}`}}>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em"}}>Export for period: {anlLabel}</p>
+                      </div>
                       {[
                         ["📊 Overview CSV",()=>exportCSV([{period:anlLabel,revenue:totalNetRevenue,gross:totalGrossRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,cancellation:`${cancelRate}%`,replacement:`${replRate}%`,avgOrder:avgRevPerDeliv,outstanding:totalOutstanding}],"analytics_overview",[{label:"Period",key:"period"},{label:"Net Revenue",key:"revenue"},{label:"Gross Revenue",key:"gross"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Cancellation Rate",key:"cancellation"},{label:"Replacement Rate",key:"replacement"},{label:"Avg Order (₹)",key:"avgOrder"},{label:"Outstanding (₹)",key:"outstanding"}])],
-                        ["👥 Customer CSV",()=>exportCSV(custRev,"customers_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"totalOrders"},{label:"Revenue (₹)",key:"totalRev"},{label:"Outstanding (₹)",key:"outstandingBalance"}])],
+                        ["👥 Customers CSV",()=>exportCSV(custRev,"customers_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"totalOrders"},{label:"Revenue (₹)",key:"totalRev"},{label:"Outstanding (₹)",key:"outstandingBalance"},{label:"Partial Collected (₹)",key:"partialCollected"},{label:"Repl Deducted (₹)",key:"replDeducted"}])],
                         ["📦 Products CSV",()=>exportCSV(prodSales,"products_analytics",[{label:"Product",key:"name"},{label:"Qty Sold",key:"totalQty"},{label:"Revenue (₹)",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])],
                         ["💸 Expenses CSV",()=>exportCSV(expCatData,"expenses_breakdown",[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount"},{label:"Count",key:"count"}])],
                         ["📈 14-Day Trend CSV",()=>exportCSV(dailyData,"14day_trend",[{label:"Date",key:"date"},{label:"Scheduled",key:"scheduled"},{label:"Delivered",key:"delivered"},{label:"Revenue (₹)",key:"revenue"},{label:"Expenses (₹)",key:"expenses"}])],
+                        ["🔄 Returns & Replacements CSV",()=>{const inPD=deliveries.filter(d=>inAnlRange(d.date));const rows=[...inPD.filter(d=>d.replacement?.done).map(d=>({type:"Replacement",customer:d.customer,date:d.date,item:d.replacement?.item||"",qty:d.replacement?.qty||"",amount:+d.replacement?.amount||0,reason:d.replacement?.reason||"",replType:d.replacement?.type||""})),...inPD.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).map(d=>({type:"Partial Payment",customer:d.customer,date:d.date,item:"",qty:"",amount:+d.partialPayment?.amount||0,reason:d.partialPayment?.note||"",replType:""})),...inPD.filter(d=>d.status==="Cancelled").map(d=>({type:"Return/Cancel",customer:d.customer,date:d.date,item:"",qty:"",amount:0,reason:d.notes||"",replType:""}))];exportCSV(rows,"returns_replacements",[{label:"Type",key:"type"},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Amount (₹)",key:"amount"},{label:"Notes/Reason",key:"reason"}]);}],
                       ].map(([lbl,fn])=>(
                         <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none",borderBottom:`1px solid ${t.border}`}}>{lbl}</button>
                       ))}
@@ -7885,6 +7936,72 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <StatCard dm={dm} label="Partial Collected" value={inr(totalPartialCollected)} sub={`${deliveriesWithBalance.length} deliveries`} accent="#f59e0b"/>
                 <StatCard dm={dm} label="Fully Settled" value={deliveriesFullySettled.length} sub="deliveries paid in full" accent="#8b5cf6"/>
               </div>
+              {/* ── EXTRA STATS: Returns + Replacements + Partials ── */}
+              {(()=>{
+                const inPeriodD = deliveries.filter(d=>inAnlRange(d.date));
+                const retCount = inPeriodD.filter(d=>d.status==="Cancelled").length;
+                const replInPeriod = inPeriodD.filter(d=>d.replacement?.done);
+                const replTotal = replInPeriod.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                const partialInPeriod = inPeriodD.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0);
+                const partialTotal = partialInPeriod.reduce((s,d)=>s+(+(d.partialPayment?.amount)||0),0);
+                const fullyUnpaid = inPeriodD.filter(d=>d.status==="Delivered"&&!(d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0));
+                return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"14px 18px"}}>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>📊 Returns · Replacements · Partial Payments — {anlLabel}</p>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}}>
+                    {[
+                      {label:"Returns / Cancelled",val:retCount,color:"#ef4444",icon:"↩",sub:`${totalScheduled>0?Math.round(retCount/totalScheduled*100):0}% of orders`},
+                      {label:"Replacements",val:replInPeriod.length,color:"#f97316",icon:"🔄",sub:replTotal>0?`${inr(replTotal)} deducted`:"No deductions"},
+                      {label:"Partial Payments",val:partialInPeriod.length,color:"#f59e0b",icon:"⚡",sub:partialTotal>0?`${inr(partialTotal)} collected`:"None collected"},
+                    ].map(({label,val,color,icon,sub})=>(
+                      <div key={label} style={{background:t.inp,borderRadius:12,padding:"12px 14px",borderTop:`3px solid ${color}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                          <span style={{fontSize:16}}>{icon}</span>
+                          <p style={{color,fontWeight:900,fontSize:22,lineHeight:1}}>{val}</p>
+                        </div>
+                        <p style={{color:t.text,fontSize:11,fontWeight:600}}>{label}</p>
+                        <p style={{color:t.sub,fontSize:10,marginTop:2}}>{sub}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Replacement list if any */}
+                  {replInPeriod.length>0&&<div style={{marginBottom:10}}>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recent Replacements</p>
+                    {[...replInPeriod].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(d=>(
+                      <div key={d.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <p style={{color:t.text,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{d.date} · {d.replacement?.item||"—"}{d.replacement?.type?` · ${d.replacement.type}`:""}</p>
+                        </div>
+                        {canSeePrices&&<span style={{color:"#f97316",fontWeight:700,fontSize:12,flexShrink:0,marginLeft:8}}>{d.replacement?.amount?`−${inr(+d.replacement.amount)}`:"—"}</span>}
+                      </div>
+                    ))}
+                    {replInPeriod.length>5&&<p style={{color:t.sub,fontSize:10,textAlign:"center",marginTop:6}}>+{replInPeriod.length-5} more replacements</p>}
+                  </div>}
+                  {/* Partial payments list */}
+                  {partialInPeriod.length>0&&<div>
+                    <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Partial Payments</p>
+                    {[...partialInPeriod].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(d=>(
+                      <div key={d.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <p style={{color:t.text,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{d.date} · {d.partialPayment?.collectedBy||"—"}</p>
+                        </div>
+                        {canSeePrices&&<span style={{color:"#f59e0b",fontWeight:700,fontSize:12,flexShrink:0,marginLeft:8}}>{inr(+d.partialPayment.amount)}</span>}
+                      </div>
+                    ))}
+                    {partialInPeriod.length>5&&<p style={{color:t.sub,fontSize:10,textAlign:"center",marginTop:6}}>+{partialInPeriod.length-5} more partial payments</p>}
+                  </div>}
+                  {/* Export this section */}
+                  <button onClick={()=>{
+                    const rows=[
+                      ...replInPeriod.map(d=>({type:"Replacement",customer:d.customer,date:d.date,item:d.replacement?.item||"",qty:d.replacement?.qty||"",amount:+d.replacement?.amount||0,reason:d.replacement?.reason||"",replType:d.replacement?.type||""})),
+                      ...partialInPeriod.map(d=>({type:"Partial Payment",customer:d.customer,date:d.date,item:"",qty:"",amount:+d.partialPayment?.amount||0,reason:d.partialPayment?.note||"",replType:""})),
+                      ...retCount>0?inPeriodD.filter(d=>d.status==="Cancelled").map(d=>({type:"Return/Cancel",customer:d.customer,date:d.date,item:"",qty:"",amount:0,reason:d.notes||"",replType:""})):[],
+                    ];
+                    exportCSV(rows,`returns_replacements_${anlLabel.replace(/[^a-z0-9]/gi,"_")}`,[{label:"Type",key:"type"},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Amount (₹)",key:"amount"},{label:"Notes/Reason",key:"reason"}]);
+                  }} style={{marginTop:10,width:"100%",background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export Returns, Replacements & Partials CSV</button>
+                </div>;
+              })()}
               <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-3">
                   <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -8587,76 +8704,111 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
             {/* ── BATCHES ── */}
             {prodSubTab==="batches"&&<>
-              <div className="flex items-center justify-between">
-                <Pill dm={dm} c="purple">{filteredPT.length} runs · {filteredPT.reduce((s,x)=>s+(+x.actual||0),0)} units</Pill>
-                <div className="flex gap-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                  <Pill dm={dm} c="purple">{filteredPT.length} runs · {filteredPT.reduce((s,x)=>s+(+x.actual||0),0)} units</Pill>
+                  {deliveries.filter(d=>d.date===todayStr&&d.status!=="Cancelled").length>0&&<Pill dm={dm} c="sky">{deliveries.filter(d=>d.date===todayStr&&d.status!=="Cancelled").length} customers today</Pill>}
+                </div>
+                <div className="flex gap-2 flex-wrap">
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty",key:"actual",num:true},{label:"QC",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual",num:true},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>XLS</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(filteredPT,"production",[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual"},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join("; ")},{label:"Notes",key:"notes"}])}>CSV</Btn>
-                  <Btn dm={dm} size="sm" onClick={()=>{
+                  <Btn dm={dm} size="sm" style={{background:"linear-gradient(135deg,#7c3aed,#6366f1)",color:"#fff",border:"none",fontWeight:800,padding:"8px 18px",minHeight:40}} onClick={()=>{
                     const todayBatches=[...new Set(prodTargets.filter(x=>x.date===todayStr&&x.batchId).map(x=>x.batchId))];
                     const nextNum=todayBatches.length+1;
-                    setPtF({date:todayStr,shift:"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
+                    setPtF({date:todayStr,shift:(settings?.shifts||["Morning"])[0]||"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
                     setPtSh("add");
-                  }}>+ New Batch</Btn>
+                  }}>🏭 + New Batch</Btn>
                 </div>
               </div>
               {uniqueDates.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{prodTargets.length===0?"No batches yet. Tap + New Batch to start.":ptSearch?"No matches.":"No records for this period."}</p>}
               {uniqueDates.map(date=>{
                 const dayRecs=filteredPT.filter(x=>x.date===date).sort((a,b)=>(a.batchLabel||"").localeCompare(b.batchLabel||""));
                 const dayQty=dayRecs.reduce((s,x)=>s+(+x.actual||0),0);
-                const dayLabel=date===todayStr?"Today":date===yesterdayStr?"Yesterday":date;
+                const dayLabel=date===todayStr?"Today":date===yesterdayStr?"Yesterday":new Date(date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
                 const dayWaste=(wastage||[]).filter(w=>w.date===date);
+                const dayDelivsAll=deliveries.filter(d=>d.date===date&&d.status!=="Cancelled");
                 return <Card key={date} dm={dm}><div className="p-4">
+                  {/* Day header */}
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p style={{color:t.text,fontWeight:800,fontSize:14}}>{dayLabel}</p>
-                      <p style={{color:t.sub,fontSize:11}}>{dayRecs.length} batch{dayRecs.length!==1?"es":""} · {dayQty} units</p>
+                      <p style={{color:t.text,fontWeight:900,fontSize:15}}>{dayLabel}</p>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:3}}>
+                        <span style={{background:"#8b5cf620",color:"#8b5cf6",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>🏭 {dayRecs.length} batch{dayRecs.length!==1?"es":""}</span>
+                        <span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>📦 {dayQty} units</span>
+                        {dayDelivsAll.length>0&&<span style={{background:"#7c3aed20",color:"#7c3aed",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>👥 {dayDelivsAll.length} customers</span>}
+                        {dayWaste.length>0&&<span style={{background:"#f9731620",color:"#f97316",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>⚠️ {dayWaste.length} wastage</span>}
+                      </div>
                     </div>
-                    {dayWaste.length>0&&<span style={{background:"#f9731620",color:"#f97316",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700}}>⚠️ {dayWaste.length} wastage</span>}
                   </div>
                   {dayRecs.map((r,ri)=>{
                     const rWaste=(wastage||[]).filter(w=>w.batchId===r.batchId);
                     const rQC=(qcLogs||[]).filter(q=>q.batchId===r.batchId);
                     const rHV=(handovers||[]).filter(h=>h.batchId===r.batchId);
                     const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
-                    return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?12:0,marginTop:ri>0?12:0}}>
+                    // Customer traceability: deliveries on this date that include this product
+                    const batchCustomers=deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled").filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===r.product||pName.toLowerCase().includes((r.product||"").toLowerCase())||(r.product||"").toLowerCase().includes(pName.toLowerCase());}));
+                    return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?14:0,marginTop:ri>0?14:0}}>
                       <div className="flex items-start justify-between gap-2">
                         <div style={{flex:1}}>
-                          {/* Batch number + identity header */}
-                          <div style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",border:`1px solid rgba(139,92,246,0.3)`,borderRadius:10,padding:"6px 10px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span style={{background:"#8b5cf6",color:"#fff",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.01em"}}>{r.batchLabel||"Batch"}</span>
-                              <span style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{r.product}</span>
-                              {(r.linkedInvoices||[]).length>0&&(r.linkedInvoices||[]).map(inv=>(
-                                <span key={inv} style={{background:dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.1)",color:"#7c3aed",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {inv}</span>
-                              ))}
+                          {/* Batch identity header */}
+                          <div style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",border:`1px solid rgba(139,92,246,0.3)`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{background:"#8b5cf6",color:"#fff",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:900}}>{r.batchLabel||"Batch"}</span>
+                                <span style={{color:"#8b5cf6",fontWeight:700,fontSize:12}}>{r.product}</span>
+                              </div>
+                              <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                                {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🕐 {r.shift}</span>}
+                                {r.qcGrade&&<span style={{background:gradeColor(r.qcGrade)+"20",color:gradeColor(r.qcGrade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>QC: {r.qcGrade}</span>}
+                                {rWaste.length>0&&<span style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>🗑️ {rWaste.length}</span>}
+                                {rQC.length>0&&<span style={{background:"#14b8a618",color:"#14b8a6",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>✅ {rQC.length}</span>}
+                                {rHV.length>0&&<span style={{background:"#6366f118",color:"#6366f1",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>📋 {rHV.length}</span>}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                              {r.shift&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🕐 {r.shift}</span>}
-                              {r.qcGrade&&<span style={{background:gradeColor(r.qcGrade)+"20",color:gradeColor(r.qcGrade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>QC:{r.qcGrade}</span>}
-                              {rWaste.length>0&&<span style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>🗑️ {rWaste.length}</span>}
-                              {rQC.length>0&&<span style={{background:"#14b8a618",color:"#14b8a6",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>✅ {rQC.length}</span>}
-                              {rHV.length>0&&<span style={{background:"#6366f118",color:"#6366f1",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>📋 {rHV.length}</span>}
+                            {/* Units big number */}
+                            <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                              <p style={{color:"#8b5cf6",fontWeight:900,fontSize:26,lineHeight:1}}>{r.actual||0}</p>
+                              <span style={{color:t.sub,fontSize:12}}>units produced</span>
+                              {(r.linkedInvoices||[]).length>0&&<div style={{marginLeft:"auto",display:"flex",gap:3,flexWrap:"wrap"}}>
+                                {(r.linkedInvoices||[]).map(inv=><span key={inv} style={{background:dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.1)",color:"#7c3aed",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {inv}</span>)}
+                              </div>}
                             </div>
                           </div>
-                          <p style={{color:"#8b5cf6",fontWeight:900,fontSize:22,lineHeight:1,marginBottom:4}}>{r.actual||0}<span style={{color:t.sub,fontSize:12,fontWeight:400}}> units</span></p>
-                          {r.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic"}}>"{r.notes}"</p>}
-                          {r.deduction&&<div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:8,padding:"4px 8px",marginTop:4,display:"inline-flex",alignItems:"center",gap:6}}>
+                          {/* Customer Traceability inline */}
+                          {batchCustomers.length>0&&<div style={{background:dm?"rgba(124,58,237,0.08)":"rgba(124,58,237,0.04)",border:`1px solid rgba(124,58,237,0.2)`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+                            <p style={{color:"#7c3aed",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>📦 Customers receiving from this batch ({batchCustomers.length})</p>
+                            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                              {batchCustomers.slice(0,5).map(d=>{
+                                const dInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                                const sc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":"#f59e0b";
+                                const prodQty=Object.entries(safeO(d.orderLines)).filter(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===r.product||pName.toLowerCase().includes((r.product||"").toLowerCase())||(r.product||"").toLowerCase().includes(pName.toLowerCase());}).reduce((s,[,l])=>s+(+l.qty||0),0);
+                                return <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:`1px solid ${t.border}`}}>
+                                  <span style={{width:6,height:6,borderRadius:"50%",background:sc,flexShrink:0}}/>
+                                  <span style={{color:t.text,fontSize:11,fontWeight:600,flex:1,minWidth:0}} className="truncate">{d.customer}</span>
+                                  {dInvNo&&<span style={{color:"#8b5cf6",fontSize:9,fontWeight:700,fontFamily:"monospace",flexShrink:0}}>📄{dInvNo}</span>}
+                                  <span style={{color:"#7c3aed",fontSize:11,fontWeight:700,flexShrink:0}}>{prodQty} u</span>
+                                </div>;
+                              })}
+                              {batchCustomers.length>5&&<p style={{color:t.sub,fontSize:10,textAlign:"center",paddingTop:4}}>+{batchCustomers.length-5} more customers…</p>}
+                            </div>
+                          </div>}
+                          {r.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic",marginBottom:6}}>"{r.notes}"</p>}
+                          {r.deduction&&<div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:8,padding:"4px 8px",marginBottom:6,display:"inline-flex",alignItems:"center",gap:6}}>
                             <span style={{fontSize:10}}>📦</span>
                             <span style={{color:"#10b981",fontSize:10,fontWeight:700}}>Auto-deducted {r.deduction.deducted} from "{r.deduction.supplyItem}"</span>
                           </div>}
-                          {recipeIngrs.length>0&&+r.actual>0&&<div style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginTop:6}}>
+                          {recipeIngrs.length>0&&+r.actual>0&&<div style={{background:t.inp,borderRadius:8,padding:"6px 10px",marginBottom:6}}>
                             <p style={{color:t.sub,fontSize:10,fontWeight:700,marginBottom:3}}>🧪 Recipe used ({r.actual} units):</p>
                             {recipeIngrs.map((ing,ii)=><p key={ii} style={{color:t.text,fontSize:11}}>• {(+ing.qtyPerUnit*(+r.actual)).toFixed(2)} {ing.unit} {ing.supply}</p>)}
                           </div>}
-                          {rWaste.length>0&&<div className="flex flex-wrap gap-1.5 mt-2">
+                          {rWaste.length>0&&<div className="flex flex-wrap gap-1.5 mb-2">
                             {rWaste.map(w=><span key={w.id} style={{background:"#f9731618",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🗑️ {w.qty} {w.unit} {w.product} — {w.type}</span>)}
                           </div>}
-                          {rQC.length>0&&<div className="flex flex-wrap gap-1.5 mt-1">
+                          {rQC.length>0&&<div className="flex flex-wrap gap-1.5 mb-1">
                             {rQC.map(q=><span key={q.id} style={{background:gradeColor(q.grade)+"18",color:gradeColor(q.grade),borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>✅ QC {q.grade} — {q.product}{q.checker?" by "+q.checker:""}</span>)}
                           </div>}
-                          {rHV.length>0&&<div className="flex flex-wrap gap-1.5 mt-1">
+                          {rHV.length>0&&<div className="flex flex-wrap gap-1.5 mb-1">
                             {rHV.map(h=><span key={h.id} style={{background:"#6366f118",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>📋 {h.shift||"Handover"}{h.nextShift?" → "+h.nextShift:""}</span>)}
                           </div>}
                         </div>
@@ -9462,6 +9614,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {id:"staff",icon:"👥",label:"Staff"},
             {id:"products",icon:"📦",label:"Products"},
             {id:"recipes",icon:"🧪",label:"Recipes"},
+            {id:"production",icon:"🏭",label:"Production"},
             {id:"access",icon:"🔒",label:"Permissions"},
             {id:"app",icon:"🎨",label:"Branding"},
             {id:"alerts",icon:"🔔",label:"Alerts"},
@@ -10049,6 +10202,108 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </>;
           })()}
 
+          {/* ── PRODUCTION SETTINGS ── */}
+          {settingsSection==="production"&&<>
+            {/* Batch & Traceability */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🏭 Batch & Production</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Control how batches are logged and tracked</p>
+              {[
+                {key:"featureSmartDeduction",label:"Auto-Deduct Stock on Batch",desc:"Automatically reduce supply inventory when a batch is logged",icon:"🤖",defOn:true},
+                {key:"featureShiftManagement",label:"Shift Management",desc:"Enable shift selection (Morning/Afternoon/Evening/Night) on batches",icon:"🕐",defOn:true},
+                {key:"prodRequireQC",label:"Require QC Grade on Every Batch",desc:"Factory must select a QC grade before saving a batch",icon:"✅",defOn:false},
+                {key:"prodShowCustomerTraceability",label:"Show Customer Traceability in Batch Form",desc:"Show which customers receive this product when logging a batch",icon:"👥",defOn:true},
+                {key:"prodShowRecipeOnBatch",label:"Show Recipe Usage on Batch Card",desc:"Display ingredient breakdown on each batch card in the production tab",icon:"🧪",defOn:true},
+                {key:"prodAllowBackdate",label:"Allow Backdated Batch Entry",desc:"Let factory staff log batches for past dates",icon:"📅",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Recall & Traceability */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔍 Recall & Traceability</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Settings for product recall readiness and customer-batch linking</p>
+              {[
+                {key:"prodAutoLinkDeliveries",label:"Auto-Link Deliveries to Batches",desc:"Automatically link same-date deliveries to a batch when it's saved",icon:"🔗",defOn:true},
+                {key:"prodTraceabilityInPDF",label:"Include Traceability in PDF Trail",desc:"Show customer breakdown per batch in the Batch Paper Trail PDF export",icon:"📄",defOn:true},
+                {key:"prodShowLinkedInvoices",label:"Show Linked Invoices on Batch Card",desc:"Display invoice numbers linked to this batch on the production tab",icon:"🧾",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Wastage Settings */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🗑️ Wastage Controls</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Settings for wastage logging behaviour</p>
+              {[
+                {key:"wastageRequireReason",label:"Require Wastage Reason",desc:"Factory must fill in a reason before saving a wastage entry",icon:"📝",defOn:false},
+                {key:"wastageRequireCost",label:"Require Wastage Cost",desc:"Factory must enter the estimated cost impact for each wastage entry",icon:"💰",defOn:false},
+                {key:"wastageAlertThreshold",label:"Wastage Alert in Dashboard",desc:"Show wastage alert on dashboard when today's total exceeds threshold",icon:"⚠️",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* QC Settings */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>✅ Quality Control (QC)</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Settings for QC checks and grading</p>
+              {[
+                {key:"qcEmbedInBatch",label:"Embed QC in Batch Form",desc:"Show QC checks section directly inside the Log New Batch sheet",icon:"📋",defOn:true},
+                {key:"qcRequireChecker",label:"Require Inspector Name",desc:"QC check must have an inspector name before saving",icon:"👤",defOn:false},
+                {key:"qcAlertOnFail",label:"Alert on QC Fail (Grade F)",desc:"Show a warning notification when a batch gets a failing QC grade",icon:"🚨",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* Default Batch Units Presets */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>⚡ Batch Unit Presets</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Quick-tap unit presets shown in the Log New Batch form</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {(settings?.batchUnitPresets||[50,100,150,200,250,300]).map((n,i)=>(
+                  <div key={i} className="flex items-center gap-1" style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:8,paddingLeft:8,paddingRight:4,paddingTop:3,paddingBottom:3}}>
+                    <span style={{color:t.text,fontSize:12,fontWeight:700}}>{n}</span>
+                    <button onClick={()=>setSettings(s=>({...s,batchUnitPresets:(s.batchUnitPresets||[50,100,150,200,250,300]).filter((_,j)=>j!==i)}))} style={{color:"#ef4444",fontWeight:700,fontSize:14,background:"none",border:"none",cursor:"pointer",padding:"0 4px",lineHeight:1}}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input id="new_batchPreset" type="number" placeholder="e.g. 500"
+                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,flex:1,borderRadius:10,padding:"8px 12px",fontSize:12,outline:"none"}}/>
+                <button onClick={()=>{const el=document.getElementById("new_batchPreset");const v=+el.value;if(v>0){setSettings(s=>({...s,batchUnitPresets:[...(s.batchUnitPresets||[50,100,150,200,250,300]),v].sort((a,b)=>a-b)}));el.value="";}}}
+                  style={{background:"#8b5cf6",color:"#fff",borderRadius:10,padding:"8px 16px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer"}}>Add</button>
+              </div>
+            </div></Card>
+          </>}
+
           {/* ── ACCESS CONTROL ── */}
           {settingsSection==="access"&&<>
             <Card dm={dm}><div className="p-4">
@@ -10413,30 +10668,101 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       {/* ═══════ SHEETS ═══════ */}
 
       {/* Customer Sheet */}
-      <Sheet dm={dm} open={!!cSh} onClose={()=>setCsh(null)} title={cSh==="add"?"New Customer":"Edit Customer"}>
-        <Inp dm={dm} label="Name *" value={cF.name} onChange={e=>setCf({...cF,name:e.target.value})} placeholder="Business or customer name"/>
-        <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number" inputMode="tel" autoComplete="tel"/>
-        <Inp dm={dm} label="Address" value={cF.address} onChange={e=>setCf({...cF,address:e.target.value})} placeholder="Full delivery address"/>
-        <div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="GPS Lat" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989" inputMode="decimal"/>
-          <Inp dm={dm} label="GPS Lng" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278" inputMode="decimal"/>
+      <Sheet dm={dm} open={!!cSh} onClose={()=>setCsh(null)} title={cSh==="add"?"👤 New Customer":"✏️ Edit Customer"}>
+        {/* ── IDENTITY SECTION ── */}
+        <div style={{background:dm?"rgba(245,158,11,0.06)":"rgba(245,158,11,0.04)",border:`1px solid ${dm?"rgba(245,158,11,0.2)":"rgba(245,158,11,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"#f59e0b22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>👤</div>
+            <div>
+              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Customer Identity</p>
+              <p style={{color:t.sub,fontSize:11}}>Name, contact, and basic info</p>
+            </div>
+          </div>
+          <Inp dm={dm} label="Customer / Business Name *" value={cF.name} onChange={e=>setCf({...cF,name:e.target.value})} placeholder="e.g. Hotel Saffron, Ravi Kumar"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number" inputMode="tel" autoComplete="tel"/>
+            <Inp dm={dm} label="Customer Since" type="date" value={cF.joinDate} onChange={e=>setCf({...cF,joinDate:e.target.value})}/>
+          </div>
+          {/* Status toggle inline */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:t.card,borderRadius:12,padding:"10px 14px",border:`1px solid ${t.border}`}}>
+            <div>
+              <p style={{color:t.text,fontSize:13,fontWeight:600}}>Account Status</p>
+              <p style={{color:t.sub,fontSize:11,marginTop:1}}>{cF.active?"This customer is active and will appear in orders":"Inactive — won't appear in new order dropdowns"}</p>
+            </div>
+            <div style={{display:"flex",gap:4,background:t.inp,borderRadius:10,padding:3,border:`1px solid ${t.border}`}}>
+              {[["active","● Active","#10b981"],["inactive","○ Inactive","#6b7280"]].map(([val,lbl,col])=>(
+                <button key={val} onClick={()=>setCf({...cF,active:val==="active"})}
+                  style={{background:(cF.active?"active":"inactive")===val?col+"22":"transparent",color:(cF.active?"active":"inactive")===val?col:t.sub,border:(cF.active?"active":"inactive")===val?`1.5px solid ${col}40`:"1.5px solid transparent",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              ))}
+            </div>
+          </div>
         </div>
-        <Inp dm={dm} label="Customer Since" type="date" value={cF.joinDate} onChange={e=>setCf({...cF,joinDate:e.target.value})}/>
-        <p style={{color:t.sub}} className="text-[11px]">💡 Long-press location in Google Maps → copy coordinates.</p>
-        <Hr dm={dm}/>
-        <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Regular Order</p>
-        <OrderEditor dm={dm} products={products} orderLines={cF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setCf(f=>({...f,orderLines:ol}))}/>
-        <Hr dm={dm}/>
-        {canSeeFinancials&&<div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
-          <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
-          <Inp dm={dm} label="Partial Payment (₹)" type="number" inputMode="numeric" value={cF.partialPay||""} onChange={e=>setCf({...cF,partialPay:e.target.value})} placeholder="Partial amount received (not yet fully settled)"/>
+
+        {/* ── DELIVERY LOCATION ── */}
+        <div style={{background:dm?"rgba(14,165,233,0.06)":"rgba(14,165,233,0.04)",border:`1px solid ${dm?"rgba(14,165,233,0.2)":"rgba(14,165,233,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"#0ea5e922",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📍</div>
+            <div>
+              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Delivery Location</p>
+              <p style={{color:t.sub,fontSize:11}}>Address and GPS coordinates</p>
+            </div>
+          </div>
+          <Inp dm={dm} label="Full Delivery Address" value={cF.address} onChange={e=>setCf({...cF,address:e.target.value})} placeholder="e.g. Shop 4, MG Road, Panaji, Goa"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Inp dm={dm} label="GPS Latitude" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989" inputMode="decimal"/>
+            <Inp dm={dm} label="GPS Longitude" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278" inputMode="decimal"/>
+          </div>
+          <p style={{color:t.sub,fontSize:11}}>💡 Long-press a location in Google Maps → Share → Copy coordinates to get lat/lng.</p>
+          {cF.lat&&cF.lng&&<a href={mapU(cF.address,cF.lat,cF.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e915",color:"#0ea5e9",border:"1px solid #0ea5e930",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>📍 Preview on Google Maps ↗</a>}
+        </div>
+
+        {/* ── REGULAR ORDER TEMPLATE ── */}
+        <div style={{background:dm?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.04)",border:`1px solid ${dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"#8b5cf622",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📦</div>
+            <div>
+              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Regular Order Template</p>
+              <p style={{color:t.sub,fontSize:11}}>Default items and quantities for this customer</p>
+            </div>
+          </div>
+          <OrderEditor dm={dm} products={products} orderLines={cF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setCf(f=>({...f,orderLines:ol}))}/>
+        </div>
+
+        {/* ── FINANCIALS ── */}
+        {canSeeFinancials&&<div style={{background:dm?"rgba(16,185,129,0.06)":"rgba(16,185,129,0.04)",border:`1px solid ${dm?"rgba(16,185,129,0.2)":"rgba(16,185,129,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>💰</div>
+            <div>
+              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Financial Balances</p>
+              <p style={{color:t.sub,fontSize:11}}>Manually set opening balances if needed</p>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
+            <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
+          </div>
+          <Inp dm={dm} label="Partial Payment On Hold (₹)" type="number" inputMode="numeric" value={cF.partialPay||""} onChange={e=>setCf({...cF,partialPay:e.target.value})} placeholder="Amount received but not yet fully applied"/>
+          {(+cF.paid>0||+cF.pending>0)&&<div style={{background:t.card,borderRadius:12,padding:"10px 14px",border:`1px solid ${t.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+              <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(+cF.paid||0)}</span>
+              <span style={{color:+cF.pending>0?"#ef4444":"#10b981",fontWeight:600}}>{+cF.pending>0?`Pending: ${inr(+cF.pending)}`:"✓ Fully paid"}</span>
+            </div>
+            {(+cF.paid>0||+cF.pending>0)&&<div style={{height:5,borderRadius:5,overflow:"hidden",background:t.border}}>
+              <div style={{width:`${(+cF.paid||0)+( +cF.pending||0)>0?Math.round((+cF.paid||0)/((+cF.paid||0)+(+cF.pending||0))*100):100}%`,height:"100%",background:+cF.pending>0?"#f59e0b":"#10b981",borderRadius:5}}/>
+            </div>}
+          </div>}
         </div>}
-        <Inp dm={dm} label="Notes" value={cF.notes} onChange={e=>setCf({...cF,notes:e.target.value})} placeholder="Special instructions…"/>
-        <Sel dm={dm} label="Status" value={cF.active?"active":"inactive"} onChange={e=>setCf({...cF,active:e.target.value==="active"})}>
-          <option value="active">Active</option><option value="inactive">Inactive</option>
-        </Sel>
-        <Btn dm={dm} onClick={saveC} className="w-full">Save Customer</Btn>
+
+        {/* ── NOTES ── */}
+        <div>
+          <label style={{color:t.sub,display:"block",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📝 Notes & Special Instructions</label>
+          <textarea value={cF.notes} onChange={e=>setCf({...cF,notes:e.target.value})} placeholder="e.g. Prefers crispy, deliver before 9am, call before arriving…" rows={3}
+            style={{width:"100%",background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
+        </div>
+
+        <Btn dm={dm} onClick={saveC} className="w-full" style={{minHeight:52,fontSize:15,fontWeight:800}}>
+          {cSh==="add"?"✓ Add Customer":"✓ Save Changes"}
+        </Btn>
       </Sheet>
 
       {/* Customer View */}
@@ -10723,27 +11049,54 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         </Sel>
         <Inp dm={dm} label="Notes" value={dF.notes} onChange={e=>setDf({...dF,notes:e.target.value})} placeholder="e.g. Leave at gate, call before"/>
         <Hr dm={dm}/>
-        {/* REPLACEMENT SECTION */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Replacement</p>
-            <button
-              onClick={()=>setDf(f=>({...f,replacement:{...(f.replacement||{}),done:!(f.replacement?.done)}}))}
-              style={dF.replacement?.done?{background:"#f97316",color:"#fff"}:{background:t.inp,color:t.sub}}
-              className="text-xs font-semibold px-3 py-1 rounded-lg transition-all">
-              {dF.replacement?.done?"✓ Replacement Done":"Mark as Replaced"}
+        {/* ── REPLACEMENT SECTION — Redesigned ── */}
+        <div style={{background:dF.replacement?.done?(dm?"rgba(249,115,22,0.08)":"rgba(249,115,22,0.05)"):(dm?"rgba(255,255,255,0.03)":"#fafaf8"),border:`1.5px solid ${dF.replacement?.done?"#f9731650":t.border}`,borderRadius:16,padding:"14px 16px",transition:"all 0.2s"}}>
+          {/* Header row */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:dF.replacement?.done?14:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:34,height:34,borderRadius:10,background:dF.replacement?.done?"#f9731625":"#f9731612",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,transition:"background 0.2s"}}>🔄</div>
+              <div>
+                <p style={{color:dF.replacement?.done?"#f97316":t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Replacement / Return</p>
+                <p style={{color:t.sub,fontSize:11}}>Record items returned or swapped</p>
+              </div>
+            </div>
+            {/* Big toggle button */}
+            <button onClick={()=>setDf(f=>({...f,replacement:{...(f.replacement||{}),done:!(f.replacement?.done)}}))}
+              style={{background:dF.replacement?.done?"#f97316":"transparent",color:dF.replacement?.done?"#fff":"#f97316",border:`2px solid #f97316`,borderRadius:12,padding:"7px 16px",fontSize:12,fontWeight:800,cursor:"pointer",transition:"all 0.2s",flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:40}}>
+              {dF.replacement?.done?"✓ Replacement Logged":"+ Log Replacement"}
             </button>
           </div>
           {dF.replacement?.done&&(
-            <div className="flex flex-col gap-3">
-              <p style={{color:t.sub}} className="text-[11px]">Fill in what was replaced and why — this will show on the delivery card and be exportable.</p>
-              <Inp dm={dm} label="Replacement Item" value={dF.replacement?.item||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),item:e.target.value}}))} placeholder="e.g. Roti replaced with Paratha Pack"/>
-              <div className="grid grid-cols-2 gap-3">
-                <Inp dm={dm} label="Qty Replaced" value={dF.replacement?.qty||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),qty:e.target.value}}))} placeholder="e.g. 10 pcs"/>
-                <Inp dm={dm} label="Amount Diff (₹)" type="number" value={dF.replacement?.amount||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),amount:e.target.value}}))} placeholder="e.g. 50"/>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {/* Replacement type pills */}
+              <div>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Type</p>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[["swap","🔄 Swap / Exchange"],["return","↩ Return / Refund"],["damaged","⚠️ Damaged"],["wrong","❌ Wrong Item"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setDf(f=>({...f,replacement:{...(f.replacement||{}),type:v}}))}
+                      style={{background:dF.replacement?.type===v?"#f9731622":"transparent",color:dF.replacement?.type===v?"#f97316":t.sub,border:`1.5px solid ${dF.replacement?.type===v?"#f97316":t.border}`,borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {(+dF.replacement?.amount)>0&&<div style={{background:"#f9731620",border:"1px solid #f9741640"}} className="rounded-xl px-3 py-2"><p className="text-[11px] text-orange-500 font-semibold">💡 {inr(+dF.replacement.amount)} will be deducted from customer pending on save.</p></div>}
-              <Inp dm={dm} label="Reason for Replacement" value={dF.replacement?.reason||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),reason:e.target.value}}))} placeholder="e.g. Customer requested, out of stock…"/>
+              {/* Item name */}
+              <Inp dm={dm} label="Item Being Replaced / Returned *" value={dF.replacement?.item||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),item:e.target.value}}))} placeholder="e.g. Roti Pack, Paratha x10…"/>
+              {/* Qty + Amount row */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Inp dm={dm} label="Quantity" value={dF.replacement?.qty||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),qty:e.target.value}}))} placeholder="e.g. 10 pcs"/>
+                <Inp dm={dm} label="Amount to Deduct (₹)" type="number" value={dF.replacement?.amount||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),amount:e.target.value}}))} placeholder="0"/>
+              </div>
+              {/* Deduction preview */}
+              {(+dF.replacement?.amount)>0&&<div style={{background:"#f9731618",border:"1px solid #f9731640",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <p style={{color:"#f97316",fontWeight:700,fontSize:12}}>💡 Deduction preview</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>{inr(+dF.replacement.amount)} will be deducted from this order's payable amount</p>
+                </div>
+                <span style={{color:"#f97316",fontWeight:900,fontSize:18}}>−{inr(+dF.replacement.amount)}</span>
+              </div>}
+              {/* Reason */}
+              <Inp dm={dm} label="Reason / Notes" value={dF.replacement?.reason||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),reason:e.target.value}}))} placeholder="e.g. Customer complained quality, item expired, wrong order…"/>
             </div>
           )}
         </div>
@@ -11134,155 +11487,330 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       </Sheet>
 
 
-      {/* Production Sheet */}
-      <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"Log New Batch":"Edit Batch"}>
-        {/* ── Batch Identity Header ── */}
-        <div style={{background:dm?"rgba(139,92,246,0.18)":"rgba(139,92,246,0.1)",border:"1.5px solid rgba(139,92,246,0.4)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-          <div>
-            <p style={{color:"#8b5cf6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>Batch ID</p>
-            <p style={{color:T(dm).text,fontWeight:900,fontSize:20,lineHeight:1}}>{ptF.batchLabel||"Batch —"}</p>
-          </div>
-          <div style={{background:"#8b5cf6",color:"#fff",borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:800,letterSpacing:"0.02em"}}>{ptF.batchLabel||"—"}</div>
-        </div>
-        <Inp dm={dm} label="Batch Label" value={ptF.batchLabel||""} onChange={e=>setPtF({...ptF,batchLabel:e.target.value})} placeholder="e.g. Batch 1, Morning Run A…"/>
-        <Inp dm={dm} label="Date" type="date" value={ptF.date||today()} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
-        <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>setPtF({...ptF,product:e.target.value})}>
-          {products.map(p=><option key={p.id}>{p.name}</option>)}
-          <option value="__custom__">Other / Custom</option>
-        </Sel>
-        {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name" value={ptF.customProduct||""} onChange={e=>setPtF({...ptF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
-        <Sel dm={dm} label="Shift (optional)" value={ptF.shift||""} onChange={e=>setPtF({...ptF,shift:e.target.value})}>
-          <option value="">— No Shift —</option>
-          {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-        </Sel>
-        <div className="grid grid-cols-2 gap-3">
-          <Inp dm={dm} label="Actual (units)" type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="Fill after shift"/>
-          <Sel dm={dm} label="QC Grade" value={ptF.qcGrade||"A"} onChange={e=>setPtF({...ptF,qcGrade:e.target.value})}>
-            <option value="A">A — Pass</option>
-            <option value="B">B — Pass</option>
-            <option value="C">C — Marginal</option>
-            <option value="F">F — Fail</option>
-          </Sel>
-        </div>
-        <Inp dm={dm} label="Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff…"/>
-        {ptAutoDeduct&&+ptF.actual>0&&(()=>{
-          const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
-          const pn=pname.toLowerCase();
-          const scored=supplies.map(s=>{const sn=(s.item||"").toLowerCase();let score=0;if(sn===pn)score=100;else if(sn.includes(pn)||pn.includes(sn))score=60;else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}return{...s,_score:score};}).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
-          const match=scored[0];
-          if(!match)return null;
-          const afterQty=Math.max(0,(match.qty||0)-+ptF.actual);
-          return <div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:10,padding:"8px 12px"}}>
-            <p style={{color:"#10b981",fontSize:11,fontWeight:700}}>📦 Auto-deduct: {+ptF.actual} from "{match.item}" → {afterQty} {match.unit} remaining</p>
-          </div>;
-        })()}
-
-        {/* ── Embedded Wastage Section ── */}
-        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-            <div>
-              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>🗑️ Wastage</p>
-              <p style={{color:T(dm).sub,fontSize:10}}>Log wastage for this batch</p>
-            </div>
-            <button onClick={()=>setPtF(f=>({...f,embWastage:[...(f.embWastage||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,qty:"",unit:"pcs",type:(settings?.wastageTypes||["Other"])[0],reason:"",cost:"",shift:f.shift||"",date:f.date||today(),loggedBy:sess?.name||displayName}]}))}
-              style={{background:"#f9731620",color:"#f97316",border:"1px solid #f9731640",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>
-          </div>
-          {(ptF.embWastage||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No wastage entries for this batch.</p>}
-          {(ptF.embWastage||[]).map((w,wi)=>(
-            <div key={w.id||wi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>Entry {wi+1}</span>
-                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).filter((_,i)=>i!==wi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+      {/* Production Sheet — Redesigned Log New Batch */}
+      <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"🏭 Log New Batch":"✏️ Edit Batch"}>
+        {(()=>{
+          const tS=T(dm);
+          // ── SECTION 1: Batch Identity ──────────────────────────────
+          return <>
+          {/* Batch Identity Banner */}
+          <div style={{background:`linear-gradient(135deg,${dm?"#2d1f5e":"#ede9fe"},${dm?"#1e3a5f":"#dbeafe"})`,borderRadius:16,padding:"14px 16px",marginBottom:4}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{color:dm?"#c4b5fd":"#7c3aed",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>🏭 Batch Identity</p>
+                <p style={{color:dm?"#e2d9f3":"#1e1b4b",fontWeight:900,fontSize:22,lineHeight:1,marginBottom:2}}>{ptF.batchLabel||"New Batch"}</p>
+                <p style={{color:dm?"#a5b4fc":"#6366f1",fontSize:11,fontWeight:600}}>{ptF.product||"No product selected"}{ptF.shift?` · ${ptF.shift} Shift`:""}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Inp dm={dm} label="Product" value={w.product} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
-                <div className="grid grid-cols-2 gap-1">
-                  <Inp dm={dm} label="Qty" type="number" value={w.qty} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,qty:e.target.value}:x)}))} placeholder="0"/>
-                  <Sel dm={dm} label="Unit" value={w.unit} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,unit:e.target.value}:x)}))}>
-                    {(settings?.supplyUnits||["pcs","kg","g","L","mL","bags","boxes","dozen"]).map(u=><option key={u}>{u}</option>)}
-                  </Sel>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{background:dm?"rgba(139,92,246,0.3)":"rgba(139,92,246,0.15)",border:`2px solid ${dm?"#7c3aed":"#8b5cf6"}`,borderRadius:12,padding:"8px 14px",marginBottom:4}}>
+                  <p style={{color:dm?"#c4b5fd":"#7c3aed",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Units</p>
+                  <p style={{color:dm?"#fff":"#1e1b4b",fontWeight:900,fontSize:26,lineHeight:1}}>{ptF.actual||"—"}</p>
+                </div>
+                <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                  {["A","B","C","F"].map(g=><span key={g} style={{background:ptF.qcGrade===g?({A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6")+"22":"transparent",color:{A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6",border:`1.5px solid ${ptF.qcGrade===g?({A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6"):"transparent"}`,borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:800}}>{g}</span>)}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <Sel dm={dm} label="Type" value={w.type} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,type:e.target.value}:x)}))}>
-                  {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t2=><option key={t2}>{t2}</option>)}
-                </Sel>
-                {can("waste_logCost")&&<Inp dm={dm} label="Cost (₹)" type="number" value={w.cost||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,cost:e.target.value}:x)}))} placeholder="0"/>}
-              </div>
-              <Inp dm={dm} label="Reason" value={w.reason||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,reason:e.target.value}:x)}))} placeholder="e.g. Overcooked, dropped…"/>
             </div>
-          ))}
-        </div>
-
-        {/* ── Embedded QC Section ── */}
-        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-            <div>
-              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>✅ QC Checks</p>
-              <p style={{color:T(dm).sub,fontSize:10}}>Quality checks for this batch</p>
-            </div>
-            <button onClick={()=>setPtF(f=>({...f,embQC:[...(f.embQC||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,grade:"A",checker:sess?.name||displayName,notes:"",shift:f.shift||"",date:f.date||today()}]}))}
-              style={{background:"#14b8a620",color:"#14b8a6",border:"1px solid #14b8a640",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>
           </div>
-          {(ptF.embQC||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No QC entries for this batch.</p>}
-          {(ptF.embQC||[]).map((q,qi)=>(
-            <div key={q.id||qi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>QC Check {qi+1}</span>
-                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).filter((_,i)=>i!==qi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
-              </div>
-              <Inp dm={dm} label="Product" value={q.product} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
-              <div className="grid grid-cols-4 gap-2 mt-2">
-                {[{g:"A",color:"#10b981"},{g:"B",color:"#f59e0b"},{g:"C",color:"#f97316"},{g:"F",color:"#ef4444"}].map(({g,color})=>(
-                  <button key={g} onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,grade:g}:x)}))}
-                    style={{background:q.grade===g?color+"25":T(dm).card,border:`2px solid ${q.grade===g?color:T(dm).inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
-                    <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{g}</p>
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <Inp dm={dm} label="Checker" value={q.checker||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,checker:e.target.value}:x)}))} placeholder="Inspector"/>
-                <Inp dm={dm} label="Notes" value={q.notes||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,notes:e.target.value}:x)}))} placeholder="Observations…"/>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {/* ── Embedded Handover Section ── */}
-        <div style={{borderTop:`1.5px solid ${T(dm).border}`,paddingTop:16,marginTop:4}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-            <div>
-              <p style={{color:T(dm).text,fontWeight:800,fontSize:13}}>📋 Handovers</p>
-              <p style={{color:T(dm).sub,fontSize:10}}>Shift handover notes for this batch</p>
+          {/* ── SECTION 1: Core Details ── */}
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
+              <p style={{color:"#8b5cf6",fontWeight:800,fontSize:12}}>① Batch Details</p>
+              <p style={{color:tS.sub,fontSize:10}}>What was produced, when, and by which shift</p>
             </div>
-            {can("prod_handover")&&<button onClick={()=>setPtF(f=>({...f,embHandover:[...(f.embHandover||[]),{id:uid(),shift:f.shift||"",nextShift:"",note:"",issues:"",loggedBy:sess?.name||displayName,date:f.date||today()}]}))}
-              style={{background:"#6366f120",color:"#6366f1",border:"1px solid #6366f140",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>}
+            <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Inp dm={dm} label="Batch Label *" value={ptF.batchLabel||""} onChange={e=>setPtF({...ptF,batchLabel:e.target.value})} placeholder="e.g. Batch 1, Morning Run A"/>
+                <Inp dm={dm} label="Date *" type="date" value={ptF.date||today()} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
+              </div>
+              <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>setPtF({...ptF,product:e.target.value})}>
+                <option value="">— Select product —</option>
+                {products.map(p=><option key={p.id}>{p.name}</option>)}
+                <option value="__custom__">Other / Custom</option>
+              </Sel>
+              {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name *" value={ptF.customProduct||""} onChange={e=>setPtF({...ptF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
+              {/* Shift pills */}
+              <div>
+                <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Shift</p>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {[{v:"",l:"No Shift"},...(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=>({v:s,l:s}))].map(({v,l})=>(
+                    <button key={v} onClick={()=>setPtF(f=>({...f,shift:v}))}
+                      style={{background:ptF.shift===v?"#8b5cf6":tS.inp,color:ptF.shift===v?"#fff":tS.sub,border:`1.5px solid ${ptF.shift===v?"#8b5cf6":tS.border}`,borderRadius:99,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-          {(ptF.embHandover||[]).length===0&&<p style={{color:T(dm).sub,fontSize:11,textAlign:"center",padding:"8px 0"}}>No handover notes for this batch.</p>}
-          {(ptF.embHandover||[]).map((h,hi)=>(
-            <div key={h.id||hi} style={{background:T(dm).inp,border:`1px solid ${T(dm).inpB}`,borderRadius:12,padding:"10px 12px",marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <span style={{color:T(dm).sub,fontSize:11,fontWeight:700}}>Handover {hi+1}</span>
-                {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).filter((_,i)=>i!==hi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Sel dm={dm} label="Current Shift" value={h.shift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,shift:e.target.value}:x)}))}>
-                  <option value="">—</option>
-                  {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-                </Sel>
-                <Sel dm={dm} label="Next Shift" value={h.nextShift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,nextShift:e.target.value}:x)}))}>
-                  <option value="">—</option>
-                  {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-                </Sel>
-              </div>
-              <Inp dm={dm} label="Handover Note *" value={h.note||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,note:e.target.value}:x)}))} placeholder="e.g. Machine needs servicing, batch came out well…"/>
-              <Inp dm={dm} label="Issues / Flags" value={h.issues||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,issues:e.target.value}:x)}))} placeholder="e.g. Low gas, 2 staff absent…"/>
-              <Inp dm={dm} label="Logged By" value={h.loggedBy||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,loggedBy:e.target.value}:x)}))} placeholder="Name"/>
-            </div>
-          ))}
-        </div>
 
-        <Btn dm={dm} onClick={savePT} className="w-full" style={{marginTop:8}}>💾 Save Batch</Btn>
+          {/* ── SECTION 2: Output & QC ── */}
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:dm?"rgba(16,185,129,0.1)":"rgba(16,185,129,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
+              <p style={{color:"#10b981",fontWeight:800,fontSize:12}}>② Output & Quality</p>
+              <p style={{color:tS.sub,fontSize:10}}>Units produced and quality grade for recall traceability</p>
+            </div>
+            <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
+              {/* Big unit counter */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"end"}}>
+                <div>
+                  <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Units Produced *</p>
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:tS.inp,border:`1.5px solid ${tS.inpB}`,borderRadius:12,padding:"8px 12px"}}>
+                    <button onClick={()=>setPtF(f=>({...f,actual:String(Math.max(0,(+f.actual||0)-1))}))}
+                      style={{width:32,height:32,borderRadius:8,background:tS.card,border:`1px solid ${tS.border}`,color:tS.text,fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
+                    <input type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="0"
+                      style={{flex:1,background:"transparent",border:"none",outline:"none",color:tS.text,fontWeight:900,fontSize:24,textAlign:"center",minWidth:0}}/>
+                    <button onClick={()=>setPtF(f=>({...f,actual:String((+f.actual||0)+1)}))}
+                      style={{width:32,height:32,borderRadius:8,background:"#8b5cf6",border:"none",color:"#fff",fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>+</button>
+                  </div>
+                  {/* Quick presets */}
+                  <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}}>
+                    {(settings?.batchUnitPresets||[50,100,150,200,250,300]).map(n=>(
+                      <button key={n} onClick={()=>setPtF(f=>({...f,actual:String(n)}))}
+                        style={{background:+ptF.actual===n?"#8b5cf6":tS.inp,color:+ptF.actual===n?"#fff":tS.sub,border:`1px solid ${+ptF.actual===n?"#8b5cf6":tS.border}`,borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.1s"}}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* QC Grade visual picker */}
+                <div>
+                  <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>QC Grade *</p>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
+                      <button key={g} onClick={()=>setPtF(f=>({...f,qcGrade:g}))}
+                        style={{background:ptF.qcGrade===g?color+"25":tS.card,border:`2px solid ${ptF.qcGrade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                        <p style={{color,fontWeight:900,fontSize:20,lineHeight:1}}>{g}</p>
+                        <p style={{color:ptF.qcGrade===g?color:tS.sub,fontSize:9,fontWeight:600,marginTop:2}}>{label}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Auto-deduct preview */}
+              {ptAutoDeduct&&+ptF.actual>0&&(()=>{
+                const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
+                const pn=pname.toLowerCase();
+                const scored=supplies.map(s=>{const sn=(s.item||"").toLowerCase();let score=0;if(sn===pn)score=100;else if(sn.includes(pn)||pn.includes(sn))score=60;else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}return{...s,_score:score};}).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
+                const match=scored[0];
+                if(!match)return null;
+                const afterQty=Math.max(0,(match.qty||0)-+ptF.actual);
+                return <div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>📦</span>
+                  <div style={{flex:1}}>
+                    <p style={{color:"#10b981",fontSize:11,fontWeight:700}}>Auto-deduct preview</p>
+                    <p style={{color:tS.sub,fontSize:10}}>Saves "{match.item}": {match.qty} → {afterQty} {match.unit} after this batch</p>
+                  </div>
+                </div>;
+              })()}
+              <Inp dm={dm} label="Batch Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff, quality remarks…"/>
+            </div>
+          </div>
+
+          {/* ── SECTION 3: Customer Traceability ── */}
+          {(()=>{
+            const batchDate=ptF.date||today();
+            const sameDateDelivs=deliveries.filter(d=>d.date===batchDate&&d.status!=="Cancelled");
+            const productName=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
+            // Find deliveries that include this product
+            const matchingDelivs=productName?sameDateDelivs.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase());})):sameDateDelivs;
+            const totalUnitsOrdered=matchingDelivs.reduce((s,d)=>Object.entries(safeO(d.orderLines)).reduce((s2,[pid,l])=>{if(!(l.qty>0))return s2;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";if(!productName||pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase()))return s2+(+l.qty||0);return s2;},s),0);
+            return <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+              <div style={{background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.06)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <p style={{color:"#7c3aed",fontWeight:800,fontSize:12}}>③ Customer Traceability</p>
+                  <p style={{color:tS.sub,fontSize:10}}>Who receives products from this batch — for recall tracking</p>
+                </div>
+                <span style={{background:"#7c3aed22",color:"#7c3aed",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:800}}>{matchingDelivs.length} orders</span>
+              </div>
+              <div style={{padding:"14px 14px"}}>
+                {matchingDelivs.length===0
+                  ?<div style={{textAlign:"center",padding:"12px 0"}}>
+                    <p style={{fontSize:20,marginBottom:6}}>📭</p>
+                    <p style={{color:tS.sub,fontSize:12,fontWeight:600}}>No deliveries found for {batchDate}</p>
+                    <p style={{color:tS.sub,fontSize:10,marginTop:3}}>{productName?"for "+productName+" — ":""}Deliveries added for this date will appear here automatically</p>
+                  </div>
+                  :<>
+                    {/* Summary row */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                      {[
+                        {l:"Customers",v:matchingDelivs.length,c:"#7c3aed"},
+                        {l:"Units Ordered",v:totalUnitsOrdered,c:"#8b5cf6"},
+                        {l:"Surplus/Deficit",v:(+ptF.actual||0)-totalUnitsOrdered,c:(+ptF.actual||0)>=totalUnitsOrdered?"#10b981":"#ef4444"},
+                      ].map(x=><div key={x.l} style={{background:tS.inp,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                        <p style={{color:x.c,fontWeight:900,fontSize:16,lineHeight:1}}>{x.v>=0&&x.l==="Surplus/Deficit"&&x.v>0?"+":""}{x.v}</p>
+                        <p style={{color:tS.sub,fontSize:9,marginTop:3,fontWeight:600,textTransform:"uppercase"}}>{x.l}</p>
+                      </div>)}
+                    </div>
+                    {/* Customer list */}
+                    <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
+                      {matchingDelivs.map((d,di)=>{
+                        const dInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
+                        const prodQty=Object.entries(safeO(d.orderLines)).filter(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return !productName||pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase());}).reduce((s,[,l])=>s+(+l.qty||0),0);
+                        const statusColor=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                        return <div key={d.id} style={{background:tS.card,border:`1px solid ${tS.border}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:10,borderLeft:`3px solid ${statusColor}`}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:2}}>
+                              <p style={{color:tS.text,fontWeight:700,fontSize:12}}>{d.customer}</p>
+                              <span style={{background:statusColor+"15",color:statusColor,borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{d.status}</span>
+                              {dInvNo&&<span style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",color:"#8b5cf6",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {dInvNo}</span>}
+                            </div>
+                            {d.address&&<p style={{color:tS.sub,fontSize:10}}>📍 {d.address}</p>}
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <p style={{color:"#8b5cf6",fontWeight:800,fontSize:14,lineHeight:1}}>{prodQty}</p>
+                            <p style={{color:tS.sub,fontSize:9}}>units</p>
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                    {matchingDelivs.length>0&&<p style={{color:tS.sub,fontSize:10,marginTop:8,textAlign:"center"}}>💡 This links batch to customers automatically — critical for product recall</p>}
+                  </>
+                }
+              </div>
+            </div>;
+          })()}
+
+          {/* ── SECTION 4: Wastage ── */}
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:dm?"rgba(249,115,22,0.1)":"rgba(249,115,22,0.05)",padding:"10px 14px",borderBottom:(ptF.embWastage||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <p style={{color:"#f97316",fontWeight:800,fontSize:12}}>④ Wastage <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
+                <p style={{color:tS.sub,fontSize:10}}>Log any wasted or rejected units from this batch</p>
+              </div>
+              <button onClick={()=>setPtF(f=>({...f,embWastage:[...(f.embWastage||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,qty:"",unit:"pcs",type:(settings?.wastageTypes||["Other"])[0],reason:"",cost:"",shift:f.shift||"",date:f.date||today(),loggedBy:sess?.name||displayName}]}))}
+                style={{background:"#f9731620",color:"#f97316",border:"1px solid #f9731640",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:14}}>+</span> Add Wastage
+              </button>
+            </div>
+            {(ptF.embWastage||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              {(ptF.embWastage||[]).map((w,wi)=>(
+                <div key={w.id||wi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{background:"#f9731620",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🗑️ Entry {wi+1}</span>
+                    </div>
+                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).filter((_,i)=>i!==wi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 80px",gap:8}}>
+                      <Inp dm={dm} label="Product" value={w.product} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
+                      <Inp dm={dm} label="Qty" type="number" value={w.qty} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,qty:e.target.value}:x)}))} placeholder="0"/>
+                      <Sel dm={dm} label="Unit" value={w.unit} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,unit:e.target.value}:x)}))}>
+                        {(settings?.supplyUnits||["pcs","kg","g","L","mL","bags","boxes","dozen"]).map(u=><option key={u}>{u}</option>)}
+                      </Sel>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      <Sel dm={dm} label="Type" value={w.type} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,type:e.target.value}:x)}))}>
+                        {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t2=><option key={t2}>{t2}</option>)}
+                      </Sel>
+                      {can("waste_logCost")&&<Inp dm={dm} label="Cost (₹)" type="number" value={w.cost||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,cost:e.target.value}:x)}))} placeholder="0"/>}
+                    </div>
+                    <Inp dm={dm} label="Reason" value={w.reason||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,reason:e.target.value}:x)}))} placeholder="e.g. Overcooked, dropped, equipment failure…"/>
+                  </div>
+                </div>
+              ))}
+            </div>}
+          </div>
+
+          {/* ── SECTION 5: QC Checks ── */}
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:dm?"rgba(20,184,166,0.1)":"rgba(20,184,166,0.05)",padding:"10px 14px",borderBottom:(ptF.embQC||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <p style={{color:"#14b8a6",fontWeight:800,fontSize:12}}>⑤ QC Checks <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
+                <p style={{color:tS.sub,fontSize:10}}>Detailed quality inspection records for this batch</p>
+              </div>
+              <button onClick={()=>setPtF(f=>({...f,embQC:[...(f.embQC||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,grade:"A",checker:sess?.name||displayName,notes:"",shift:f.shift||"",date:f.date||today()}]}))}
+                style={{background:"#14b8a620",color:"#14b8a6",border:"1px solid #14b8a640",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:14}}>+</span> Add Check
+              </button>
+            </div>
+            {(ptF.embQC||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              {(ptF.embQC||[]).map((q,qi)=>(
+                <div key={q.id||qi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{background:"#14b8a620",color:"#14b8a6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>✅ Check {qi+1}</span>
+                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).filter((_,i)=>i!==qi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+                  </div>
+                  <Inp dm={dm} label="Product Inspected" value={q.product} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>
+                    {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
+                      <button key={g} onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,grade:g}:x)}))}
+                        style={{background:q.grade===g?color+"25":tS.card,border:`2px solid ${q.grade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
+                        <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{g}</p>
+                        <p style={{color:q.grade===g?color:tS.sub,fontSize:9,fontWeight:600}}>{label}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+                    <Inp dm={dm} label="Inspector Name" value={q.checker||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,checker:e.target.value}:x)}))} placeholder="Inspector"/>
+                    <Inp dm={dm} label="Observations" value={q.notes||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,notes:e.target.value}:x)}))} placeholder="e.g. Colour good, texture ok…"/>
+                  </div>
+                </div>
+              ))}
+            </div>}
+          </div>
+
+          {/* ── SECTION 6: Handovers ── */}
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:dm?"rgba(99,102,241,0.1)":"rgba(99,102,241,0.05)",padding:"10px 14px",borderBottom:(ptF.embHandover||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <p style={{color:"#6366f1",fontWeight:800,fontSize:12}}>⑥ Shift Handover <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
+                <p style={{color:tS.sub,fontSize:10}}>Notes passed to the next shift</p>
+              </div>
+              {can("prod_handover")&&<button onClick={()=>setPtF(f=>({...f,embHandover:[...(f.embHandover||[]),{id:uid(),shift:f.shift||"",nextShift:"",note:"",issues:"",loggedBy:sess?.name||displayName,date:f.date||today()}]}))}
+                style={{background:"#6366f120",color:"#6366f1",border:"1px solid #6366f140",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:14}}>+</span> Add Note
+              </button>}
+            </div>
+            {(ptF.embHandover||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              {(ptF.embHandover||[]).map((h,hi)=>(
+                <div key={h.id||hi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>📋 Handover {hi+1}</span>
+                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).filter((_,i)=>i!==hi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <Sel dm={dm} label="Current Shift" value={h.shift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,shift:e.target.value}:x)}))}>
+                      <option value="">—</option>
+                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                    </Sel>
+                    <Sel dm={dm} label="Next Shift" value={h.nextShift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,nextShift:e.target.value}:x)}))}>
+                      <option value="">—</option>
+                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
+                    </Sel>
+                  </div>
+                  <Inp dm={dm} label="Handover Note *" value={h.note||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,note:e.target.value}:x)}))} placeholder="e.g. Machine needs servicing, batch came out well…"/>
+                  <Inp dm={dm} label="Issues / Flags" value={h.issues||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,issues:e.target.value}:x)}))} placeholder="e.g. Low gas, 2 staff absent…"/>
+                  <Inp dm={dm} label="Logged By" value={h.loggedBy||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,loggedBy:e.target.value}:x)}))} placeholder="Name"/>
+                </div>
+              ))}
+            </div>}
+          </div>
+
+          {/* ── Save Summary & Button ── */}
+          <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.06)",border:`1.5px solid rgba(139,92,246,0.3)`,borderRadius:14,padding:"14px 16px",marginTop:4}}>
+            <p style={{color:"#8b5cf6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Batch Summary</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,marginBottom:12}}>
+              {[
+                {l:"Product",v:ptF.product==="__custom__"?(ptF.customProduct||"—"):(ptF.product||"—"),c:tS.text},
+                {l:"Units",v:ptF.actual||"0",c:"#8b5cf6"},
+                {l:"Date",v:ptF.date||today(),c:tS.text},
+                {l:"QC Grade",v:ptF.qcGrade||"A",c:{A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[ptF.qcGrade]||"#10b981"},
+                {l:"Wastage Entries",v:(ptF.embWastage||[]).filter(w=>w.product&&w.qty).length,c:"#f97316"},
+                {l:"QC Checks",v:(ptF.embQC||[]).filter(q=>q.product&&q.grade).length,c:"#14b8a6"},
+              ].map(x=><div key={x.l} style={{background:tS.card,borderRadius:8,padding:"7px 10px"}}>
+                <p style={{color:tS.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{x.l}</p>
+                <p style={{color:x.c,fontWeight:700,fontSize:12,marginTop:2}}>{x.v}</p>
+              </div>)}
+            </div>
+            <Btn dm={dm} onClick={savePT} className="w-full" style={{background:"linear-gradient(135deg,#7c3aed,#6366f1)",color:"#fff",border:"none",fontSize:15,padding:"14px",fontWeight:800,letterSpacing:"0.02em"}}>
+              {ptSh==="add"?"🏭 Save Batch":"✓ Update Batch"}
+            </Btn>
+          </div>
+          </>;
+        })()}
       </Sheet>
 
       {/* QC Sheet */}
