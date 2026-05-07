@@ -1716,23 +1716,25 @@ function Sheet({open,title,onClose,children,dm}){
   const scrollYRef=useRef(0);
   useEffect(()=>{
     if(open){
-      scrollYRef.current=window.scrollY;
+      scrollYRef.current=window.scrollY||window.pageYOffset||0;
       document.body.style.overflow="hidden";
       document.body.style.position="fixed";
       document.body.style.top=`-${scrollYRef.current}px`;
       document.body.style.width="100%";
+      document.body.style.touchAction="none"; // prevents background scroll on Android
     }
     return()=>{
       document.body.style.overflow="";
       document.body.style.position="";
       document.body.style.top="";
       document.body.style.width="";
+      document.body.style.touchAction="";
       if(open) window.scrollTo(0,scrollYRef.current);
     };
   },[open]);
   if(!open)return null;
   return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:t.card,maxHeight:"94svh",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
+    <div style={{background:t.card,maxHeight:"min(94dvh,94svh,94vh)",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)",WebkitTransform:"translateZ(0)",transform:"translateZ(0)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
       {/* Drag handle — mobile only */}
       <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
         <div style={{width:40,height:4,borderRadius:99,background:t.border}}/>
@@ -2605,121 +2607,40 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     /* ── Reset & Base ── */
     *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;box-sizing:border-box;}
     button,a,[role=button]{touch-action:manipulation;cursor:pointer;}
-    input,select,textarea{touch-action:manipulation;font-size:16px!important;} /* 16px prevents iOS zoom */
+    input,select,textarea{touch-action:manipulation;font-size:16px!important;} /* 16px prevents iOS auto-zoom */
     html{-webkit-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
     body{overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;}
     ::-webkit-scrollbar{width:0;height:0;background:transparent;}
     scrollbar-width:none;
 
-    /* ── Safe area utilities ── */
+    /* ── Safe area utilities (iPhone notch / Dynamic Island / home bar) ── */
     .pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}
     .pt-safe{padding-top:env(safe-area-inset-top,0px);}
     .pl-safe{padding-left:env(safe-area-inset-left,0px);}
     .pr-safe{padding-right:env(safe-area-inset-right,0px);}
 
-    /* ── Touch target minimum (Apple HIG: 44pt, Android: 48dp) ── */
+    /* ── Touch target minimum (Apple HIG: 44pt, Google MD: 48dp) ── */
     .touch-target{min-height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;}
 
     /* ── Mobile bottom nav safe padding ── */
     .mobile-content-pad{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px));}
 
-    /* ── Inputs: larger, no zoom, clear focus ring ── */
-    @media(max-width:1023px){
-      input,select,textarea{
-        min-height:48px!important;
-        padding:12px 14px!important;
-        border-radius:12px!important;
-        font-size:16px!important;
-      }
-      input[type="date"],input[type="time"]{min-height:48px!important;}
-      select{padding-right:36px!important;}
-
-      /* ── Cards: more breathing room ── */
-      .crm-card-mobile{border-radius:16px!important;padding:16px!important;}
-
-      /* ── Bottom nav: full width, safe area ── */
-      .crm-bottom-nav{
-        height:calc(58px + env(safe-area-inset-bottom,0px));
-        padding-bottom:env(safe-area-inset-bottom,0px);
-      }
-
-      /* ── Sheets: full width on mobile ── */
-      .crm-sheet-mobile{
-        border-radius:24px 24px 0 0!important;
-        max-height:94svh!important;
-        width:100%!important;
-        padding-left:env(safe-area-inset-left,0px);
-        padding-right:env(safe-area-inset-right,0px);
-      }
-
-      /* ── Content area: respect bottom nav ── */
-      .crm-tab-content{
-        padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
-      }
-
-      /* ── Stat cards: 2-col on small screens ── */
-      .crm-stats-grid{
-        grid-template-columns:repeat(2,1fr)!important;
-        gap:10px!important;
-      }
-
-      /* ── Tables: scroll horizontally instead of overflowing ── */
-      .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
-      .crm-table-wrap table{min-width:500px;}
-
-      /* ── Hide desktop-only elements ── */
-      .desktop-only{display:none!important;}
-
-      /* ── Increase base font sizes ── */
-      .crm-row-text{font-size:14px!important;}
-      .crm-row-sub{font-size:12px!important;}
-
-      /* ── Pill / badge: bigger on mobile ── */
-      .crm-pill-mobile{padding:3px 8px!important;font-size:11px!important;}
-
-      /* ── Buttons: full-width on mobile sheets ── */
-      .crm-sheet-btn{width:100%!important;min-height:52px!important;font-size:15px!important;border-radius:14px!important;}
-
-      /* ── Smoother scrolling in sheets ── */
-      .crm-sheet-scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
-
-      /* ── Quick action grid ── */
-      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
-      @media(max-width:380px){.crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}}
-
-      /* ── Header height ── */
-      .crm-header{min-height:54px;}
-
-      /* ── Nav item active indicator ── */
-      .crm-nav-active-dot{
-        position:absolute;
-        top:0;left:50%;
-        transform:translateX(-50%);
-        width:32px;height:3px;
-        border-radius:0 0 6px 6px;
-      }
-
-      /* ── Form labels ── */
-      .crm-form-label{font-size:12px!important;letter-spacing:0.04em!important;margin-bottom:6px!important;}
-
-      /* ── Row card layout on mobile ── */
-      .crm-row-card{
-        border-radius:16px!important;
-        padding:14px 16px!important;
-        margin-bottom:8px!important;
-      }
+    /* ── Prevent text selection on interactive elements ── */
+    button,[role=button],.crm-pill-mobile,.crm-bottom-nav *{
+      -webkit-user-select:none;user-select:none;
     }
 
-    /* ── Tablet (sm-lg) tweaks ── */
-    @media(min-width:640px) and (max-width:1023px){
-      input,select,textarea{font-size:15px!important;}
-      .crm-stats-grid{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
+    /* ── Android WebView: GPU compositing for sheet animations ── */
+    .crm-sheet-mobile,.crm-bottom-nav{
+      -webkit-transform:translateZ(0);transform:translateZ(0);
+      will-change:transform;
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;
     }
 
-    /* ── Desktop: restore normal styles ── */
-    @media(min-width:1024px){
-      input,select,textarea{font-size:14px!important;min-height:40px!important;}
+    /* ── iOS momentum scrolling ── */
+    .crm-sheet-scroll,.crm-tab-content,[style*="overflow-y:auto"],[style*="overflowY"]{
+      -webkit-overflow-scrolling:touch;
+      overscroll-behavior:contain;
     }
 
     /* ── Focus: accessible, not ugly ── */
@@ -2733,6 +2654,136 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     /* ── Momentum scroll for all scroll areas ── */
     [style*="overflow-y"]{-webkit-overflow-scrolling:touch;}
     [style*="overflowY"]{-webkit-overflow-scrolling:touch;}
+
+    /* ═══════════════════════════════
+       MOBILE (< 640px)
+    ═══════════════════════════════ */
+    @media(max-width:639px){
+      input,select,textarea{
+        min-height:48px!important;
+        padding:12px 14px!important;
+        border-radius:12px!important;
+        font-size:16px!important;
+        -webkit-appearance:none;
+      }
+      input[type="date"],input[type="time"]{
+        min-height:48px!important;
+        -webkit-appearance:none;
+        appearance:none;
+      }
+      select{padding-right:36px!important;}
+
+      /* Cards */
+      .crm-card-mobile{border-radius:16px!important;padding:16px!important;}
+      .crm-row-card{border-radius:16px!important;padding:14px 16px!important;margin-bottom:8px!important;}
+
+      /* Bottom nav */
+      .crm-bottom-nav{
+        height:calc(56px + env(safe-area-inset-bottom,0px))!important;
+        padding-bottom:env(safe-area-inset-bottom,0px)!important;
+      }
+
+      /* Sheets: full-width bottom sheet */
+      .crm-sheet-mobile{
+        border-radius:24px 24px 0 0!important;
+        max-height:94svh!important;
+        max-height:94dvh!important;
+        width:100%!important;
+        padding-left:max(16px,env(safe-area-inset-left,0px))!important;
+        padding-right:max(16px,env(safe-area-inset-right,0px))!important;
+        padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
+      }
+
+      /* Tab content bottom spacing so last card isn't hidden behind nav */
+      .crm-tab-content{
+        padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))!important;
+      }
+
+      /* Stats grid: 2-col */
+      .crm-stats-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
+
+      /* Table wrapping */
+      .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
+      .crm-table-wrap table{min-width:480px;}
+
+      /* Typography */
+      .crm-row-text{font-size:14px!important;}
+      .crm-row-sub{font-size:12px!important;}
+      .crm-form-label{font-size:12px!important;letter-spacing:0.04em!important;margin-bottom:6px!important;}
+
+      /* Pill / badge */
+      .crm-pill-mobile{padding:3px 8px!important;font-size:11px!important;}
+
+      /* Sheet buttons */
+      .crm-sheet-btn{width:100%!important;min-height:52px!important;font-size:15px!important;border-radius:14px!important;}
+
+      /* Quick actions: 4-col by default, 2-col when very narrow */
+      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
+      @media(max-width:380px){.crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}}
+
+      /* Header */
+      .crm-header{min-height:54px;}
+
+      /* Nav active dot */
+      .crm-nav-active-dot{position:absolute;top:0;left:50%;transform:translateX(-50%);width:32px;height:3px;border-radius:0 0 6px 6px;}
+
+      /* Desktop-only items hidden */
+      .desktop-only{display:none!important;}
+
+      /* Larger tap zone for action buttons in lists */
+      .crm-list-action{min-height:44px!important;min-width:44px!important;padding:8px 14px!important;}
+
+      /* Prevent rubber-band on fixed panels */
+      .crm-panel-fixed{position:fixed;overflow:hidden;touch-action:none;}
+    }
+
+    /* ═══════════════════════════════
+       TABLET (640px – 1023px)
+    ═══════════════════════════════ */
+    @media(min-width:640px) and (max-width:1023px){
+      input,select,textarea{font-size:15px!important;min-height:46px!important;}
+      input[type="date"],input[type="time"]{min-height:46px!important;}
+      .crm-stats-grid{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
+      .crm-sheet-mobile{
+        border-radius:20px 20px 0 0!important;
+        max-height:92svh!important;
+        max-height:92dvh!important;
+        padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
+      }
+      .crm-tab-content{
+        padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
+      }
+      .crm-bottom-nav{
+        height:calc(60px + env(safe-area-inset-bottom,0px))!important;
+        padding-bottom:env(safe-area-inset-bottom,0px)!important;
+      }
+      .crm-table-wrap table{min-width:400px;}
+    }
+
+    /* ═══════════════════════════════
+       DESKTOP (≥ 1024px)
+    ═══════════════════════════════ */
+    @media(min-width:1024px){
+      input,select,textarea{font-size:14px!important;min-height:40px!important;}
+      .crm-stats-grid{grid-template-columns:repeat(4,1fr)!important;}
+    }
+
+    /* ═══════════════════════════════
+       ANDROID-SPECIFIC
+       (Android Chrome media feature)
+    ═══════════════════════════════ */
+    @media(pointer:coarse){
+      /* Coarse pointer = touchscreen (both Android & iOS) */
+      button,[role=button]{
+        min-height:44px;
+        padding-top:max(10px,env(safe-area-inset-top,0px));
+      }
+      /* Increase checkbox/radio size */
+      input[type=checkbox],input[type=radio]{
+        min-width:22px!important;min-height:22px!important;
+      }
+    }
   `;
   document.head.appendChild(_ms);
 }
@@ -2841,6 +2892,21 @@ export default function Root(){
   const setSess=(s)=>setSessRaw(s||null);
   // Show spinner until Firebase has responded for all critical keys
   const fbReady=usersLoaded&&settingsLoaded&&sessLoaded;
+
+  // ── Passive touch/wheel listeners: improves scroll jank on Android & iOS ──
+  useEffect(()=>{
+    const opts={passive:true};
+    const noop=()=>{};
+    document.addEventListener("touchstart",noop,opts);
+    document.addEventListener("touchmove",noop,opts);
+    document.addEventListener("wheel",noop,opts);
+    return()=>{
+      document.removeEventListener("touchstart",noop,opts);
+      document.removeEventListener("touchmove",noop,opts);
+      document.removeEventListener("wheel",noop,opts);
+    };
+  },[]);
+
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
   const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
@@ -5117,9 +5183,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
             {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=deliveries.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${deliveries.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Orders</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${deliveries.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${deliveries.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF("Deliveries",deliveries,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel("Deliveries",deliveries,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=fDeliv.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=fDeliv.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=fDeliv.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const filterLabel=delivStatusFilter!=="all"?` — ${delivStatusFilter}`:"";const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${fDeliv.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Orders${filterLabel}</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${fDeliv.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${fDeliv.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF(`Deliveries${filterLabel}`,fDeliv,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
             {can("deliv_export")&&<div style={{position:"relative"}}>
               <button onClick={()=>setDelivExportOpen(v=>!v)} style={{background:"#3b82f615",color:"#3b82f6",border:"1.5px solid #3b82f640",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📅 Date Export ▾</button>
               {delivExportOpen&&<div style={{position:"absolute",left:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:14,zIndex:99,padding:"14px 16px",boxShadow:"0 8px 30px rgba(0,0,0,0.18)",minWidth:280}}>
@@ -7923,6 +7989,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 if(anlCustFilter==="owing") fc=fc.filter(c=>(c.outstandingBalance||0)>0);
                 else if(anlCustFilter==="clear") fc=fc.filter(c=>!((c.outstandingBalance||0)>0));
                 else if(anlCustFilter==="partial") fc=fc.filter(c=>(c.partialCollected||0)>0);
+                else if(anlCustFilter==="replacements") fc=fc.filter(c=>(c.replDeducted||0)>0);
                 if(anlCustSort==="revenue") fc.sort((a,b)=>b.totalRev-a.totalRev);
                 else if(anlCustSort==="orders") fc.sort((a,b)=>b.totalOrders-a.totalOrders);
                 else if(anlCustSort==="outstanding") fc.sort((a,b)=>(b.outstandingBalance||0)-(a.outstandingBalance||0));
@@ -8019,11 +8086,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <option value="outstanding">Sort: Outstanding ↓</option>
                       <option value="name">Sort: Name A–Z</option>
                     </select>
-                    <select value={anlCustFilter} onChange={e=>setAnlCustFilter(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,cursor:"pointer"}}>
+                    <select value={anlCustFilter} onChange={e=>setAnlCustFilter(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:36}}>
                       <option value="all">All Customers</option>
                       <option value="owing">Owing Only</option>
                       <option value="clear">Clear Only</option>
                       <option value="partial">Has Partial</option>
+                      <option value="replacements">Has Replacements</option>
                     </select>
                   </div>
                   <p style={{color:t.sub,fontSize:11,marginTop:6}}>{filtCust2.length} customers shown</p>
