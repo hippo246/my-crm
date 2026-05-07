@@ -2645,6 +2645,20 @@ if(typeof document!=="undefined"&&!document.getElementById("goldPulseStyle")){
   _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px rgba(59,130,246,0.2),0 4px 24px rgba(30,58,95,0.15)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0.3),0 8px 32px rgba(30,58,95,0.25)}}";
   document.head.appendChild(_s);
 }
+// ── Viewport meta safety — ensure correct scaling on ALL devices including old Android ──
+if(typeof document!=="undefined"){
+  let vp=document.querySelector("meta[name=viewport]");
+  if(!vp){vp=document.createElement("meta");vp.name="viewport";document.head.appendChild(vp);}
+  // width=device-width + initial-scale=1 + interactive-widget prevents keyboard resize jank
+  vp.content="width=device-width,initial-scale=1,maximum-scale=5,minimum-scale=1,viewport-fit=cover,interactive-widget=resizes-content";
+  // Theme color for Android Chrome address bar
+  let tc=document.querySelector("meta[name=theme-color]");
+  if(!tc){tc=document.createElement("meta");tc.name="theme-color";document.head.appendChild(tc);}
+  // Set dynamically based on dark mode preference
+  const _isDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches;
+  tc.content=_isDark?"#0c0c10":"#f2f2ed";
+}
+
 if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
   const _ms=document.createElement("style");
   _ms.id="mobileOptStyle";
@@ -2652,53 +2666,56 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     /* ── Reset & Base ── */
     *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;box-sizing:border-box;}
     button,a,[role=button]{touch-action:manipulation;cursor:pointer;}
-    input,select,textarea{touch-action:manipulation;font-size:16px!important;} /* 16px prevents iOS auto-zoom */
-    html{-webkit-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
+    /* 16px on ALL inputs prevents iOS & old Android auto-zoom */
+    input,select,textarea{touch-action:manipulation;font-size:16px!important;-webkit-text-size-adjust:100%;}
+    html{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
     body{overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;}
-    ::-webkit-scrollbar{width:0;height:0;background:transparent;}
-    scrollbar-width:none;
 
-    /* ── Safe area utilities (iPhone notch / Dynamic Island / home bar) ── */
+    /* Font rendering — crisp on all screens */
+    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;}
+
+    /* Hide scrollbars everywhere */
+    ::-webkit-scrollbar{width:0!important;height:0!important;background:transparent!important;display:none!important;}
+    *{scrollbar-width:none!important;-ms-overflow-style:none!important;}
+
+    /* ── Safe area (iPhone notch / Dynamic Island / home bar / Android cutout) ── */
     .pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}
     .pt-safe{padding-top:env(safe-area-inset-top,0px);}
     .pl-safe{padding-left:env(safe-area-inset-left,0px);}
     .pr-safe{padding-right:env(safe-area-inset-right,0px);}
 
-    /* ── Touch target minimum (Apple HIG: 44pt, Google MD: 48dp) ── */
+    /* ── Touch targets — Apple HIG 44pt, Google MD 48dp ── */
     .touch-target{min-height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;}
+    button,[role=button]{min-height:44px;}
 
-    /* ── Mobile bottom nav safe padding ── */
+    /* ── Bottom nav safe padding ── */
     .mobile-content-pad{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px));}
 
-    /* ── Prevent text selection on interactive elements ── */
+    /* ── Prevent text selection on tappable UI ── */
     button,[role=button],.crm-pill-mobile,.crm-bottom-nav *{
-      -webkit-user-select:none;user-select:none;
+      -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     }
 
-    /* ── Android WebView: GPU compositing for sheet animations ── */
-    .crm-sheet-mobile,.crm-bottom-nav{
+    /* ── GPU compositing for animated panels ── */
+    .crm-sheet-mobile,.crm-bottom-nav,.crm-sheet-panel-mobile{
       -webkit-transform:translateZ(0);transform:translateZ(0);
       will-change:transform;
-      backface-visibility:hidden;-webkit-backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;backface-visibility:hidden;
     }
 
-    /* ── iOS momentum scrolling ── */
+    /* ── iOS & Android momentum scrolling ── */
     .crm-sheet-scroll,.crm-tab-content,[style*="overflow-y:auto"],[style*="overflowY"]{
       -webkit-overflow-scrolling:touch;
       overscroll-behavior:contain;
+      overflow-y:auto;
     }
 
-    /* ── Focus: accessible, not ugly ── */
+    /* ── Focus styles ── */
     :focus-visible{outline:2px solid #3b82f6;outline-offset:2px;border-radius:6px;}
     :focus:not(:focus-visible){outline:none;}
 
-    /* ── Hide scrollbars on horizontally scrollable rows ── */
-    .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none;}
-    .no-scrollbar::-webkit-scrollbar{display:none;}
-
-    /* ── Momentum scroll for all scroll areas ── */
-    [style*="overflow-y"]{-webkit-overflow-scrolling:touch;}
-    [style*="overflowY"]{-webkit-overflow-scrolling:touch;}
+    /* ── Image rendering on all devices ── */
+    img{-webkit-user-drag:none;user-drag:none;image-rendering:-webkit-optimize-contrast;}
 
     /* ═══════════════════════════════
        MOBILE (< 640px)
@@ -2710,8 +2727,9 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
         border-radius:12px!important;
         font-size:16px!important;
         -webkit-appearance:none;
+        appearance:none;
       }
-      input[type="date"],input[type="time"]{
+      input[type="date"],input[type="time"],input[type="number"]{
         min-height:48px!important;
         -webkit-appearance:none;
         appearance:none;
@@ -2733,13 +2751,14 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
         border-radius:24px 24px 0 0!important;
         max-height:94svh!important;
         max-height:94dvh!important;
+        max-height:94vh!important;
         width:100%!important;
         padding-left:max(16px,env(safe-area-inset-left,0px))!important;
         padding-right:max(16px,env(safe-area-inset-right,0px))!important;
         padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
       }
 
-      /* Tab content bottom spacing so last card isn't hidden behind nav */
+      /* Tab content bottom spacing */
       .crm-tab-content{
         padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))!important;
       }
@@ -2759,27 +2778,31 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
       /* Pill / badge */
       .crm-pill-mobile{padding:3px 8px!important;font-size:11px!important;}
 
-      /* Sheet buttons */
+      /* Sheet save button */
       .crm-sheet-btn{width:100%!important;min-height:52px!important;font-size:15px!important;border-radius:14px!important;}
 
-      /* Quick actions: 4-col by default, 2-col when very narrow */
+      /* Quick actions: 4-col default, 2-col very narrow */
       .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
-      @media(max-width:380px){.crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}}
 
       /* Header */
       .crm-header{min-height:54px;}
 
-      /* Nav active dot */
-      .crm-nav-active-dot{position:absolute;top:0;left:50%;transform:translateX(-50%);width:32px;height:3px;border-radius:0 0 6px 6px;}
-
-      /* Desktop-only items hidden */
+      /* Desktop-only items hidden on mobile */
       .desktop-only{display:none!important;}
 
-      /* Larger tap zone for action buttons in lists */
+      /* Larger tap zone for list action buttons */
       .crm-list-action{min-height:44px!important;min-width:44px!important;padding:8px 14px!important;}
 
-      /* Prevent rubber-band on fixed panels */
+      /* Prevent rubber-band scroll on fixed panels */
       .crm-panel-fixed{position:fixed;overflow:hidden;touch-action:none;}
+
+      /* Active press feedback */
+      button:active,[role=button]:active{opacity:0.75;transform:scale(0.97);}
+    }
+
+    /* Very narrow phones (< 380px): 2-col quick grid */
+    @media(max-width:379px){
+      .crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}
     }
 
     /* ═══════════════════════════════
@@ -2794,11 +2817,10 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
         border-radius:20px 20px 0 0!important;
         max-height:92svh!important;
         max-height:92dvh!important;
+        max-height:92vh!important;
         padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
       }
-      .crm-tab-content{
-        padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
-      }
+      .crm-tab-content{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;}
       .crm-bottom-nav{
         height:calc(60px + env(safe-area-inset-bottom,0px))!important;
         padding-bottom:env(safe-area-inset-bottom,0px)!important;
@@ -2815,28 +2837,23 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     }
 
     /* ═══════════════════════════════
-       ANDROID-SPECIFIC
-       (Android Chrome media feature)
+       COARSE POINTER (any touchscreen)
+       Covers Android, iOS, tablets
     ═══════════════════════════════ */
     @media(pointer:coarse){
-      /* Coarse pointer = touchscreen (both Android & iOS) */
       button,[role=button]{
         min-height:44px;
-        padding-top:max(10px,env(safe-area-inset-top,0px));
       }
-      /* Increase checkbox/radio size */
       input[type=checkbox],input[type=radio]{
         min-width:22px!important;min-height:22px!important;
+        accent-color:#3b82f6;
       }
+      /* Larger scroll momentum on touch */
+      [style*="overflow"]{-webkit-overflow-scrolling:touch;}
     }
 
     /* ═══════════════════════════════
        RESPONSIVE GRID UTILITIES
-       crm-grid-2: 2 → 2 → 2
-       crm-grid-3: 2 → 3 → 3
-       crm-grid-4: 2 → 3 → 4
-       crm-grid-4-tight: for dense stat rows (2→2→4)
-       crm-grid-tab-seg: tab segment controls (always single row, scroll if needed)
     ═══════════════════════════════ */
     .crm-grid-2{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
     .crm-grid-3{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
@@ -2844,15 +2861,20 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     .crm-grid-4-tight{display:grid;gap:6px;grid-template-columns:repeat(2,1fr);}
 
     @media(max-width:359px){
-      /* Very small phones (320px): collapse 3-col to 1 if content is wide */
       .crm-grid-3{grid-template-columns:1fr!important;}
       .crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}
-      .crm-grid-4-tight{grid-template-columns:repeat(2,1fr)!important;}
+    }
+    @media(min-width:560px) and (max-width:767px){
+      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
     }
     @media(min-width:640px){
       .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
       .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
       .crm-grid-4-tight{grid-template-columns:repeat(2,1fr)!important;}
+    }
+    @media(min-width:768px) and (max-width:1023px){
+      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
     }
     @media(min-width:1024px){
       .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
@@ -2860,7 +2882,7 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
       .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
     }
 
-    /* Tab segment control (3-segment, 4-segment): always flex, never wrap */
+    /* Tab segment controls */
     .crm-tab-seg{display:grid;border-radius:14px;overflow:hidden;}
     .crm-tab-seg-3{grid-template-columns:repeat(3,1fr);}
     .crm-tab-seg-4{grid-template-columns:repeat(4,1fr);}
@@ -2869,8 +2891,8 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     }
 
     /* ═══════════════════════════════
-       EXTRA SMALL PHONE FIXES (< 360px)
-       Covers Galaxy A series, older iPhones SE
+       EXTRA SMALL PHONES (< 360px)
+       Galaxy A series, iPhone SE 1st gen
     ═══════════════════════════════ */
     @media(max-width:359px){
       .crm-header-title{font-size:13px!important;}
@@ -2880,37 +2902,44 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     }
 
     /* ═══════════════════════════════
-       TABLET LANDSCAPE / LARGE TABLET
-       (768px–1023px)
-    ═══════════════════════════════ */
-    @media(min-width:768px) and (max-width:1023px){
-      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
-    }
-
-    /* ═══════════════════════════════
-       FOLDABLE / LANDSCAPE PHONE
-       (560px–767px)
-    ═══════════════════════════════ */
-    @media(min-width:560px) and (max-width:767px){
-      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
-    }
-
-    /* ═══════════════════════════════
        HIGH-DPI / RETINA
     ═══════════════════════════════ */
     @media(-webkit-min-device-pixel-ratio:2),(min-resolution:192dpi){
-      /* Crisp 1px borders on retina */
       .crm-divider{height:0.5px!important;}
+      /* Sharper borders on retina */
+      input,select,textarea,.crm-card-mobile{
+        border-width:0.5px!important;
+      }
     }
 
     /* ═══════════════════════════════
-       LANDSCAPE PHONE ORIENTATION
+       LANDSCAPE PHONE
     ═══════════════════════════════ */
     @media(max-height:500px) and (orientation:landscape){
-      .crm-sheet-mobile{max-height:90dvh!important;max-height:90svh!important;}
+      .crm-sheet-mobile{max-height:90dvh!important;max-height:90svh!important;max-height:90vh!important;}
       .crm-bottom-nav{height:calc(48px + env(safe-area-inset-bottom,0px))!important;}
       .crm-tab-content{padding-bottom:calc(56px + env(safe-area-inset-bottom,0px))!important;}
+    }
+
+    /* ═══════════════════════════════
+       REDUCED MOTION
+    ═══════════════════════════════ */
+    @media(prefers-reduced-motion:reduce){
+      *{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;}
+    }
+
+    /* ═══════════════════════════════
+       OLD ANDROID WEBVIEW FIXES
+       (Android 4.x / 5.x Chrome 30-44)
+    ═══════════════════════════════ */
+    input[type="text"],input[type="number"],input[type="password"],input[type="email"],input[type="tel"]{
+      -webkit-appearance:none;
+      appearance:none;
+      border-radius:12px;
+    }
+    select{
+      -webkit-appearance:none;
+      appearance:none;
     }
   `;
   document.head.appendChild(_ms);
@@ -3513,23 +3542,34 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const widgets=settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"];
   const q=srch.toLowerCase();
   const [delivStatusFilter,setDelivStatusFilter]=useState("all");
+  const [delivDateFilter,setDelivDateFilter]=useState("all"); // "all"|"today"|"yesterday"|"week"|"custom"
+  const [delivDateFrom,setDelivDateFrom]=useState("");
+  const [delivDateTo,setDelivDateTo]=useState("");
+  const [delivBatchFilter,setDelivBatchFilter]=useState("all"); // "all"|batchId
   const fCust=useMemo(()=>customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone?.includes(q)||c.address?.toLowerCase().includes(q)),[customers,q]);
-  const fDeliv=useMemo(()=>deliveries.filter(d=>{
-    const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
-    const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
-    const batchLabels=(prodTargets||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
-    const productNames=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>l.name||"").join(" ");
-    const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
-    const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
-    // Agents only see their own deliveries (assigned or created by them)
-    const matchAgent=sess.role!=="agent"||(d.agentId===sess.id||d.agent===sess.name||d.createdBy===sess.name||d.agent===displayName||d.createdBy===displayName);
-    return matchSearch&&matchStatus&&matchAgent;
-  }),[deliveries,invRegistry,prodTargets,q,delivStatusFilter,sess.role,sess.id,sess.name,displayName]);
+  const fDeliv=useMemo(()=>{
+    const tStr=today();
+    const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+    const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+    return deliveries.filter(d=>{
+      const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
+      const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+      const batchLabels=(prodTargets||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
+      const productNames=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>l.name||"").join(" ");
+      const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
+      const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
+      const matchDate=delivDateFilter==="all"||(delivDateFilter==="today"&&d.date===tStr)||(delivDateFilter==="yesterday"&&d.date===yStr)||(delivDateFilter==="week"&&d.date>=wStr&&d.date<=tStr)||(delivDateFilter==="custom"&&delivDateFrom&&delivDateTo&&d.date>=delivDateFrom&&d.date<=delivDateTo);
+      const matchBatch=delivBatchFilter==="all"||(d.batchId===delivBatchFilter);
+      // Agents only see their own deliveries (assigned or created by them)
+      const matchAgent=sess.role!=="agent"||(d.agentId===sess.id||d.agent===sess.name||d.createdBy===sess.name||d.agent===displayName||d.createdBy===displayName);
+      return matchSearch&&matchStatus&&matchDate&&matchBatch&&matchAgent;
+    });
+  },[deliveries,invRegistry,prodTargets,q,delivStatusFilter,delivDateFilter,delivDateFrom,delivDateTo,delivBatchFilter,sess.role,sess.id,sess.name,displayName]);
   const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)||s.date?.includes(q)||(s.notes||"").toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
   const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
-  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""},partialPayment:{enabled:false,amount:""}});
+  const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""},partialPayment:{enabled:false,amount:""},batchId:""});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:"",vendor:"",paymentMethod:"Cash",approvedBy:"",tags:""});
   const blkP=()=>({id:"",name:"",unit:"pcs",prices:[5,6]});
@@ -3883,15 +3923,24 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     if(ptSh==="add"){
       const deduction=runAutoDeduct(productName,rec.actual,null);
       // ── Link same-date deliveries that contain this exact product to this batch ──
-      const matchingInvNos=deliveries
+      const autoLink=settings?.prodAutoLinkDeliveries!==false;
+      const matchingDelivs=deliveries
         .filter(d=>d.date===rec.date&&d.status!=="Cancelled")
         .filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{
           if(!(l.qty>0))return false;
           const p=products.find(x=>x.id===pid);
           return prodNamesMatch(p?.name||l.name||"",productName);
-        }))
-        .map(d=>(invRegistry?.issued||{})[d.id]||d.invNo)
-        .filter(Boolean);
+        }));
+      const matchingInvNos=matchingDelivs.map(d=>(invRegistry?.issued||{})[d.id]||d.invNo).filter(Boolean);
+      // Stamp batchId onto matching deliveries if auto-link enabled & they have no batchId yet
+      if(autoLink&&matchingDelivs.length>0){
+        setDeliv(prev=>prev.map(d=>{
+          const isMatch=matchingDelivs.some(m=>m.id===d.id);
+          if(!isMatch)return d;
+          if(d.batchId)return d; // don't overwrite manual assignments
+          return {...d,batchId:batchIdFinal};
+        }));
+      }
       const savedRec={...rec,id:uid(),createdAt:ts(),deduction:deduction||null,linkedInvoices:[...new Set(matchingInvNos)]};
       setProdTargets(p=>[savedRec,...p]);
       // Save embedded records linked to this batch
@@ -5302,14 +5351,38 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
                       {/* ── RIGHT COLUMN — Recent Deliveries ── */}
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Recent Deliveries {cDelivs.length>0&&<span style={{color:t.sub,fontWeight:500,fontSize:10,textTransform:"none",letterSpacing:0}}>({cDelivs.length} total)</span>}</p>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+                          <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Deliveries {cDelivs.length>0&&<span style={{color:t.sub,fontWeight:500,fontSize:10,textTransform:"none",letterSpacing:0}}>({cDelivs.length} total)</span>}</p>
+                          {canSeeFinancials&&<div style={{display:"flex",gap:8,fontSize:10,fontWeight:700}}>
+                            <span style={{color:"#10b981"}}>Paid: {inr(c.paid||0)}</span>
+                            {(c.pending||0)>0&&<span style={{color:"#ef4444"}}>Due: {inr(c.pending)}</span>}
+                            {!(c.pending||0)&&(c.paid||0)>0&&<span style={{color:"#10b981"}}>✓ Settled</span>}
+                          </div>}
+                        </div>
+                        {/* Date quick-filter for this customer's deliveries */}
+                        {cDelivs.length>0&&<div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{scrollbarWidth:"none"}}>
+                          {[{k:"all",l:"All"},{k:"today",l:"Today"},{k:"yesterday",l:"Yesterday"},{k:"week",l:"This Week"}].map(({k,l})=>(
+                            <button key={k} onClick={()=>setDelivDateFilter(k)} style={{flexShrink:0,background:delivDateFilter===k?"#3b82f618":t.inp,color:delivDateFilter===k?"#3b82f6":t.sub,border:`1px solid ${delivDateFilter===k?"#3b82f6":t.border}`,borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",whiteSpace:"nowrap"}}>{l}</button>
+                          ))}
+                        </div>}
                         {cDelivs.length===0&&<p style={{color:t.sub,fontSize:12}}>No deliveries yet.</p>}
-                        {[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map((d)=>{
+                        {(()=>{
+                          const tStr=today();
+                          const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+                          const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+                          let filteredCustDelivs=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date));
+                          if(delivDateFilter==="today") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date===tStr);
+                          else if(delivDateFilter==="yesterday") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date===yStr);
+                          else if(delivDateFilter==="week") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date>=wStr&&d.date<=tStr);
+                          const shown=filteredCustDelivs.slice(0,8);
+                          if(shown.length===0) return <p style={{color:t.sub,fontSize:11}}>No deliveries for this period.</p>;
+                          return shown.map((d)=>{
                           const dTot=lineTotal(d.orderLines);
                           const dRepl=+d.replacement?.amount||0;
                           const dNet=Math.max(0,dTot-dRepl);
                           const dCollected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-                          const dBal=Math.max(0,dNet-dCollected);
+                          // If customer's overall pending is 0, treat all deliveries as settled
+                          const dBal=(c.pending||0)===0&&(c.paid||0)>0?0:Math.max(0,dNet-dCollected);
                           const dSc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#0ea5e9":d.status==="Cancelled"?"#ef4444":"#f59e0b";
                           const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
                           const custRcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
@@ -5365,8 +5438,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               </div>}
                             </div>}
                           </div>;
-                        })}
-                        {cDelivs.length>5&&<p style={{color:t.sub,fontSize:10,textAlign:"center"}}>+{cDelivs.length-5} more · <button onClick={()=>{setTab("Deliveries");setExpandedDeliveryCust(c.id);}} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:10}}>View all →</button></p>}
+                        });
+                        })()}
+                        {cDelivs.length>8&&<p style={{color:t.sub,fontSize:10,textAlign:"center"}}>+{cDelivs.length-8} more · <button onClick={()=>{setTab("Deliveries");setExpandedDeliveryCust(c.id);}} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:10}}>View all in Deliveries →</button></p>}
                       </div>{/* end right column */}
 
                     </div>{/* end two-col grid */}
@@ -5398,6 +5472,35 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
             </div>
           </div>
+          {/* ── DATE FILTER ROW ── */}
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+            {[
+              {key:"all",label:"All Dates"},
+              {key:"today",label:"Today"},
+              {key:"yesterday",label:"Yesterday"},
+              {key:"week",label:"This Week"},
+              {key:"custom",label:"Custom"},
+            ].map(({key,label})=>(
+              <button key={key} onClick={()=>setDelivDateFilter(key)}
+                style={{flexShrink:0,background:delivDateFilter===key?"#3b82f620":t.inp,color:delivDateFilter===key?"#3b82f6":t.sub,border:`1.5px solid ${delivDateFilter===key?"#3b82f6":t.border}`,borderRadius:99,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",whiteSpace:"nowrap"}}>
+                {label}
+              </button>
+            ))}
+            {(()=>{
+              const batches=[...new Map((prodTargets||[]).map(b=>[b.batchId||b.id,b])).values()].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,10);
+              if(batches.length===0)return null;
+              return <select value={delivBatchFilter} onChange={e=>setDelivBatchFilter(e.target.value)}
+                style={{flexShrink:0,background:delivBatchFilter!=="all"?"#7c3aed18":t.inp,color:delivBatchFilter!=="all"?"#8b5cf6":t.sub,border:`1.5px solid ${delivBatchFilter!=="all"?"#8b5cf6":t.border}`,borderRadius:10,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",appearance:"none",WebkitAppearance:"none"}}>
+                <option value="all">🏭 All Batches</option>
+                {batches.map(b=><option key={b.batchId||b.id} value={b.batchId||b.id}>{b.batchLabel||"Batch"} · {b.product} · {b.date}</option>)}
+              </select>;
+            })()}
+          </div>
+          {delivDateFilter==="custom"&&<div className="flex gap-2 items-center flex-wrap">
+            <input type="date" value={delivDateFrom} onChange={e=>setDelivDateFrom(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none",flex:1,minWidth:130}}/>
+            <span style={{color:t.sub,fontSize:12}}>→</span>
+            <input type="date" value={delivDateTo} onChange={e=>setDelivDateTo(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none",flex:1,minWidth:130}}/>
+          </div>}
           {/* Secondary actions row — scrollable on mobile */}
           <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
             <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1.5px solid ${bulkSelect?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{bulkSelect?"✕ Cancel":"☑ Bulk select"}</button>
@@ -5663,7 +5766,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 const totalAmt=group.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                 const totalRepl=group.delivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
                 const totalCollected=group.delivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
-                const totalBalance=Math.max(0,totalAmt-totalRepl-totalCollected);
+                // Use customer.pending as the source of truth for outstanding balance
+                const groupCust=customers.find(c=>c.id===group.customerId);
+                const totalBalance=groupCust?(groupCust.pending||0):Math.max(0,totalAmt-totalRepl-totalCollected);
+                const totalPaid=groupCust?(groupCust.paid||0):totalCollected;
                 const pendingCount=group.delivs.filter(d=>d.status==="Pending").length;
                 const deliveredCount=group.delivs.filter(d=>d.status==="Delivered").length;
                 const replCount=group.delivs.filter(d=>d.replacement?.done).length;
@@ -5703,8 +5809,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       {[
                         {l:"Total Billed",v:inr(totalAmt),c:"#f59e0b"},
                         {l:"Replacements",v:totalRepl>0?`−${inr(totalRepl)}`:"None",c:totalRepl>0?"#f97316":t.sub},
-                        {l:"Collected",v:inr(totalCollected),c:"#10b981"},
-                        {l:"Balance Due",v:inr(totalBalance),c:totalBalance>0?"#ef4444":"#10b981"},
+                        {l:"Total Paid",v:inr(totalPaid),c:"#10b981"},
+                        {l:totalBalance>0?"Balance Due":"✓ All Clear",v:totalBalance>0?inr(totalBalance):"—",c:totalBalance>0?"#ef4444":"#10b981"},
                       ].map(x=><div key={x.l} style={{textAlign:"center"}}>
                         <p style={{color:x.c,fontWeight:800,fontSize:13}}>{x.v}</p>
                         <p style={{color:t.sub,fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:2}}>{x.l}</p>
@@ -5718,14 +5824,18 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       const replAmt=+d.replacement?.amount||0;
                       const netAmt=Math.max(0,tot-replAmt);
                       const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-                      const balanceDue=Math.max(0,netAmt-collected);
+                      // Balance due: use delivery-level partial payment. If customer has zero pending overall, treat as settled.
+                      const delivCust=customers.find(c=>c.id===d.customerId);
+                      const custFullyPaid=(delivCust?.pending||0)===0&&(delivCust?.paid||0)>0;
+                      const balanceDue=custFullyPaid?0:Math.max(0,netAmt-collected);
                       const sc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#0ea5e9":d.status==="Cancelled"?"#ef4444":"#f59e0b";
                       const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
                       const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
                       const isBulkChecked=bulkSelected.has(d.id);
                       // Batch info if any production record on same date
                       // Only show batches whose product strictly matches at least one product ordered in this delivery
-                      const batchesOnDate=(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
+                      // Show specific assigned batch if batchId is set; otherwise fall back to product+date match
+                      const batchesOnDate=d.batchId?(prodTargets||[]).filter(pt=>pt.batchId===d.batchId):(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
                       return <div key={d.id} style={{
                         borderTop:di>0?`1px solid ${t.border}`:"none",
                         background:isBulkChecked?(dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.06)"):undefined,
@@ -5748,7 +5858,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                 <span style={{color:t.sub,fontSize:10}}>👤 {d.createdBy||d.agent||"—"}</span>
                                 {invNo&&<span style={{color:"#8b5cf6",fontSize:10,fontWeight:700,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",borderRadius:4,padding:"1px 6px"}}>📄 {invNo}</span>}
                                 {invNo&&<span style={{color:"#0ea5e9",fontSize:10,fontWeight:700,fontFamily:"monospace",background:dm?"rgba(14,165,233,0.15)":"rgba(14,165,233,0.08)",borderRadius:4,padding:"1px 6px"}}>🧾 {rcptNo}</span>}
-                                {batchesOnDate.length>0&&<span style={{color:"#7c3aed",fontSize:10,fontWeight:700,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:4,padding:"1px 6px"}}>🏭 {batchesOnDate.map(b=>b.batchLabel||"Batch").join(", ")}</span>}
+                                {batchesOnDate.length>0&&<span style={{color:"#7c3aed",fontSize:10,fontWeight:700,background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.07)",borderRadius:4,padding:"1px 6px"}}>{d.batchId?"🏭":"⚡"} {batchesOnDate.map(b=>b.batchLabel||"Batch").join(", ")}{!d.batchId&&" (auto)"}</span>}
                               </div>
                             </div>
                           </div>
@@ -9125,7 +9235,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     const rHV=(handovers||[]).filter(h=>h.batchId===r.batchId);
                     const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
                     // Customer traceability: deliveries on this date that contain this exact product
-                    const batchCustomers=deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled").filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",r.product);}));
+                    // Use direct batchId match first; fall back to product+date if no deliveries have batchId yet
+                    const batchIdLinkedDelivs=deliveries.filter(d=>d.batchId===r.batchId&&d.status!=="Cancelled");
+                    const batchCustomers=batchIdLinkedDelivs.length>0?batchIdLinkedDelivs:deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled"&&!d.batchId).filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",r.product);}));
                     return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?14:0,marginTop:ri>0?14:0}}>
                       <div className="flex items-start justify-between gap-2">
                         <div style={{flex:1}}>
@@ -10645,6 +10757,33 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
                 </div>
               ))}
+              {/* One-time migration: stamp batchId onto existing deliveries */}
+              <div style={{marginTop:14,padding:"12px 14px",background:dm?"rgba(124,58,237,0.08)":"rgba(124,58,237,0.05)",border:`1.5px solid rgba(124,58,237,0.25)`,borderRadius:12}}>
+                <p style={{color:"#8b5cf6",fontWeight:700,fontSize:13,marginBottom:3}}>🔧 Backfill Batch Assignments</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Existing deliveries have no batch assigned yet. This will assign each delivery to the first matching batch on that date. Deliveries that already have a manual assignment are skipped.</p>
+                {(()=>{
+                  const unlinked=deliveries.filter(d=>!d.batchId&&d.status!=="Cancelled");
+                  const linkable=unlinked.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return (prodTargets||[]).some(pt=>pt.date===d.date&&prodNamesMatch(p?.name||l.name||"",pt.product));}));
+                  return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                    <p style={{color:t.sub,fontSize:11}}>{linkable.length > 0 ? `${linkable.length} deliveries can be backfilled` : "✅ All deliveries already assigned"}</p>
+                    {linkable.length>0&&<button onClick={()=>ask(`Backfill batch assignments for ${linkable.length} existing deliveries? Each will be assigned to the first matching batch on its date. This cannot be undone.`,()=>{
+                      setDeliv(prev=>prev.map(d=>{
+                        if(d.batchId||d.status==="Cancelled")return d;
+                        // Find all batches on this date matching any product in this delivery
+                        const matchingBatches=(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
+                        if(!matchingBatches.length)return d;
+                        // Sort by createdAt ascending — assign to earliest batch
+                        const sorted=[...matchingBatches].sort((a,b)=>(a.createdAt||"").localeCompare(b.createdAt||""));
+                        return {...d,batchId:sorted[0].batchId||sorted[0].id};
+                      }));
+                      notify(`Backfilled batch assignments ✓`);
+                      addLog("Backfilled batch assignments",`${linkable.length} deliveries updated`);
+                    })} style={{background:"#8b5cf6",color:"#fff",border:"none",borderRadius:10,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:36}}>
+                      🔗 Backfill {linkable.length} Deliveries
+                    </button>}
+                  </div>;
+                })()}
+              </div>
             </div></Card>
 
             {/* Wastage Settings */}
@@ -11026,7 +11165,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       </div>
 
       {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50}} className="fixed bottom-0 left-0 right-0 lg:hidden">
+      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
         {/* Scrollable pill tabs */}
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",display:"flex",gap:4,padding:"8px 12px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",alignItems:"center",minHeight:64}}
           className="crm-bottom-nav-scroll">
@@ -11449,6 +11588,33 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         <Sel dm={dm} label="Status" value={dF.status} onChange={e=>setDf({...dF,status:e.target.value})}>
           {delivStats.map(s=><option key={s}>{s}</option>)}
         </Sel>
+        {(()=>{
+          // Batch assignment — always shown so user can assign manually
+          const delivDate=dF.date||today();
+          const delivProductIds=Object.entries(safeO(dF.orderLines)).filter(([,l])=>(l.qty||0)>0).map(([pid])=>pid);
+          const allBatches=(prodTargets||[]).filter(pt=>pt.date===delivDate);
+          const matchingBatches=allBatches.filter(pt=>pt.product&&delivProductIds.some(pid=>{const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||"",pt.product);}));
+          const batchList=matchingBatches.length>0?matchingBatches:allBatches;
+          return <div>
+            <label style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,display:"block"}}>🏭 Batch</label>
+            {batchList.length===0
+              ? <div style={{background:dm?"rgba(124,58,237,0.07)":"rgba(124,58,237,0.04)",border:"1.5px solid rgba(124,58,237,0.2)",borderRadius:12,padding:"10px 14px"}}>
+                  <p style={{color:t.sub,fontSize:12}}>No batches logged for this date yet — save without assigning or log a production batch first.</p>
+                </div>
+              : <>
+                  <select value={dF.batchId||""} onChange={e=>setDf(f=>({...f,batchId:e.target.value}))}
+                    style={{width:"100%",background:t.inp,border:`1.5px solid ${dF.batchId?"#7c3aed60":t.inpB}`,color:dF.batchId?"#8b5cf6":t.text,borderRadius:12,padding:"10px 14px",fontSize:13,outline:"none",appearance:"none",WebkitAppearance:"none",cursor:"pointer"}}>
+                    <option value="">— No Batch / Unassigned —</option>
+                    {batchList.map(b=><option key={b.batchId||b.id} value={b.batchId||b.id}>{b.batchLabel||"Batch"} · {b.product} · {b.actual||0} units</option>)}
+                  </select>
+                  {dF.batchId
+                    ? <p style={{color:"#8b5cf6",fontSize:10,marginTop:4,fontWeight:600}}>📦 Assigned to {batchList.find(b=>(b.batchId||b.id)===dF.batchId)?.batchLabel||"batch"} — <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>setDf(f=>({...f,batchId:""}))}>Clear</span></p>
+                    : <p style={{color:t.sub,fontSize:10,marginTop:4}}>Select a batch or leave unassigned</p>
+                  }
+                </>
+            }
+          </div>;
+        })()}
         <Inp dm={dm} label="Notes" value={dF.notes} onChange={e=>setDf({...dF,notes:e.target.value})} placeholder="e.g. Leave at gate, call before"/>
         <Hr dm={dm}/>
         {/* ── REPLACEMENT SECTION — Redesigned ── */}
