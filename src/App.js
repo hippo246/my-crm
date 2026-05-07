@@ -1961,7 +1961,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
               const pct = allTotal>0?Math.round(catTotal/allTotal*100):0;
               return <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",margin:"12px 0"}}>
                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Category Context — {e.category}</p>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div className="crm-grid-3" style={{gap:8}}>
                   <Kpi label="Category Total" val={inr(catTotal)} color="#ef4444"/>
                   <Kpi label="# Entries" val={catCount} color="#8b5cf6"/>
                   <Kpi label="% of All Exp" val={`${pct}%`} color="#f59e0b"/>
@@ -2031,12 +2031,12 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="👤" title={c.name} sub={`${c.phone||"No phone"}${c.address?` · ${c.address}`:""}`} accent="#f59e0b"/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="crm-grid-3" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Net Revenue" val={inr(cNetRev)} color="#10b981"/>
               <Kpi label="Collected" val={inr(cPaid)} color="#10b981"/>
               <Kpi label="Pending" val={inr(cDue)} color={cDue>0?"#ef4444":"#10b981"}/>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
+            <div className="crm-grid-4" style={{gap:8,marginBottom:16}}>
               <Kpi label="Orders" val={cDelivs.length} color="#3b82f6"/>
               <Kpi label="Delivered" val={cDelivered.length} color="#10b981"/>
               <Kpi label="Pending" val={cPending.length} color="#f59e0b"/>
@@ -2136,7 +2136,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="📦" title={d.customer} sub={`${d.date}${d.deliveryDate&&d.deliveryDate!==d.date?` · Deliver by ${d.deliveryDate}`:""}`} accent={sc}/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="crm-grid-3" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Status" val={st} color={sc}/>
               <Kpi label="Order Total" val={inr(tot)} color="#10b981"/>
               <Kpi label="Net" val={inr(net)} color={repl>0?"#f97316":"#10b981"}/>
@@ -2269,7 +2269,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="👤" title={agentName} sub={u?`@${u.username} · ${u.role}`:"Agent / Staff"} accent="#8b5cf6"/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="crm-grid-3" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Deliveries" val={agentDelivs.length} color="#3b82f6"/>
               <Kpi label="Delivered" val={agentDone.length} color="#10b981"/>
               <Kpi label="Revenue" val={inr(agentRev)} color="#f59e0b"/>
@@ -2320,7 +2320,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="📂" title={cat} sub={`${catExpenses.length} entries · ${pct}% of all expenses`} accent="#ef4444"/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="crm-grid-3" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Total" val={inr(catTotal)} color="#ef4444"/>
               <Kpi label="Entries" val={catExpenses.length} color="#8b5cf6"/>
               <Kpi label="% of All" val={`${pct}%`} color="#f59e0b"/>
@@ -2783,6 +2783,89 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
       input[type=checkbox],input[type=radio]{
         min-width:22px!important;min-height:22px!important;
       }
+    }
+
+    /* ═══════════════════════════════
+       RESPONSIVE GRID UTILITIES
+       crm-grid-2: 2 → 2 → 2
+       crm-grid-3: 2 → 3 → 3
+       crm-grid-4: 2 → 3 → 4
+       crm-grid-4-tight: for dense stat rows (2→2→4)
+       crm-grid-tab-seg: tab segment controls (always single row, scroll if needed)
+    ═══════════════════════════════ */
+    .crm-grid-2{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
+    .crm-grid-3{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
+    .crm-grid-4{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
+    .crm-grid-4-tight{display:grid;gap:6px;grid-template-columns:repeat(2,1fr);}
+
+    @media(max-width:359px){
+      /* Very small phones (320px): collapse 3-col to 1 if content is wide */
+      .crm-grid-3{grid-template-columns:1fr!important;}
+      .crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}
+      .crm-grid-4-tight{grid-template-columns:repeat(2,1fr)!important;}
+    }
+    @media(min-width:640px){
+      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-grid-4-tight{grid-template-columns:repeat(2,1fr)!important;}
+    }
+    @media(min-width:1024px){
+      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-grid-4{grid-template-columns:repeat(4,1fr)!important;}
+      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
+    }
+
+    /* Tab segment control (3-segment, 4-segment): always flex, never wrap */
+    .crm-tab-seg{display:grid;border-radius:14px;overflow:hidden;}
+    .crm-tab-seg-3{grid-template-columns:repeat(3,1fr);}
+    .crm-tab-seg-4{grid-template-columns:repeat(4,1fr);}
+    @media(max-width:399px){
+      .crm-tab-seg-4{grid-template-columns:repeat(2,1fr)!important;border-radius:12px!important;}
+    }
+
+    /* ═══════════════════════════════
+       EXTRA SMALL PHONE FIXES (< 360px)
+       Covers Galaxy A series, older iPhones SE
+    ═══════════════════════════════ */
+    @media(max-width:359px){
+      .crm-header-title{font-size:13px!important;}
+      .crm-pill-mobile{padding:2px 6px!important;font-size:10px!important;}
+      .crm-card-mobile{padding:12px!important;}
+      .crm-sheet-btn{font-size:14px!important;min-height:48px!important;}
+    }
+
+    /* ═══════════════════════════════
+       TABLET LANDSCAPE / LARGE TABLET
+       (768px–1023px)
+    ═══════════════════════════════ */
+    @media(min-width:768px) and (max-width:1023px){
+      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
+    }
+
+    /* ═══════════════════════════════
+       FOLDABLE / LANDSCAPE PHONE
+       (560px–767px)
+    ═══════════════════════════════ */
+    @media(min-width:560px) and (max-width:767px){
+      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
+      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
+    }
+
+    /* ═══════════════════════════════
+       HIGH-DPI / RETINA
+    ═══════════════════════════════ */
+    @media(-webkit-min-device-pixel-ratio:2),(min-resolution:192dpi){
+      /* Crisp 1px borders on retina */
+      .crm-divider{height:0.5px!important;}
+    }
+
+    /* ═══════════════════════════════
+       LANDSCAPE PHONE ORIENTATION
+    ═══════════════════════════════ */
+    @media(max-height:500px) and (orientation:landscape){
+      .crm-sheet-mobile{max-height:90dvh!important;max-height:90svh!important;}
+      .crm-bottom-nav{height:calc(48px + env(safe-area-inset-bottom,0px))!important;}
+      .crm-tab-content{padding-bottom:calc(56px + env(safe-area-inset-bottom,0px))!important;}
     }
   `;
   document.head.appendChild(_ms);
@@ -3435,8 +3518,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [anlShowInsights,setAnlShowInsights]=useState(true);
   // Deliveries date range export
   const [delivExportFrom,setDelivExportFrom]=useState("");
-  const [delivExportTo,setDelivExportTo]=useState(today());
+  const [delivExportTo,setDelivExportTo]=useState("");
   const [delivExportOpen,setDelivExportOpen]=useState(false);
+  const delivExportBtnRef=useRef(null);
   // Production search + auto-deduct toggle
   const [ptSearch,setPtSearch]=useState("");
   const [ptShiftFilter,setPtShiftFilter]=useState("all");
@@ -4101,7 +4185,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     )}
                   </div>
                   {/* Status tiles */}
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                  <div className="crm-grid-4" style={{gap:8}}>
                     {segments.map(({label,val,color,bg})=>(
                       <div key={label} style={{background:bg,borderRadius:14,padding:"10px 8px",textAlign:"center",border:`1px solid ${color}22`}}>
                         <p style={{color,fontWeight:900,fontSize:22,lineHeight:1}}>{val}</p>
@@ -4121,7 +4205,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {/* ── REVENUE STATS — Today / Week / Month ── */}
             {canSeeFinancials&&<div style={card({padding:"18px 20px"})}>
               <p style={sectionLabel}>💰 Revenue</p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:0,marginBottom:16}}>
+              <div className="crm-grid-3" style={{gap:0,marginBottom:16}}>
                 {[
                   {label:"Today",     val:todayRev,  sub:`${todayDone.length} orders`,   color:"#10b981", borderR:true},
                   {label:"This Week", val:weekRev,   sub:`${weekDelivs.length} orders`,  color:"#3b82f6", borderR:true},
@@ -4965,7 +5049,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
                         {/* Stats row */}
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                        <div className="crm-grid-4" style={{gap:8}}>
                           {[
                             {label:"Orders",val:cDelivs.length,color:t.text},
                             {label:"Delivered",val:cDone.length,color:"#10b981"},
@@ -4979,7 +5063,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           ))}
                         </div>
                         {/* Second stats row for financial details */}
-                        {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                        {canSeeFinancials&&<div className="crm-grid-3" style={{gap:8}}>
                           {[
                             {label:"Repl. Deducted",val:inr(cReplAmt),color:cReplAmt>0?"#f97316":t.sub},
                             {label:"Partial Paid",val:inr(partialPaid),color:partialPaid>0?"#f59e0b":t.sub},
@@ -5186,31 +5270,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=fDeliv.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=fDeliv.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=fDeliv.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const filterLabel=delivStatusFilter!=="all"?` — ${delivStatusFilter}`:"";const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${fDeliv.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Orders${filterLabel}</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${fDeliv.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${fDeliv.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF(`Deliveries${filterLabel}`,fDeliv,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
-            {can("deliv_export")&&<div style={{position:"relative"}}>
-              <button onClick={()=>setDelivExportOpen(v=>!v)} style={{background:"#3b82f615",color:"#3b82f6",border:"1.5px solid #3b82f640",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📅 Date Export ▾</button>
-              {delivExportOpen&&<div style={{position:"absolute",left:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:14,zIndex:99,padding:"14px 16px",boxShadow:"0 8px 30px rgba(0,0,0,0.18)",minWidth:280}}>
-                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>📅 Export by Date Range</p>
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{color:t.sub,fontSize:12,minWidth:32}}>From</span>
-                    <input type="date" value={delivExportFrom} onChange={e=>setDelivExportFrom(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 10px",fontSize:13,outline:"none"}}/>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{color:t.sub,fontSize:12,minWidth:32}}>To</span>
-                    <input type="date" value={delivExportTo} max={today()} onChange={e=>setDelivExportTo(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"6px 10px",fontSize:13,outline:"none"}}/>
-                  </div>
-                  {delivExportFrom&&delivExportTo&&<p style={{color:"#3b82f6",fontSize:11,fontWeight:600,textAlign:"center"}}>✓ {Math.round((new Date(delivExportTo)-new Date(delivExportFrom))/86400000)+1} days · {deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo).length} deliveries</p>}
-                </div>
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {[
-                    ["📊 CSV",()=>{const dr=delivExportFrom&&delivExportTo?deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo):deliveries;exportCSV(dr,`deliveries_${delivExportFrom||"all"}_to_${delivExportTo}`,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Deducted (₹)",val:r=>r.replacement?.amount||0},{label:"Net (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Collected (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}]);}],
-                    ["📋 XLS",()=>{const dr=delivExportFrom&&delivExportTo?deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo):deliveries;exportTabExcel(`Deliveries ${delivExportFrom||""} to ${delivExportTo}`,dr,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Deducted",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Collected",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}],settings);}],
-                  ].map(([lbl,fn])=>(
-                    <button key={lbl} onClick={()=>{fn();setDelivExportOpen(false);}} style={{background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>{lbl} {delivExportFrom&&delivExportTo?"(Date Range)":"(All)"}</button>
-                  ))}
-                </div>
-              </div>}
-            </div>}
+            {can("deliv_export")&&<button ref={delivExportBtnRef} onClick={()=>setDelivExportOpen(v=>!v)} style={{background:delivExportOpen?"#3b82f625":"#3b82f615",color:"#3b82f6",border:`1.5px solid ${delivExportOpen?"#3b82f680":"#3b82f640"}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0,position:"relative"}}>📅 Date Export {delivExportOpen?"▴":"▾"}</button>}
           </div>
           {/* BULK ACTION BAR */}
           {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
@@ -5266,7 +5326,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   </div>
                 </div>
                 {/* Month stats row */}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                <div className="crm-grid-4" style={{gap:6}}>
                   {[
                     {label:"Pending",val:mPending,color:"#f59e0b"},
                     {label:"In Transit",val:mTransit,color:"#0ea5e9"},
@@ -5502,7 +5562,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* ── EXPANDED: per-delivery list ── */}
                   {isExpanded&&<div style={{borderTop:`1px solid ${t.border}`}}>
                     {/* Customer summary strip */}
-                    {canSeePrices&&<div style={{background:dm?"rgba(0,0,0,0.2)":"rgba(245,158,11,0.04)",padding:"10px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,borderBottom:`1px solid ${t.border}`}}>
+                    {canSeePrices&&<div className="crm-grid-4" style={{background:dm?"rgba(0,0,0,0.2)":"rgba(245,158,11,0.04)",padding:"10px 16px",gap:8,borderBottom:`1px solid ${t.border}`}}>
                       {[
                         {l:"Total Billed",v:inr(totalAmt),c:"#f59e0b"},
                         {l:"Replacements",v:totalRepl>0?`−${inr(totalRepl)}`:"None",c:totalRepl>0?"#f97316":t.sub},
@@ -5971,7 +6031,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               ))}
 
               {/* ── 4 KPI CARDS ── */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}>
+              <div className="crm-grid-4" style={{gap:12}}>
                 {[
                   {label:"Op. Expenses",value:inr(totalExpOp),sub:`${expenses.length} entries · ${expRatio}% of rev`,color:"#ef4444",icon:"💸",badge:expRatio>40?"High":"OK",badgeOk:expRatio<=40},
                   {label:"Supply Costs", value:inr(totalSupC), sub:`${pctSupply}% of revenue`,color:"#8b5cf6",icon:"📦",badge:`${supplies.length} entries`,badgeOk:true},
@@ -6427,7 +6487,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>}
 
             {/* ══ SUB-TAB NAV ══ */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,background:t.inp,borderRadius:14,padding:4}}>
+            <div className="crm-tab-seg crm-tab-seg-3" style={{gap:6,background:t.inp,borderRadius:14,padding:4}}>
               {SUB_TABS.map(s=>(
                 <button key={s.id} onClick={()=>setPaymentsSubTab(s.id)}
                   style={{background:paymentsSubTab===s.id?(dm?"#1e3a5f":"#1e3a5f"):"transparent",
@@ -6482,7 +6542,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           </div>}
                         </div>
                         {/* Stats row */}
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:0,borderBottom:`1px solid ${t.border}`}}>
+                        <div className="crm-tab-seg crm-tab-seg-3" style={{gap:0,borderBottom:`1px solid ${t.border}`}}>
                           {[["Orders",inr(totalOrdered),t.text],["Replaced",inr(totalRepl),totalRepl>0?orange:t.sub],["Balance",inr(due),hasDue?accentColor:green]].map(([l,v,col],i)=>(
                             <div key={l} style={{padding:"10px 12px",textAlign:"center",borderRight:i<2?`1px solid ${t.border}`:"none"}}>
                               <p style={{color:col,fontWeight:800,fontSize:13,lineHeight:1}}>{v}</p>
@@ -6626,7 +6686,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           <p style={{color:collPct>=100?green:amber,fontSize:9,fontWeight:700}}>{collPct}% collected</p>
                         </div>
                       </div>}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:0}}>
+                      <div className="crm-grid-4" style={{gap:0}}>
                         {[["Billed",inr(day.dayOrdered),t.text],["Replaced",inr(day.dayRepl),day.dayRepl>0?orange:t.sub],["Collected",inr(day.totalCash),green],["Still Due",inr(day.dayPending),day.dayPending>0?red:t.sub]].map(([l,v,col],i)=>(
                           <div key={l} style={{padding:"10px 4px",textAlign:"center",borderRight:i<3?`1px solid ${t.border}`:"none"}}>
                             <p style={{color:col,fontWeight:800,fontSize:11,lineHeight:1}}>{v}</p>
@@ -6898,7 +6958,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ══════════════════════════════════════════════════════
                 6 KEY METRIC TILES
             ══════════════════════════════════════════════════════ */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10}}>
+            <div className="crm-grid-3" style={{gap:10}}>
               {[
                 {label:"Net Revenue",val:inr(totRev),sub:momRev!==null?`${momRev>=0?"▲":"▼"}${Math.abs(momRev)}% vs last month`:totReplDeducted>0?`After ${inr(totReplDeducted)} replacements`:`${filtD.length} deliveries`,color:"#10b981",icon:"💰"},
                 {label:"Total Costs",val:inr(totCost),sub:`avg ${inr(avgMonthlyCost)}/mo`,color:"#ef4444",icon:"💸"},
@@ -7018,7 +7078,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <p style={{color:t.text,fontWeight:800,fontSize:13}}>💳 Payment Breakdown</p>
                   <button onClick={()=>setTab("Payments")} style={{background:"rgba(59,130,246,0.1)",color:"#3b82f6",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+                <div className="crm-grid-3" style={{gap:8,marginBottom:14}}>
                   {[
                     {label:"Total Orders",val:inr(totalPBOrders),color:t.text},
                     {label:"Replacements",val:`−${inr(replAmtPB)}`,color:"#f97316",sub:`${replCount} deductions`},
@@ -7046,7 +7106,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ══════════════════════════════════════════════════════
                 MONTH HIGHLIGHTS (Best / Worst / Trend)
             ══════════════════════════════════════════════════════ */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10}}>
+            <div className="crm-grid-3" style={{gap:10}}>
               {[
                 {label:"🏆 Best Month",name:bestMonth?.monthFull,val:inr(bestMonth?.profit||0),color:"#10b981",sub:"highest profit",month:bestMonth?.month},
                 {label:"📉 Weakest Month",name:worstMonth?.monthFull,val:inr(worstMonth?.profit||0),color:(worstMonth?.profit||0)>=0?"#10b981":"#ef4444",sub:"lowest profit",month:worstMonth?.month},
@@ -7870,7 +7930,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                <div className="crm-grid-4" style={{gap:8}}>
                   {[
                     {label:"Repl Deducted",val:inr(totalReplPH),color:"#f97316"},
                     {label:"Partial Payments",val:partialDelivs,color:"#f59e0b",suffix:"deliveries"},
@@ -8014,7 +8074,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 const fullyUnpaid = inPeriodD.filter(d=>d.status==="Delivered"&&!(d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0));
                 return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"14px 18px"}}>
                   <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>📊 Returns · Replacements · Partial Payments — {anlLabel}</p>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}}>
+                  <div className="crm-grid-3" style={{gap:10,marginBottom:12}}>
                     {[
                       {label:"Returns / Cancelled",val:retCount,color:"#ef4444",icon:"↩",sub:`${totalScheduled>0?Math.round(retCount/totalScheduled*100):0}% of orders`},
                       {label:"Replacements",val:replInPeriod.length,color:"#f97316",icon:"🔄",sub:replTotal>0?`${inr(replTotal)} deducted`:"No deductions"},
@@ -9017,7 +9077,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                         </div>
                         <button onClick={exportTrailPDF} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>📄 PDF Trail</button>
                       </div>
-                      {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+                      {canSeePrices&&<div className="crm-grid-4" style={{gap:6,marginBottom:10}}>
                         {[
                           {l:"Billed",v:inr(totalDayOrderVal),c:"#f59e0b"},
                           {l:"Replaced",v:totalDayRepl>0?`−${inr(totalDayRepl)}`:"None",c:totalDayRepl>0?"#f97316":t.sub},
@@ -9428,7 +9488,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                           style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>Clear</button>
                       </div>
                       {/* stat row */}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                      <div className="crm-grid-4" style={{gap:8,marginBottom:12}}>
                         {[
                           {l:"Total Pings",v:total,c:"#6366f1"},
                           {l:"Delivered",v:delivCount,c:"#10b981"},
@@ -9795,7 +9855,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             const totalIssued = Object.keys(invRegistry?.issued||{}).length;
             return <>
               {/* Stats */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+              <div className="crm-grid-3" style={{gap:10}}>
                 {[
                   {label:"Invoices Issued",val:totalIssued,color:"#8b5cf6"},
                   {label:"Current Sequence",val:`#${currentSeq}`,color:"#f59e0b"},
@@ -10877,7 +10937,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* ── STATS OVERVIEW ── */}
             <Hr dm={dm}/>
             <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📊 Overview</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+            <div className="crm-grid-3" style={{gap:8,marginBottom:10}}>
               {[
                 {label:"Total Orders",val:cDelivs.length,color:t.text},
                 {label:"Delivered",val:cDone.length,color:"#10b981"},
@@ -11582,22 +11642,22 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </div>
 
           {/* ── SECTION 1: Core Details ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
             <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
               <p style={{color:"#8b5cf6",fontWeight:800,fontSize:12}}>① Batch Details</p>
               <p style={{color:tS.sub,fontSize:10}}>What was produced, when, and by which shift</p>
             </div>
             <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <Inp dm={dm} label="Batch Label *" value={ptF.batchLabel||""} onChange={e=>setPtF({...ptF,batchLabel:e.target.value})} placeholder="e.g. Batch 1, Morning Run A"/>
-                <Inp dm={dm} label="Date *" type="date" value={ptF.date||today()} onChange={e=>setPtF({...ptF,date:e.target.value})}/>
+                <Inp dm={dm} label="Batch Label *" value={ptF.batchLabel||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,batchLabel:v}));}} placeholder="e.g. Batch 1, Morning Run A"/>
+                <Inp dm={dm} label="Date *" type="date" value={ptF.date||today()} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,date:v}));}}/>
               </div>
-              <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>setPtF({...ptF,product:e.target.value})}>
+              <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,product:v}));}}>
                 <option value="">— Select product —</option>
-                {products.map(p=><option key={p.id}>{p.name}</option>)}
+                {products.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
                 <option value="__custom__">Other / Custom</option>
               </Sel>
-              {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name *" value={ptF.customProduct||""} onChange={e=>setPtF({...ptF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
+              {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name *" value={ptF.customProduct||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,customProduct:v}));}} placeholder="e.g. Special Paratha"/>}
               {/* Shift pills */}
               <div>
                 <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Shift</p>
@@ -11614,7 +11674,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </div>
 
           {/* ── SECTION 2: Output & QC ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
             <div style={{background:dm?"rgba(16,185,129,0.1)":"rgba(16,185,129,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
               <p style={{color:"#10b981",fontWeight:800,fontSize:12}}>② Output & Quality</p>
               <p style={{color:tS.sub,fontSize:10}}>Units produced and quality grade for recall traceability</p>
@@ -11627,7 +11687,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   <div style={{display:"flex",alignItems:"center",gap:8,background:tS.inp,border:`1.5px solid ${tS.inpB}`,borderRadius:12,padding:"8px 12px"}}>
                     <button onClick={()=>setPtF(f=>({...f,actual:String(Math.max(0,(+f.actual||0)-1))}))}
                       style={{width:32,height:32,borderRadius:8,background:tS.card,border:`1px solid ${tS.border}`,color:tS.text,fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
-                    <input type="number" value={ptF.actual} onChange={e=>setPtF({...ptF,actual:e.target.value})} placeholder="0"
+                    <input type="number" value={ptF.actual} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,actual:v}));}} placeholder="0"
                       style={{flex:1,background:"transparent",border:"none",outline:"none",color:tS.text,fontWeight:900,fontSize:24,textAlign:"center",minWidth:0}}/>
                     <button onClick={()=>setPtF(f=>({...f,actual:String((+f.actual||0)+1)}))}
                       style={{width:32,height:32,borderRadius:8,background:"#8b5cf6",border:"none",color:"#fff",fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>+</button>
@@ -11672,7 +11732,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   </div>
                 </div>;
               })()}
-              <Inp dm={dm} label="Batch Notes" value={ptF.notes} onChange={e=>setPtF({...ptF,notes:e.target.value})} placeholder="e.g. Machine issue, short staff, quality remarks…"/>
+              <Inp dm={dm} label="Batch Notes" value={ptF.notes} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,notes:v}));}} placeholder="e.g. Machine issue, short staff, quality remarks…"/>
             </div>
           </div>
 
@@ -11684,7 +11744,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             // Find deliveries that include this product
             const matchingDelivs=productName?sameDateDelivs.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase());})):sameDateDelivs;
             const totalUnitsOrdered=matchingDelivs.reduce((s,d)=>Object.entries(safeO(d.orderLines)).reduce((s2,[pid,l])=>{if(!(l.qty>0))return s2;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";if(!productName||pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase()))return s2+(+l.qty||0);return s2;},s),0);
-            return <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+            return <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
               <div style={{background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.06)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div>
                   <p style={{color:"#7c3aed",fontWeight:800,fontSize:12}}>③ Customer Traceability</p>
@@ -11701,7 +11761,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   </div>
                   :<>
                     {/* Summary row */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                    <div className="crm-grid-3" style={{gap:8,marginBottom:12}}>
                       {[
                         {l:"Customers",v:matchingDelivs.length,c:"#7c3aed"},
                         {l:"Units Ordered",v:totalUnitsOrdered,c:"#8b5cf6"},
@@ -11741,7 +11801,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           })()}
 
           {/* ── SECTION 4: Wastage ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
             <div style={{background:dm?"rgba(249,115,22,0.1)":"rgba(249,115,22,0.05)",padding:"10px 14px",borderBottom:(ptF.embWastage||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <p style={{color:"#f97316",fontWeight:800,fontSize:12}}>④ Wastage <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
@@ -11783,7 +11843,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </div>
 
           {/* ── SECTION 5: QC Checks ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
             <div style={{background:dm?"rgba(20,184,166,0.1)":"rgba(20,184,166,0.05)",padding:"10px 14px",borderBottom:(ptF.embQC||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <p style={{color:"#14b8a6",fontWeight:800,fontSize:12}}>⑤ QC Checks <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
@@ -11802,7 +11862,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).filter((_,i)=>i!==qi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
                   </div>
                   <Inp dm={dm} label="Product Inspected" value={q.product} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>
+                  <div className="crm-grid-4" style={{gap:6,marginTop:8}}>
                     {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
                       <button key={g} onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,grade:g}:x)}))}
                         style={{background:q.grade===g?color+"25":tS.card,border:`2px solid ${q.grade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
@@ -11821,7 +11881,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </div>
 
           {/* ── SECTION 6: Handovers ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"hidden",marginBottom:4}}>
+          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
             <div style={{background:dm?"rgba(99,102,241,0.1)":"rgba(99,102,241,0.05)",padding:"10px 14px",borderBottom:(ptF.embHandover||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <p style={{color:"#6366f1",fontWeight:800,fontSize:12}}>⑥ Shift Handover <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
@@ -12158,6 +12218,38 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </Btn>
         </div>
       </Sheet>
+
+      {/* ── DATE EXPORT DROPDOWN — anchored below the button ── */}
+      {delivExportOpen&&can("deliv_export")&&(<>
+        <div onClick={()=>setDelivExportOpen(false)} style={{position:"fixed",inset:0,zIndex:998,WebkitTapHighlightColor:"transparent"}}/>
+        <div style={{position:"fixed",top:(()=>{const r=delivExportBtnRef.current?.getBoundingClientRect();return r?`${Math.min(r.bottom+6,window.innerHeight-320)}px`:"60px"})(),left:(()=>{const r=delivExportBtnRef.current?.getBoundingClientRect();if(!r)return"50%";const w=Math.min(300,window.innerWidth-16);const left=Math.min(r.left,window.innerWidth-w-8);return`${Math.max(8,left)}px`})(),background:t.card,border:`1px solid ${t.border}`,borderRadius:14,zIndex:999,padding:"16px",boxShadow:"0 8px 40px rgba(0,0,0,0.28)",width:"min(300px, calc(100vw - 16px))"}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",margin:0}}>📅 Export by Date Range</p>
+            <button onClick={()=>setDelivExportOpen(false)} style={{background:"none",border:"none",color:t.sub,fontSize:18,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>×</button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:t.sub,fontSize:12,minWidth:32}}>From</span>
+              <input type="date" value={delivExportFrom} onChange={e=>setDelivExportFrom(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${delivExportFrom?t.border:"#ef444480"}`,color:t.text,borderRadius:10,padding:"8px 10px",fontSize:13,outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:t.sub,fontSize:12,minWidth:32}}>To</span>
+              <input type="date" value={delivExportTo} onChange={e=>setDelivExportTo(e.target.value)} style={{flex:1,background:t.inp,border:`1.5px solid ${delivExportTo?t.border:"#ef444480"}`,color:t.text,borderRadius:10,padding:"8px 10px",fontSize:13,outline:"none"}}/>
+            </div>
+            {delivExportFrom&&delivExportTo&&delivExportFrom<=delivExportTo&&(()=>{const cnt=deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo).length;return <p style={{color:"#3b82f6",fontSize:11,fontWeight:600,textAlign:"center",margin:0}}>✓ {Math.round((new Date(delivExportTo)-new Date(delivExportFrom))/86400000)+1} days · {cnt} deliveri{cnt===1?"y":"es"} found</p>;})()}
+            {delivExportFrom&&delivExportTo&&delivExportFrom>delivExportTo&&<p style={{color:"#ef4444",fontSize:11,fontWeight:600,textAlign:"center",margin:0}}>⚠️ "From" date must be before "To" date</p>}
+            {(!delivExportFrom||!delivExportTo)&&<p style={{color:t.sub,fontSize:11,textAlign:"center",margin:0}}>Select both dates to export</p>}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {[
+              ["📊 CSV",()=>{const dr=deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo);exportCSV(dr,`deliveries_${delivExportFrom}_to_${delivExportTo}`,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Deducted (₹)",val:r=>r.replacement?.amount||0},{label:"Net (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Collected (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}]);}],
+              ["📋 XLS",()=>{const dr=deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo);exportTabExcel(`Deliveries ${delivExportFrom} to ${delivExportTo}`,dr,[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Order Total",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Deducted",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Collected",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||""):"—"},{label:"Repl Type",val:r=>r.replacement?.type||""},{label:"Created By",key:"createdBy"}],settings);}],
+            ].map(([lbl,fn])=>(
+              <button key={lbl} onClick={()=>{if(!delivExportFrom||!delivExportTo){notify("Please select both From and To dates");return;}if(delivExportFrom>delivExportTo){notify("'From' date must be before 'To' date");return;}const cnt=deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo).length;if(cnt===0){notify("No deliveries found in this date range");return;}fn();setDelivExportOpen(false);}} style={{background:(!delivExportFrom||!delivExportTo||delivExportFrom>delivExportTo)?t.inp+"80":t.inp,border:`1.5px solid ${t.border}`,color:(!delivExportFrom||!delivExportTo||delivExportFrom>delivExportTo)?t.sub:t.text,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:700,cursor:(!delivExportFrom||!delivExportTo||delivExportFrom>delivExportTo)?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:6}}>{lbl}{delivExportFrom&&delivExportTo&&delivExportFrom<=delivExportTo?` (${deliveries.filter(d=>d.date>=delivExportFrom&&d.date<=delivExportTo).length} orders)`:""}</button>
+            ))}
+          </div>
+        </div>
+      </>)}
 
       {/* ── UNIVERSAL DETAIL MODAL ── */}
       {detailModal&&<DetailModal
