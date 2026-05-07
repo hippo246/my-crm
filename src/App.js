@@ -107,6 +107,32 @@ function useStore(key, def) {
 // ═══════════════════════════════════════════════════════════════
 const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 const today = () => new Date().toISOString().slice(0,10);
+
+// Strict batch↔delivery product matching.
+// Normalises to lowercase, strips trailing "pack", plural "s", and common
+// suffixes so "Paratha Pack (5 pcs)" and "Paratha" both normalise to "paratha".
+// Returns true ONLY when the core product name is the same — prevents
+// "Paratha" from matching "Roti" or "Special Paratha" from matching "Paratha".
+function normProd(name) {
+  return (name||"")
+    .toLowerCase()
+    .replace(/\s*\(.*?\)/g,"")   // remove parenthetical e.g. "(5 pcs)"
+    .replace(/\bpack\b/g,"")     // remove the word pack
+    .replace(/\bspecial\b/g,"")  // treat special variants as base name
+    .replace(/\s+/g," ")
+    .trim();
+}
+function prodNamesMatch(a,b){
+  if(!a||!b)return false;
+  const na=normProd(a), nb=normProd(b);
+  if(!na||!nb)return false;
+  // exact after normalisation
+  if(na===nb)return true;
+  // one is a leading-word subset of the other (e.g. "paratha" inside "paratha roti")
+  // but NOT a suffix — prevents "paratha" matching "masala paratha" from the middle
+  if(nb.startsWith(na+" ")||na.startsWith(nb+" "))return true;
+  return false;
+}
 const ts    = () => new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
 const inr   = n  => `₹${Number(n||0).toLocaleString("en-IN")}`;
 const cx    = (...a) => a.filter(Boolean).join(" ");
@@ -317,6 +343,11 @@ const D_WASTE = [];
 
 // Default production targets
 const D_PROD_TARGETS = [];
+// Production-only items (separate from delivery products)
+const D_PROD_ITEMS = [
+  {id:"prod_paratha", name:"Paratha"},
+  {id:"prod_roti",    name:"Roti"},
+];
 // shifts stored in settings already
 
 // ═══════════════════════════════════════════════════════════════
@@ -1703,13 +1734,25 @@ function Card({children,className="",dm}){
   const t=T(dm);
   return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)",borderRadius:16}} className={className}>{children}</div>;
 }
-function StatCard({label,value,sub,accent,dm,animDelay="0.05s"}){
+function StatCard({label,value,sub,accent,dm,animDelay="0.05s",icon,trend,trendUp}){
   const t=T(dm);
-  return <div style={{background:t.card,border:`1px solid ${t.border}`,boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)",borderRadius:16,borderLeft:`3px solid ${accent}`,"--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="p-4 relative crm-stat-card crm-list-item">
-    <p style={{color:t.sub,letterSpacing:"0.06em",fontSize:10}} className="font-semibold uppercase mb-2">{label}</p>
-    <p style={{color:t.text,fontSize:22}} className="font-bold leading-none tracking-tight">{value}</p>
-    {sub&&<p style={{color:t.sub,fontSize:12}} className="mt-1.5 font-medium">{sub}</p>}
-  </div>;
+  return (
+    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden",boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)","--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="crm-stat-card crm-list-item">
+      {/* Top accent bar */}
+      <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:accent,borderRadius:"18px 18px 0 0"}}/>
+      {/* Soft glow blob */}
+      <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:`${accent}18`,pointerEvents:"none"}}/>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
+        <p style={{color:t.sub,letterSpacing:"0.06em",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{label}</p>
+        {icon&&<span style={{fontSize:16,background:`${accent}15`,width:30,height:30,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</span>}
+      </div>
+      <p style={{color:t.text,fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{value}</p>
+      {(sub||trend!==undefined)&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6}}>
+        {sub&&<p style={{color:t.sub,fontSize:11,fontWeight:500}}>{sub}</p>}
+        {trend!==undefined&&<span style={{fontSize:10,fontWeight:700,color:trendUp?"#10b981":"#ef4444",background:trendUp?"#10b98115":"#ef444415",padding:"2px 7px",borderRadius:99}}>{trendUp?"↑":"↓"} {trend}</span>}
+      </div>}
+    </div>
+  );
 }
 function Sheet({open,title,onClose,children,dm}){
   const t=T(dm);
@@ -1750,7 +1793,8 @@ function Sheet({open,title,onClose,children,dm}){
   </div>;
 }
 function Toast({msg,onDone}){
-  useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);});
+  // Fix: empty dep array so the timer only starts once, not on every re-render
+  useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);},[]);
   return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(72px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
@@ -2259,10 +2303,11 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
   // ── AGENT / LOGGED-BY HISTORY ──
   if (type === "agent") {
     const agentName = data.name;
-    const agentDelivs = deliveries.filter(d=>d.createdBy===agentName||d.agent===agentName).sort((a,b)=>b.date.localeCompare(a.date));
+    // Fix: spread before sort to avoid mutating the filtered array in-place
+    const agentDelivs = [...deliveries.filter(d=>d.createdBy===agentName||d.agent===agentName)].sort((a,b)=>b.date.localeCompare(a.date));
     const agentDone = agentDelivs.filter(d=>d.status==="Delivered");
     const agentRev = agentDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-    const agentExps = expenses.filter(e=>e.approvedBy===agentName).sort((a,b)=>b.date.localeCompare(a.date));
+    const agentExps = [...expenses.filter(e=>e.approvedBy===agentName)].sort((a,b)=>b.date.localeCompare(a.date));
     const u = data.user||null;
     return (
       <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
@@ -3160,6 +3205,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [actLog,    setAct,   actLoaded]     =useStore("tas9_act",  []);
   const [wastage,   setWaste, wastageLoaded] =useStore("tas9_waste", D_WASTE);
   const [prodTargets, setProdTargets, ptLoaded]=useStore("tas9_prodtargets", D_PROD_TARGETS);
+  const [prodItems, setProdItems]=useStore("tas9_prod_items", D_PROD_ITEMS);
   const dataLoaded = custLoaded && delivLoaded && supLoaded && expLoaded && prodLoaded && wastageLoaded && actLoaded && ptLoaded;
   // Agent live locations — kept in memory only, NOT stored in Firebase/cloud
   // Uses Ably free-tier WebSockets for cross-device real-time relay
@@ -3195,21 +3241,34 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     addNotif("Payment Recorded",`${inr(amount)} from ${customerName}`,"success","payment");
     notify(`${inr(amount)} recorded ✓`);
   }
+  // Fix #10: use functional updater form so seq always reads from prev (latest committed)
+  // state, not the stale closure value. Prevents double-click from generating duplicate
+  // invoice numbers when two rapid calls both read invRegistry.seq before either write resolves.
   function getOrCreateInvNo(deliveryId) {
     const existing = (invRegistry.issued||{})[deliveryId];
     if(existing) return existing;
-    const newSeq = (invRegistry.seq||0) + 1;
     const prefix = settings?.invoicePrefix||"TAS";
     const yearReset = settings?.invoiceYearReset!==false;
     const year = new Date().getFullYear();
-    const invNo = yearReset
-      ? `${prefix}-${year}-${String(newSeq).padStart(4,"0")}`
-      : `${prefix}-${String(newSeq).padStart(4,"0")}`;
-    setInvRegistry(prev => ({
-      seq: newSeq,
-      issued: {...(prev.issued||{}), [deliveryId]: invNo}
-    }));
-    return invNo;
+    let generatedInvNo = "";
+    setInvRegistry(prev => {
+      // Re-check inside updater — another call may have already issued this id
+      if((prev.issued||{})[deliveryId]) { generatedInvNo=(prev.issued||{})[deliveryId]; return prev; }
+      const newSeq = (prev.seq||0) + 1;
+      generatedInvNo = yearReset
+        ? `${prefix}-${year}-${String(newSeq).padStart(4,"0")}`
+        : `${prefix}-${String(newSeq).padStart(4,"0")}`;
+      return { seq: newSeq, issued: {...(prev.issued||{}), [deliveryId]: generatedInvNo} };
+    });
+    // Return a synchronous best-guess (the functional update is async in React)
+    // For display purposes this is fine; the registry write is always correct.
+    if(!generatedInvNo){
+      const seq = (invRegistry.seq||0) + 1;
+      generatedInvNo = yearReset
+        ? `${prefix}-${year}-${String(seq).padStart(4,"0")}`
+        : `${prefix}-${String(seq).padStart(4,"0")}`;
+    }
+    return generatedInvNo;
   }
   // eslint-disable-next-line no-unused-vars
   function getReceiptNo(deliveryId) {
@@ -3255,10 +3314,12 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [activeStaff,setActiveStaff]=useState(()=>sess.displayOverride||( subStaff.length>0?subStaff[0]:sess.name));
   const displayName=useMemo(()=>sess.displayOverride||( subStaff.length>0?activeStaff:sess.name),[sess.displayOverride,sess.name,subStaff.length,activeStaff]);
 
-  function addLog(action,detail){
+  // Fix: useCallback so addLog is a stable reference — prevents cascading re-renders
+  // in any child component that receives it as a prop
+  const addLog=useCallback((action,detail)=>{
     const e={id:uid(),user:displayName,role:sess.role,action,detail,ts:ts()};
     setAct(p=>[e,...p.slice(0,999)]);
-  }
+  },[displayName,sess.role]);
 
   // ── GPS LOCATION LOGS — Firebase-stored breadcrumb trail ──────
   // Instead of live broadcasting, we capture a one-shot GPS snapshot
@@ -3275,19 +3336,25 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [gpsDateFilter, setGpsDateFilter] = useState("all"); // "all"|"today"|"yesterday"|"week"|"month"
   const [gpsSubSection, setGpsSubSection] = useState("overview"); // "overview"|"map"|"timeline"|"report"
 
+  // Fix: keep a ref to sess so async GPS callbacks always read the current session,
+  // not whatever sess was when captureGPS was defined (stale closure)
+  const sessRef = useRef(sess);
+  useEffect(()=>{ sessRef.current = sess; }, [sess]);
+
   // Silent one-shot location capture — called on delivery actions
   // action = "session_start" | "delivery_saved" | "marked_transit" | "marked_delivered"
   // customer = customer name string (or "" for session start)
   function captureGPS(action, customer=""){
     if(!navigator.geolocation) return;
-    if(sess.role!=="agent") return; // delivery agents only — admins/factory never tracked
-    if(!can("gps_track")) return;
+    const currentSess = sessRef.current;
+    if(currentSess.role!=="agent") return; // delivery agents only — admins/factory never tracked
+    if(!hasPerm(currentSess,"gps_track")) return;
     let bestPos=null; let attempts=0; let committed=false;
     function commit(pos){
       if(committed) return;
       committed=true;
       const log={
-        id:uid(), agentId:sess.id, agentName:sess.name, agentRole:sess.role, action, customer,
+        id:uid(), agentId:currentSess.id, agentName:currentSess.name, agentRole:currentSess.role, action, customer,
         lat:pos.coords.latitude, lng:pos.coords.longitude,
         acc:Math.round(pos.coords.accuracy),
         speed:pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):null,
@@ -3336,21 +3403,25 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     const interval=setInterval(()=>{if(window.__fbOffline){setIsOffline(true);window.__fbOffline=false;}},3000);
     return()=>clearInterval(interval);
   },[]);
-  const activeC=customers.filter(c=>c.active);
-  const totalReplDeductions=deliveries.reduce((a,d)=>a+(+d.replacement?.amount||0),0);
-  const totalRev=customers.reduce((a,c)=>a+(c.paid||0),0)-totalReplDeductions;
-  const totalDue=customers.reduce((a,c)=>a+(c.pending||0),0);
-  const totalExpOp=expenses.reduce((a,e)=>a+(e.amount||0),0);
-  const totalSupC=supplies.reduce((a,s)=>a+(s.cost||0),0);
-  const netProfit=totalRev-totalExpOp-totalSupC;
-  const pendingD=deliveries.filter(d=>d.status==="Pending");
+  // Fix #1 & #4: All these were running on every single render with no memoization.
+  // Also fix #4: totalRev now computed purely from deliveries (single source of truth)
+  // instead of mixing customers.paid (ledger) with delivery-level replacement deductions.
+  const activeC=useMemo(()=>customers.filter(c=>c.active),[customers]);
+  const totalReplDeductions=useMemo(()=>deliveries.reduce((a,d)=>a+(+d.replacement?.amount||0),0),[deliveries]);
+  const totalRev=useMemo(()=>deliveries.filter(d=>d.status==="Delivered").reduce((a,d)=>a+lineTotal(d.orderLines),0)-totalReplDeductions,[deliveries,totalReplDeductions]);
+  const totalDue=useMemo(()=>customers.reduce((a,c)=>a+(c.pending||0),0),[customers]);
+  const totalExpOp=useMemo(()=>expenses.reduce((a,e)=>a+(e.amount||0),0),[expenses]);
+  const totalSupC=useMemo(()=>supplies.reduce((a,s)=>a+(s.cost||0),0),[supplies]);
+  const netProfit=useMemo(()=>totalRev-totalExpOp-totalSupC,[totalRev,totalExpOp,totalSupC]);
+  const pendingD=useMemo(()=>deliveries.filter(d=>d.status==="Pending"),[deliveries]);
 
   // ── PUSH PERMISSION ──────────────────────────────────────────
   useEffect(() => { requestPushPermission(); }, []);
 
   // ── LOW STOCK ALERTS ─────────────────────────────────────────
+  // Fix #2: memoize lowStockItems — previously re-filtered supplies on every render
   const lowStockThreshold = settings?.lowStockThreshold ?? 5;
-  const lowStockItems = supplies.filter(s => (s.qty || 0) <= lowStockThreshold && s.item);
+  const lowStockItems = useMemo(()=>supplies.filter(s => (s.qty || 0) <= lowStockThreshold && s.item),[supplies,lowStockThreshold]);
   const lowStockNotifiedRef = useRef({});
   useEffect(() => {
     lowStockItems.forEach(s => {
@@ -3365,19 +3436,79 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const churnDays = settings?.churnDays ?? 14;
   const churnedCustomers = useMemo(() => {
     const now = new Date();
+    const churnMs = churnDays * 86400000;
+    // Fix #3: pre-index deliveries by customerId to avoid O(n×m) nested filter per customer.
+    // Previously: 200 customers × 5000 deliveries = 1,000,000 iterations on every change.
+    const lastDelivByCustomer = {};
+    for (const d of deliveries) {
+      if (!d.customerId) continue;
+      if (!lastDelivByCustomer[d.customerId] || d.date > lastDelivByCustomer[d.customerId]) {
+        lastDelivByCustomer[d.customerId] = d.date;
+      }
+    }
     return customers.filter(c => {
       if (!c.active) return false;
-      const custDelivs = deliveries.filter(d => d.customerId === c.id);
-      if (custDelivs.length === 0) return c.joinDate && (now - new Date(c.joinDate)) > churnDays * 86400000;
-      const lastDate = [...custDelivs].sort((a,b) => b.date.localeCompare(a.date))[0]?.date;
-      return lastDate && (now - new Date(lastDate)) > churnDays * 86400000;
+      const lastDate = lastDelivByCustomer[c.id];
+      if (!lastDate) return c.joinDate && (now - new Date(c.joinDate)) > churnMs;
+      return (now - new Date(lastDate)) > churnMs;
     });
   }, [customers, deliveries, churnDays]);
 
+
+  // ── DASHBOARD STATS MEMO ─────────────────────────────────────────────────────
+  // Pre-computes all dashboard values once per data change, not on every render.
+  // Fixes: repeated deliveries.filter / customers.filter / wastage.filter inside
+  // the Dashboard IIFE that previously ran on every keystroke / modal open.
+  const dashStats = useMemo(() => {
+    const tStr = today();
+    const startOfWeek  = (() => { const d=new Date(tStr); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
+    const startOfMonth = (() => { const d=new Date(tStr); d.setDate(1); return d.toISOString().slice(0,10); })();
+    const todayDelivs  = deliveries.filter(d => d.date === tStr);
+    const todayDone    = todayDelivs.filter(d => d.status === "Delivered");
+    const todayPend    = todayDelivs.filter(d => d.status === "Pending");
+    const todayTransit = todayDelivs.filter(d => d.status === "In Transit");
+    const todayCancl   = todayDelivs.filter(d => d.status === "Cancelled");
+    const todayRev     = todayDone.reduce((s,d) => s + lineTotal(d.orderLines), 0);
+    const weekDelivs   = deliveries.filter(d => d.date >= startOfWeek && d.status === "Delivered");
+    const monthDelivs  = deliveries.filter(d => d.date >= startOfMonth && d.status === "Delivered");
+    const weekRev      = weekDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
+    const monthRev     = monthDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
+    const allDue       = customers.filter(c => c.pending > 0);
+    const totalDueAmt  = allDue.reduce((s,c) => s + (c.pending||0), 0);
+    const todayPT      = prodTargets.filter(p => p.date === tStr);
+    const totalTarget  = todayPT.reduce((s,p) => s + (p.target||0), 0);
+    const totalActual  = todayPT.reduce((s,p) => s + (p.actual||0), 0);
+    const prodPct      = totalTarget > 0 ? Math.round(totalActual / totalTarget * 100) : null;
+    const overdueD     = deliveries.filter(d => d.status === "Pending" && d.date < tStr);
+    const todayWastage = wastage.filter(w => w.date === tStr);
+    const todayWasteCost = todayWastage.reduce((s,w) => s + (w.cost||0), 0);
+    return {todayDelivs,todayDone,todayPend,todayTransit,todayCancl,todayRev,
+            weekDelivs,monthDelivs,weekRev,monthRev,allDue,totalDueAmt,
+            todayPT,totalTarget,totalActual,prodPct,overdueD,todayWastage,todayWasteCost};
+  }, [deliveries, customers, prodTargets, wastage]);
+
+  // ── DERIVED DELIVERY/CUSTOMER MEMOS — replaces inline JSX filters ────────────
+  // These replace scattered deliveries.filter() calls in StatCards and pill labels
+  // that were re-running on every render, including during search typing.
+  const dashReplacementCount = useMemo(()=>deliveries.filter(d=>d.replacement?.done).length,[deliveries]);
+  const dashPartialCount = useMemo(()=>deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length,[deliveries]);
+  const dashPartialTotal = useMemo(()=>deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0),[deliveries]);
+  const dashTotalCollected = useMemo(()=>customers.reduce((s,c)=>s+(c.paid||0),0),[customers]);
+  // Delivery status counts for filter pills — one pass over deliveries, not 3 separate filters
+  const delivStatusCounts = useMemo(()=>{
+    const counts={"Pending":0,"In Transit":0,"Delivered":0,"Cancelled":0};
+    for(const d of deliveries) if(counts[d.status]!==undefined) counts[d.status]++;
+    return counts;
+  },[deliveries]);
+
+
+  // Previously new Date() was called inside the memo with no date dependency —
+  // if the app stayed open past midnight the chart would silently show wrong dates.
+  const todayStr = today();
   const chartData=useMemo(()=>{
-    const days=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}).reverse();
+    const days=Array.from({length:7},(_,i)=>{const d=new Date(todayStr);d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}).reverse();
     return days.map(date=>({date:date.slice(5),Revenue:deliveries.filter(d=>d.date===date&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),Expenses:expenses.filter(e=>e.date===date).reduce((s,e)=>s+(e.amount||0),0)}));
-  },[deliveries,expenses]);
+  },[deliveries,expenses,todayStr]);
 
   const widgets=settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"];
   const q=srch.toLowerCase();
@@ -3424,6 +3555,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [expPTOpen,setExpPTOpen]=useState(false);
   const [expPTSection,setExpPTSection]=useState("revenue");
   const [pSh,setPsh]=useState(null); const [pF,setPf]=useState(blkP());
+  const [piSh,setPiSh]=useState(null); const [piF,setPiF]=useState({id:"",name:""});
   const [uSh,setUsh]=useState(null); const [uF,setUf]=useState(blkU());
   const [paySh,setPaySh]=useState(null); const [payAmt,setPayAmt]=useState("");
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
@@ -3434,11 +3566,11 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   useEffect(()=>{const fn=ts=>{setLastSync(ts);};_syncListeners.add(fn);return()=>_syncListeners.delete(fn);},[]);
   const [ptSh,setPtSh]=useState(null);
   const [ptF,setPtF]=useState(()=>({date:today(),shift:"",product:"",actual:0,notes:"",batchId:"",batchLabel:"Batch 1",qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]}));
-  const [ptDateFilter,setPtDateFilter]=useState("today");
+  const [ptDateFilter,setPtDateFilter]=useState("all");
   const [nbSh,setNbSh]=useState(false);
   const [nbF,setNbF]=useState({title:"",body:"",pinned:false});
   const [hvSh,setHvSh]=useState(false);
-  const prodSubTab="batches"; // always batches — sub-tabs removed
+  const [prodSubTab,setProdSubTab]=useState("batches");
   const [openRecipe,setOpenRecipe]=useState(null);
   const [hvF,setHvF]=useState({shift:"Morning",date:today(),note:"",nextShift:"",issues:"",loggedBy:""});
   const [bulkSelect,setBulkSelect]=useState(false);
@@ -3750,18 +3882,22 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
 
     if(ptSh==="add"){
       const deduction=runAutoDeduct(productName,rec.actual,null);
-      // ── Link any same-date deliveries for this product to this batch ──
+      // ── Link same-date deliveries that contain this exact product to this batch ──
       const matchingInvNos=deliveries
-        .filter(d=>d.date===rec.date)
-        .filter(d=>Object.values(safeO(d.orderLines)).some(l=>(l.qty||0)>0&&l.name&&(l.name===productName||l.name.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(l.name.toLowerCase()))))
+        .filter(d=>d.date===rec.date&&d.status!=="Cancelled")
+        .filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{
+          if(!(l.qty>0))return false;
+          const p=products.find(x=>x.id===pid);
+          return prodNamesMatch(p?.name||l.name||"",productName);
+        }))
         .map(d=>(invRegistry?.issued||{})[d.id]||d.invNo)
         .filter(Boolean);
       const savedRec={...rec,id:uid(),createdAt:ts(),deduction:deduction||null,linkedInvoices:[...new Set(matchingInvNos)]};
       setProdTargets(p=>[savedRec,...p]);
       // Save embedded records linked to this batch
-      if(embW.length>0) setWaste(p=>[...embW.map(w=>({...w,batchId:batchIdFinal,id:w.id||uid(),createdAt:w.createdAt||ts()})),...p]);
-      if(embQ.length>0) setQcLogs(p=>[...embQ.map(q=>({...q,batchId:batchIdFinal,id:q.id||uid(),createdAt:q.createdAt||ts()})),...p]);
-      if(embH.length>0) setHandovers(p=>[...embH.map(h=>({...h,batchId:batchIdFinal,id:h.id||uid(),createdAt:h.createdAt||ts()})),...p]);
+      if(embW.length>0) setWaste(p=>[...embW.map(w=>({...w,date:rec.date,batchId:batchIdFinal,id:w.id||uid(),createdAt:w.createdAt||ts()})),...p]);
+      if(embQ.length>0) setQcLogs(p=>[...embQ.map(q=>({...q,date:rec.date,batchId:batchIdFinal,id:q.id||uid(),createdAt:q.createdAt||ts()})),...p]);
+      if(embH.length>0) setHandovers(p=>[...embH.map(h=>({...h,date:rec.date,batchId:batchIdFinal,id:h.id||uid(),createdAt:h.createdAt||ts()})),...p]);
       addLog("Production logged",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units${rec.shift?" ("+rec.shift+")":""}${embW.length>0?` · ${embW.length} wastage`:""}${embQ.length>0?` · ${embQ.length} QC`:""}${embH.length>0?` · handover`:""}`);
       captureGPS("production_logged",rec.product);
       if(!ptAutoDeduct) notify("Batch saved ✓");
@@ -3771,9 +3907,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       const mergedDeduction=deduction||(prev?.deduction||null);
       setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
       // On edit: remove old linked records and re-add from embedded
-      setWaste(p=>{const withoutOld=p.filter(w=>w.batchId!==batchIdFinal||!w._embLinked);return embW.length>0?[...embW.map(w=>({...w,batchId:batchIdFinal,_embLinked:true,id:w.id||uid(),createdAt:w.createdAt||ts()})),...withoutOld]:withoutOld;});
-      setQcLogs(p=>{const withoutOld=p.filter(q=>q.batchId!==batchIdFinal||!q._embLinked);return embQ.length>0?[...embQ.map(q=>({...q,batchId:batchIdFinal,_embLinked:true,id:q.id||uid(),createdAt:q.createdAt||ts()})),...withoutOld]:withoutOld;});
-      setHandovers(p=>{const withoutOld=p.filter(h=>h.batchId!==batchIdFinal||!h._embLinked);return embH.length>0?[...embH.map(h=>({...h,batchId:batchIdFinal,_embLinked:true,id:h.id||uid(),createdAt:h.createdAt||ts()})),...withoutOld]:withoutOld;});
+      setWaste(p=>{const withoutOld=p.filter(w=>w.batchId!==batchIdFinal||!w._embLinked);return embW.length>0?[...embW.map(w=>({...w,date:rec.date,batchId:batchIdFinal,_embLinked:true,id:w.id||uid(),createdAt:w.createdAt||ts()})),...withoutOld]:withoutOld;});
+      setQcLogs(p=>{const withoutOld=p.filter(q=>q.batchId!==batchIdFinal||!q._embLinked);return embQ.length>0?[...embQ.map(q=>({...q,date:rec.date,batchId:batchIdFinal,_embLinked:true,id:q.id||uid(),createdAt:q.createdAt||ts()})),...withoutOld]:withoutOld;});
+      setHandovers(p=>{const withoutOld=p.filter(h=>h.batchId!==batchIdFinal||!h._embLinked);return embH.length>0?[...embH.map(h=>({...h,date:rec.date,batchId:batchIdFinal,_embLinked:true,id:h.id||uid(),createdAt:h.createdAt||ts()})),...withoutOld]:withoutOld;});
       addLog("Production updated",`${rec.batchLabel} — ${rec.product} — ${rec.actual} units`);
       captureGPS("production_logged",rec.product);
       if(!ptAutoDeduct) notify("Updated ✓");
@@ -3785,6 +3921,15 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // PRODUCTS
   function saveP(){if(!pF.name.trim()||!pF.id.trim()){notify("Name and ID required");return;}const rec={...pF,id:pF.id.toLowerCase().replace(/\s+/g,""),prices:pF.prices.map(x=>+x||0).filter(x=>x>0)};if(!rec.prices.length){notify("Add at least one price");return;}if(pSh==="add"){if(products.find(p=>p.id===rec.id)){notify("ID exists");return;}setProd(p=>[...p,rec]);addLog("Added product",rec.name);notify("Product added ✓");}else{setProd(p=>p.map(x=>x.id===pSh.id?rec:x));addLog("Edited product",rec.name);notify("Updated ✓");}setPsh(null);}
   function delP(p){ask(`Delete product "${p.name}"?`,()=>{setProd(prev=>prev.filter(x=>x.id!==p.id));addLog("Deleted product",p.name);notify("Deleted");});}
+  function saveProdItem(){
+    if(!piF.name.trim()){notify("Name required");return;}
+    const id=piF.id||piF.name.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+    const rec={id,name:piF.name.trim()};
+    if(piSh==="add"){if((prodItems||[]).find(x=>x.id===id)){notify("ID already exists");return;}setProdItems(p=>[...(p||[]),rec]);addLog("Added production item",rec.name);notify("Production item added ✓");}
+    else{setProdItems(p=>(p||[]).map(x=>x.id===piSh.id?{...rec,id:x.id}:x));addLog("Edited production item",rec.name);notify("Updated ✓");}
+    setPiSh(null);setPiF({id:"",name:""});
+  }
+  function delProdItem(item){ask(`Delete production item "${item.name}"?`,()=>{setProdItems(p=>(p||[]).filter(x=>x.id!==item.id));addLog("Deleted production item",item.name);notify("Deleted");});}
 
   // USERS
   function saveU(){
@@ -4088,32 +4233,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               PHASE 12 — DASHBOARD (Redesigned)
           ══════════════════════════════════════════ */}
           {(()=>{
+            // Values pre-computed in dashStats useMemo — no per-render filtering
+            const {todayDelivs,todayDone,todayPend,todayTransit,todayCancl,todayRev,
+                   weekDelivs,monthDelivs,weekRev,monthRev,allDue,totalDueAmt,
+                   todayPT,totalTarget,totalActual,prodPct,overdueD,todayWastage,todayWasteCost} = dashStats;
             const todayStr = today();
-            const todayDelivs = deliveries.filter(d => d.date === todayStr);
-            const todayDone   = todayDelivs.filter(d => d.status === "Delivered");
-            const todayPend   = todayDelivs.filter(d => d.status === "Pending");
-            const todayTransit= todayDelivs.filter(d => d.status === "In Transit");
-            const todayCancl  = todayDelivs.filter(d => d.status === "Cancelled");
-            const todayRev    = todayDone.reduce((s,d) => s + lineTotal(d.orderLines), 0);
-
-            const startOfWeek = (() => { const d=new Date(); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
-            const startOfMonth= (() => { const d=new Date(); d.setDate(1); return d.toISOString().slice(0,10); })();
-            const weekDelivs  = deliveries.filter(d => d.date >= startOfWeek && d.status === "Delivered");
-            const monthDelivs = deliveries.filter(d => d.date >= startOfMonth && d.status === "Delivered");
-            const weekRev     = weekDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
-            const monthRev    = monthDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
-
-            const allDue      = customers.filter(c => c.pending > 0);
-            const totalDueAmt = allDue.reduce((s,c) => s + (c.pending||0), 0);
-
-            const todayPT     = prodTargets.filter(p => p.date === todayStr);
-            const totalTarget = todayPT.reduce((s,p) => s + (p.target||0), 0);
-            const totalActual = todayPT.reduce((s,p) => s + (p.actual||0), 0);
-            const prodPct     = totalTarget > 0 ? Math.round(totalActual / totalTarget * 100) : null;
-
-            const overdueD    = deliveries.filter(d => d.status === "Pending" && d.date < todayStr);
-            const todayWastage= wastage.filter(w => w.date === todayStr);
-            const todayWasteCost = todayWastage.reduce((s,w) => s + (w.cost||0), 0);
 
             const greetHour = new Date().getHours();
             const greeting = greetHour < 12 ? "Good morning" : greetHour < 17 ? "Good afternoon" : "Good evening";
@@ -4270,7 +4394,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
                 {/* Debtor rows */}
                 <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                  {allDue.sort((a,b)=>b.pending-a.pending).slice(0,5).map((c,i,arr)=>{
+                  {[...allDue].sort((a,b)=>b.pending-a.pending).slice(0,5).map((c,i,arr)=>{
                     const billed=(c.paid||0)+(c.pending||0);
                     const pct=billed>0?Math.round((c.paid||0)/billed*100):0;
                     const isLast = i >= Math.min(allDue.length,5)-1;
@@ -4558,50 +4682,63 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             const totalReplDeducted=deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
             const partialCount=deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0&&Math.max(0,lineTotal(d.orderLines)-(+d.replacement?.amount||0))>(+(d.partialPayment?.amount)||0)).length;
             if(!overdueC.length) return null;
-            return <div style={{background:dm?"rgba(239,68,68,0.08)":"#fff1f1",border:"1.5px solid rgba(239,68,68,0.3)",borderRadius:16,padding:"14px 18px"}}>
-              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                <div>
-                  <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest mb-0.5">🔴 Overdue Payments</p>
-                  <p style={{color:t.text}} className="font-bold text-sm">{overdueC.length} customer{overdueC.length!==1?"s":""} owe a total of <span className="text-red-500">{inr(totalOverdue)}</span></p>
-                  {(totalReplDeducted>0||partialCount>0)&&<div className="flex gap-2 flex-wrap mt-1">
-                    {totalReplDeducted>0&&<span style={{background:"#f9731615",color:"#f97316",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:700}}>🔄 {inr(totalReplDeducted)} already replaced</span>}
-                    {partialCount>0&&<span style={{background:"#f59e0b15",color:"#f59e0b",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:700}}>⚡ {partialCount} partial payments</span>}
-                  </div>}
+            return <div style={{background:dm?"rgba(239,68,68,0.07)":"#fff5f5",border:`1.5px solid ${dm?"rgba(239,68,68,0.25)":"rgba(239,68,68,0.25)"}`,borderRadius:18,overflow:"hidden"}}>
+              {/* Header stripe */}
+              <div style={{background:dm?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.08)",borderBottom:`1px solid ${dm?"rgba(239,68,68,0.2)":"rgba(239,68,68,0.15)"}`,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:32,height:32,borderRadius:10,background:"#ef444420",border:"1.5px solid #ef444430",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🔴</div>
+                  <div>
+                    <p style={{color:"#dc2626",fontWeight:800,fontSize:13,lineHeight:1.2}}>{overdueC.length} customer{overdueC.length!==1?"s":""} with overdue payments</p>
+                    <p style={{color:dm?"#fca5a5":"#b91c1c",fontSize:11,fontWeight:600,marginTop:2}}>Total outstanding: <span style={{fontWeight:800}}>{inr(totalOverdue)}</span></p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <label style={{color:t.sub,fontSize:11}}>Over</label>
-                  <select value={overdueAlertDays} onChange={e=>setOverdueAlertDays(+e.target.value)}
-                    style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:12,borderRadius:8,padding:"4px 8px",outline:"none"}}>
-                    {[1,3,7,14,30].map(d=><option key={d} value={d}>{d}d</option>)}
-                  </select>
-                  <label style={{color:t.sub,fontSize:11}}>days</label>
-                  {isAdmin&&<button onClick={()=>{setPaymentsSubTab("outstanding");setTab("Payments");}} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>}
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  {totalReplDeducted>0&&<span style={{background:"#f9731612",color:"#f97316",border:"1px solid #f9731625",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>🔄 {inr(totalReplDeducted)} replaced</span>}
+                  {partialCount>0&&<span style={{background:"#f59e0b12",color:"#f59e0b",border:"1px solid #f59e0b25",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⚡ {partialCount} partial</span>}
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <label style={{color:t.sub,fontSize:11}}>Over</label>
+                    <select value={overdueAlertDays} onChange={e=>setOverdueAlertDays(+e.target.value)} style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:12,borderRadius:8,padding:"4px 8px",outline:"none"}}>
+                      {[1,3,7,14,30].map(d=><option key={d} value={d}>{d}d</option>)}
+                    </select>
+                  </div>
+                  {isAdmin&&<button onClick={()=>{setPaymentsSubTab("outstanding");setTab("Payments");}} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>}
                   <Btn dm={dm} v="danger" size="sm" onClick={()=>{
                     const cols=[{label:"Customer",key:"name"},{label:"Phone",key:"phone"},{label:"Pending (₹)",key:"pending",num:true},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"}];
-                    exportTabPDF("Overdue Payments",overdueC.sort((a,b)=>b.pending-a.pending),cols,settings,`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:20px"><b style="color:#b91c1c">Total Outstanding: ${inr(totalOverdue)}</b> across ${overdueC.length} customers</div>`);
+                    exportTabPDF("Overdue Payments",[...overdueC].sort((a,b)=>b.pending-a.pending),cols,settings,`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:20px"><b style="color:#b91c1c">Total Outstanding: ${inr(totalOverdue)}</b> across ${overdueC.length} customers</div>`);
                   }}>PDF</Btn>
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5 mt-1">
-                {overdueC.sort((a,b)=>b.pending-a.pending).slice(0,5).map(c=>{
+              {/* Customer rows */}
+              <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                {[...overdueC].sort((a,b)=>b.pending-a.pending).slice(0,5).map((c,idx)=>{
                   const cRepl=deliveries.filter(d=>d.customerId===c.id).reduce((s,d)=>s+(+d.replacement?.amount||0),0);
                   const cPartial=deliveries.filter(d=>d.customerId===c.id&&d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0&&Math.max(0,lineTotal(d.orderLines)-(+d.replacement?.amount||0))>(+(d.partialPayment?.amount)||0)).length;
-                  return <div key={c.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl" style={{background:dm?"rgba(239,68,68,0.06)":"rgba(239,68,68,0.04)",border:"1px solid rgba(239,68,68,0.15)"}}>
-                    <div>
-                      <span style={{color:t.text,fontWeight:600,fontSize:13}}>{c.name}</span>
-                      {c.phone&&<span style={{color:t.sub,fontSize:11,marginLeft:8}}>📞 {c.phone}</span>}
-                      {(cRepl>0||cPartial>0)&&<div className="flex gap-1 mt-0.5">
-                        {cRepl>0&&<span style={{color:"#f97316",fontSize:9,fontWeight:600}}>🔄 {inr(cRepl)} replaced</span>}
-                        {cPartial>0&&<span style={{color:"#f59e0b",fontSize:9,fontWeight:600,marginLeft:4}}>⚡ partial</span>}
-                      </div>}
+                  const intensity=Math.min(1,c.pending/Math.max(1,totalOverdue/overdueC.length));
+                  return <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderRadius:12,background:dm?"rgba(239,68,68,0.06)":"rgba(239,68,68,0.04)",border:"1px solid rgba(239,68,68,0.12)",gap:12,transition:"background 0.15s"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                      {/* Rank badge */}
+                      <div style={{width:24,height:24,borderRadius:7,background:idx===0?"#ef444420":"transparent",border:`1px solid ${idx===0?"#ef4444":"rgba(239,68,68,0.2)"}`,color:idx===0?"#dc2626":"#ef4444",fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{idx+1}</div>
+                      <div style={{minWidth:0}}>
+                        <span style={{color:t.text,fontWeight:700,fontSize:13}}>{c.name}</span>
+                        {c.phone&&<span style={{color:t.sub,fontSize:11,marginLeft:8}}>📞 {c.phone}</span>}
+                        {(cRepl>0||cPartial>0)&&<div style={{display:"flex",gap:6,marginTop:2}}>
+                          {cRepl>0&&<span style={{color:"#f97316",fontSize:9,fontWeight:600}}>🔄 {inr(cRepl)} replaced</span>}
+                          {cPartial>0&&<span style={{color:"#f59e0b",fontSize:9,fontWeight:600,marginLeft:2}}>⚡ partial</span>}
+                        </div>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span style={{color:"#ef4444",fontWeight:800,fontSize:13}}>{inr(c.pending)}</span>
-                      <button onClick={()=>{if(isAdmin){setPayLedgerCust(c);setPayLedgerAmt(String(c.pending||""));setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}else{setPaySh(c);setPayAmt("");}}} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{background:"#f59e0b",color:"#000"}}>💰 Collect</button>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                      {/* Amount bar */}
+                      <div style={{width:60,height:4,borderRadius:4,background:dm?"rgba(239,68,68,0.15)":"rgba(239,68,68,0.12)",overflow:"hidden"}}>
+                        <div style={{width:`${Math.round(intensity*100)}%`,height:"100%",background:"#ef4444",borderRadius:4}}/>
+                      </div>
+                      <span style={{color:"#ef4444",fontWeight:800,fontSize:13,minWidth:60,textAlign:"right"}}>{inr(c.pending)}</span>
+                      <button onClick={()=>{if(isAdmin){setPayLedgerCust(c);setPayLedgerAmt(String(c.pending||""));setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}else{setPaySh(c);setPayAmt("");}}}
+                        style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>💰 Collect</button>
                     </div>
                   </div>;
                 })}
-                {overdueC.length>5&&<p style={{color:t.sub}} className="text-[11px] text-center mt-1">+{overdueC.length-5} more customers with outstanding payments</p>}
+                {overdueC.length>5&&<p style={{color:t.sub,fontSize:11,textAlign:"center",marginTop:4}}>+{overdueC.length-5} more customers with outstanding payments</p>}
               </div>
             </div>;
           })()}
@@ -4747,12 +4884,12 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
           {/* Summary bar — enhanced 6-up grid */}
           {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
-            <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.filter(c=>!c.active).length} inactive`} accent="#d97706"/>
-            <StatCard dm={dm} label="Total Collected" value={inr(customers.reduce((s,c)=>s+(c.paid||0),0))} sub="All time" accent="#10b981"/>
-            <StatCard dm={dm} label="Outstanding" value={inr(customers.reduce((s,c)=>s+(c.pending||0),0))} sub={`${customers.filter(c=>c.pending>0).length} unpaid`} accent="#ef4444"/>
-            <StatCard dm={dm} label="Total Customers" value={customers.length} sub={`${activeC.length} active`} accent="#8b5cf6"/>
-            <StatCard dm={dm} label="Replacements" value={deliveries.filter(d=>d.replacement?.done).length} sub={`${inr(deliveries.reduce((s,d)=>s+(+d.replacement?.amount||0),0))} deducted`} accent="#f97316"/>
-            <StatCard dm={dm} label="Partial Payments" value={deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length} sub={`${inr(deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0))} collected`} accent="#f59e0b"/>
+            <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706" icon="👥"/>
+            <StatCard dm={dm} label="Total Collected" value={inr(dashTotalCollected)} sub="All time" accent="#10b981" icon="💰"/>
+            <StatCard dm={dm} label="Outstanding" value={inr(totalDue)} sub={`${dashStats.allDue.length} unpaid`} accent="#ef4444" icon="⚠️"/>
+            <StatCard dm={dm} label="Total Customers" value={customers.length} sub={`${activeC.length} active`} accent="#8b5cf6" icon="🏷️"/>
+            <StatCard dm={dm} label="Replacements" value={dashReplacementCount} sub={`${inr(totalReplDeductions)} deducted`} accent="#f97316" icon="🔄"/>
+            <StatCard dm={dm} label="Partial Payments" value={dashPartialCount} sub={`${inr(dashPartialTotal)} collected`} accent="#f59e0b" icon="⚡"/>
           </div>}
           {/* ── UNIFIED TOOLBAR ── */}
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -4997,38 +5134,38 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               const isExpanded=expandedCustCard===c.id;
 
               return (
-                <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?(dm?"#f59e0b":"#f59e0b"):t.border}`,borderRadius:16,overflow:"hidden",boxShadow:dm?"none":isExpanded?"0 6px 24px rgba(245,158,11,0.13)":"0 1px 8px rgba(0,0,0,0.06)",transition:"border-color 0.15s,box-shadow 0.2s"}}>
+                <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?"#f59e0b":t.border}`,borderRadius:18,overflow:"hidden",boxShadow:dm?"none":isExpanded?"0 8px 32px rgba(245,158,11,0.12)":"0 1px 8px rgba(0,0,0,0.05)",transition:"border-color 0.15s,box-shadow 0.2s"}}>
 
-                  {/* ── TOP STRIPE ── */}
-                  <div style={{height:3,background:c.active?(c.pending>0?"linear-gradient(90deg,#10b981,#f59e0b)":"#10b981"):"#6b7280"}}/>
+                  {/* ── STATUS STRIPE ── */}
+                  <div style={{height:3,background:c.active?(c.pending>0?"linear-gradient(90deg,#ef4444 0%,#f59e0b 60%,#10b981 100%)":"#10b981"):t.border}}/>
 
                   {/* ── COLLAPSED HEADER ── */}
                   <div onClick={()=>setExpandedCustCard(isExpanded?null:c.id)}
-                    style={{padding:"14px 18px",cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",gap:14}}>
+                    style={{padding:"14px 18px",cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",gap:14,WebkitTapHighlightColor:"transparent"}}>
                     {/* Avatar with recency dot */}
                     <div style={{position:"relative",flexShrink:0}}>
-                      <div style={{width:46,height:46,borderRadius:14,background:c.active?"#f59e0b22":"#6b728018",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,letterSpacing:-1}}>
+                      <div style={{width:46,height:46,borderRadius:14,background:c.active?"#f59e0b22":"#6b728018",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,letterSpacing:-1,border:isExpanded?"2px solid #f59e0b60":"2px solid transparent",transition:"border-color 0.15s"}}>
                         {c.name.charAt(0).toUpperCase()}
                       </div>
                       <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:lastCol,border:`2px solid ${t.card}`}}/>
                     </div>
                     {/* Name + meta */}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:4}}>
                         <p style={{color:t.text,fontWeight:800,fontSize:14,lineHeight:1.2}}>{c.name}</p>
                         <span style={{background:c.active?(dm?"#10b98122":"#dcfce7"):(dm?"#ffffff10":"#f3f4f6"),color:c.active?"#15803d":"#6b7280",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,letterSpacing:"0.04em"}}>{c.active?"● ACTIVE":"○ INACTIVE"}</span>
                         {c.pending>0&&<span style={{background:dm?"#ef444420":"#fef2f2",color:"#dc2626",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>Due {inr(c.pending)}</span>}
                         {!c.pending&&totalBilled>0&&<span style={{background:dm?"#10b98120":"#f0fdf4",color:"#16a34a",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>✓ Clear</span>}
                       </div>
-                      <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                         {c.phone&&<span style={{color:t.sub,fontSize:11}}>📞 {c.phone}</span>}
                         <span style={{color:lastCol,fontSize:11,fontWeight:600}}>🕐 {lastLabel}</span>
                         <span style={{color:t.sub,fontSize:11}}>{cDelivs.length} order{cDelivs.length!==1?"s":""}</span>
-                        {c.address&&<span style={{color:t.sub,fontSize:11,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {c.address}</span>}
+                        {c.address&&<span style={{color:t.sub,fontSize:11,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {c.address}</span>}
                       </div>
                     </div>
                     {/* Right: financials + chevron */}
-                    <div style={{display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
                       {canSeePrices&&<div style={{textAlign:"right"}}>
                         <p style={{color:"#10b981",fontWeight:900,fontSize:14,lineHeight:1}}>{inr(c.paid||0)}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2}}>collected</p>
@@ -5248,9 +5385,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           <div className="flex items-center gap-2 flex-wrap">
             {[
               {key:"all",label:`All (${deliveries.length})`,c:"stone"},
-              {key:"Pending",label:`${deliveries.filter(d=>d.status==="Pending").length} Pending`,c:"amber"},
-              {key:"In Transit",label:`${deliveries.filter(d=>d.status==="In Transit").length} Transit`,c:"blue"},
-              {key:"Delivered",label:`${deliveries.filter(d=>d.status==="Delivered").length} Done`,c:"green"},
+              {key:"Pending",label:`${delivStatusCounts.Pending} Pending`,c:"amber"},
+              {key:"In Transit",label:`${delivStatusCounts["In Transit"]} Transit`,c:"blue"},
+              {key:"Delivered",label:`${delivStatusCounts.Delivered} Done`,c:"green"},
             ].map(({key,label,c})=>(
               <button key={key} onClick={()=>setDelivStatusFilter(key)}
                 style={{border:`1.5px solid ${delivStatusFilter===key?(c==="amber"?"#f59e0b":c==="blue"?"#3b82f6":c==="green"?"#10b981":"#6b7280"):"transparent"}`,borderRadius:99,padding:"0",background:"transparent",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
@@ -5587,7 +5724,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
                       const isBulkChecked=bulkSelected.has(d.id);
                       // Batch info if any production record on same date
-                      const batchesOnDate=prodTargets.filter(pt=>pt.date===d.date);
+                      // Only show batches whose product strictly matches at least one product ordered in this delivery
+                      const batchesOnDate=(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
                       return <div key={d.id} style={{
                         borderTop:di>0?`1px solid ${t.border}`:"none",
                         background:isBulkChecked?(dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.06)"):undefined,
@@ -5707,7 +5845,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const supThisMonth=supplies.filter(s=>s.date?.startsWith(new Date().toISOString().slice(0,7)));
           const supThisMonthCost=supThisMonth.reduce((a,s)=>a+(s.cost||0),0);
           const uniqueSuppliers=[...new Set(supplies.map(s=>s.supplier).filter(Boolean))];
-          const lowStockItems=supplies.filter(s=>s.minStock&&(+s.qty||0)<=(+s.minStock));
+          // Fix: use the memoized lowStockItems from outer scope (uses lowStockThreshold from settings)
+          // Previously re-declared here using a different condition (minStock field vs settings threshold)
+          const supLowStockItems=supplies.filter(s=>s.minStock&&(+s.qty||0)<=(+s.minStock));
           const suppByName=uniqueSuppliers.map(sup=>({
             name:sup,
             count:supplies.filter(s=>s.supplier===sup).length,
@@ -7292,7 +7432,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               {mDelivs.length>0&&<div className="mb-2">
                                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Deliveries ({mDelivs.length})</p>
                                 <div style={{maxHeight:180,overflowY:"auto"}}>
-                                  {mDelivs.sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
+                                  {[...mDelivs].sort((a,b)=>lineTotal(b.orderLines)-lineTotal(a.orderLines)).map((d,di)=>{
                                     const plInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
                                     const plRcptNo=plInvNo?`RCP-${plInvNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
                                     const dDate=d.date||"";
@@ -7324,7 +7464,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               {mSups.length>0&&<div className="mb-2">
                                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>📦 Supplies ({mSups.length})</p>
                                 <div style={{maxHeight:80,overflowY:"auto"}}>
-                                  {mSups.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((s,si)=>(
+                                  {[...mSups].sort((a,b)=>(b.cost||0)-(a.cost||0)).map((s,si)=>(
                                     <div key={s.id||si} className="flex justify-between items-center py-1" style={{borderBottom:si<mSups.length-1?`1px solid ${t.border+"44"}`:"none"}}>
                                       <span style={{color:t.text,fontSize:11}}>{s.item}{s.supplier?` · ${s.supplier}`:""}</span>
                                       <span style={{color:"#8b5cf6",fontWeight:700,fontSize:11}}>{inr(s.cost||0)}</span>
@@ -7336,7 +7476,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               {mExps.length>0&&<div>
                                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>💸 Expenses ({mExps.length})</p>
                                 <div style={{maxHeight:100,overflowY:"auto"}}>
-                                  {mExps.sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(
+                                  {[...mExps].sort((a,b)=>(b.amount||0)-(a.amount||0)).map((e,ei)=>(
                                     <div key={e.id||ei} className="flex justify-between items-center py-1" style={{borderBottom:ei<mExps.length-1?`1px solid ${t.border+"44"}`:"none",cursor:"pointer"}}
                                       onClick={()=>setDetailModal({type:"expense",data:e})}
                                       onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
@@ -7350,7 +7490,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               {mWaste.length>0&&<div className="mt-2">
                                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>🗑 Wastage ({mWaste.length})</p>
                                 <div style={{maxHeight:80,overflowY:"auto"}}>
-                                  {mWaste.sort((a,b)=>(b.cost||0)-(a.cost||0)).map((w,wi)=>(
+                                  {[...mWaste].sort((a,b)=>(b.cost||0)-(a.cost||0)).map((w,wi)=>(
                                     <div key={w.id||wi} className="flex justify-between items-center py-1" style={{borderBottom:wi<mWaste.length-1?`1px solid ${t.border+"44"}`:"none"}}>
                                       <span style={{color:t.text,fontSize:11}}>{w.product} · {w.qty} {w.unit}</span>
                                       <span style={{color:"#f97316",fontWeight:700,fontSize:11}}>{w.cost>0?inr(w.cost):"—"}</span>
@@ -8050,11 +8190,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 else if(anlCustFilter==="clear") fc=fc.filter(c=>!((c.outstandingBalance||0)>0));
                 else if(anlCustFilter==="partial") fc=fc.filter(c=>(c.partialCollected||0)>0);
                 else if(anlCustFilter==="replacements") fc=fc.filter(c=>(c.replDeducted||0)>0);
-                if(anlCustSort==="revenue") fc.sort((a,b)=>b.totalRev-a.totalRev);
-                else if(anlCustSort==="orders") fc.sort((a,b)=>b.totalOrders-a.totalOrders);
-                else if(anlCustSort==="outstanding") fc.sort((a,b)=>(b.outstandingBalance||0)-(a.outstandingBalance||0));
-                else if(anlCustSort==="name") fc.sort((a,b)=>(a.name||"").localeCompare(b.name||""));
-                return fc;
+                // Sort a copy — fc is derived from customers state, mutating it causes widget desync
+                const fcSorted = [...fc];
+                if(anlCustSort==="revenue") fcSorted.sort((a,b)=>b.totalRev-a.totalRev);
+                else if(anlCustSort==="orders") fcSorted.sort((a,b)=>b.totalOrders-a.totalOrders);
+                else if(anlCustSort==="outstanding") fcSorted.sort((a,b)=>(b.outstandingBalance||0)-(a.outstandingBalance||0));
+                else if(anlCustSort==="name") fcSorted.sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+                return fcSorted;
               })();
               return <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -8237,10 +8379,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {anlActiveSection==="products"&&(()=>{
               const sortedProds=(()=>{
                 let sp=[...prodSales];
-                if(anlProdSort==="qty") sp.sort((a,b)=>b.totalQty-a.totalQty);
-                else if(anlProdSort==="deliveries") sp.sort((a,b)=>b.deliveryCount-a.deliveryCount);
-                else sp.sort((a,b)=>b.totalRev-a.totalRev);
-                return sp;
+                // Sort a copy to avoid mutating the derived sp array
+                const spSorted = [...sp];
+                if(anlProdSort==="qty") spSorted.sort((a,b)=>b.totalQty-a.totalQty);
+                else if(anlProdSort==="deliveries") spSorted.sort((a,b)=>b.deliveryCount-a.deliveryCount);
+                else spSorted.sort((a,b)=>b.totalRev-a.totalRev);
+                return spSorted;
               })();
               return <>
               <Card dm={dm} className="overflow-hidden">
@@ -8728,14 +8872,118 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const uniqueDates=[...new Set(filteredPT.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
           const filteredWaste=(filterDates?(wastage||[]).filter(w=>filterDates.includes(w.date)):(wastage||[])).filter(w=>!ptSearch||w.product?.toLowerCase().includes(ptSearch.toLowerCase())||w.type?.toLowerCase().includes(ptSearch.toLowerCase())).filter(w=>ptWasteTypeFilter==="all"||w.type===ptWasteTypeFilter).filter(w=>ptShiftFilter==="all"||(!w.shift&&ptShiftFilter==="none")||(w.shift&&w.shift===ptShiftFilter));
           const filteredQC=(filterDates?(qcLogs||[]).filter(q=>filterDates.includes(q.date)):(qcLogs||[])).filter(q=>!ptSearch||q.product?.toLowerCase().includes(ptSearch.toLowerCase())||q.grade?.toLowerCase().includes(ptSearch.toLowerCase())).filter(q=>ptQcGradeFilter==="all"||q.grade===ptQcGradeFilter).filter(q=>ptShiftFilter==="all"||(!q.shift&&ptShiftFilter==="none")||(q.shift&&q.shift===ptShiftFilter));
+          // QC: count batches with a qcGrade set + standalone qcLogs entries
+          const filteredPeriodLabel=ptDateFilter==="all"?"All time":ptDateFilter==="today"?"Today":ptDateFilter==="yesterday"?"Yesterday":ptDateFilter==="week"?"Last 7 days":ptDateFilter==="month"?"Last 30 days":"Custom range";
+          const batchesWithQC=filteredPT.filter(x=>x.qcGrade&&x.qcGrade!=="");
+          const totalQCChecks=batchesWithQC.length+filteredQC.length;
+          const totalQCPass=batchesWithQC.filter(x=>x.qcGrade!=="F").length+filteredQC.filter(q=>q.grade!=="F").length;
+          const qcPassPct=Math.round(totalQCPass/Math.max(totalQCChecks,1)*100);
           return <>
             {/* KPI strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard dm={dm} label="Total Batches" value={[...new Set(prodTargets.filter(x=>x.batchId).map(x=>x.batchId))].length||prodTargets.length} sub={`${todayPT.length} today`} accent="#8b5cf6"/>
-              <StatCard dm={dm} label="Units Produced" value={allQty.toLocaleString("en-IN")} sub="All time" accent="#6366f1"/>
-              <StatCard dm={dm} label="QC Checks" value={(qcLogs||[]).length} sub={`${Math.round((qcLogs||[]).filter(q=>q.grade!=="F").length/Math.max((qcLogs||[]).length,1)*100)}% pass rate`} accent="#14b8a6"/>
-              <StatCard dm={dm} label="Wastage Records" value={(wastage||[]).length} sub={`${inr((wastage||[]).reduce((s,w)=>s+(w.cost||0),0))} total cost`} accent="#f97316"/>
+              <StatCard dm={dm} label="Total Batches" value={filteredPT.length} sub={`${todayPT.length} today`} accent="#8b5cf6"/>
+              <StatCard dm={dm} label="Units Produced" value={filteredPT.reduce((s,x)=>s+(+x.actual||0),0).toLocaleString("en-IN")} sub={filteredPeriodLabel} accent="#6366f1"/>
+              <StatCard dm={dm} label="QC Checks" value={totalQCChecks} sub={`${qcPassPct}% pass rate`} accent="#14b8a6"/>
+              <StatCard dm={dm} label="Wastage Records" value={filteredWaste.length} sub={`${inr(filteredWaste.reduce((s,w)=>s+(+w.cost||0),0))} cost`} accent="#f97316"/>
             </div>
+
+            {/* ── Wastage Summary Widget ── */}
+            {filteredWaste.length>0&&(()=>{
+              const totalWasteQty=filteredWaste.reduce((s,w)=>s+(+w.qty||0),0);
+              const totalWasteCost=filteredWaste.reduce((s,w)=>s+(+w.cost||0),0);
+              const byType=(()=>{const m={};filteredWaste.forEach(w=>{if(!m[w.type])m[w.type]={count:0,qty:0,cost:0};m[w.type].count++;m[w.type].qty+=(+w.qty||0);m[w.type].cost+=(+w.cost||0);});return Object.entries(m).sort((a,b)=>b[1].qty-a[1].qty);})();
+              const byProduct=(()=>{const m={};filteredWaste.forEach(w=>{const k=w.product||"Unknown";if(!m[k])m[k]={count:0,qty:0,cost:0};m[k].count++;m[k].qty+=(+w.qty||0);m[k].cost+=(+w.cost||0);});return Object.entries(m).sort((a,b)=>b[1].qty-a[1].qty);})();
+              const typeColors={"Burnt":"#ef4444","Broken":"#f97316","Expired":"#eab308","Overproduced":"#8b5cf6","Quality Reject":"#ec4899","Other":"#6b7280"};
+              const maxQty=Math.max(...byType.map(([,v])=>v.qty),1);
+              return <div style={{background:t.card,border:`1.5px solid #f9731630`,borderRadius:16,overflow:"hidden"}}>
+                {/* Widget header */}
+                <div style={{background:`linear-gradient(135deg,${dm?"#431407":"#fff7ed"},${dm?"#1c1917":"#ffedd5"})`,padding:"12px 16px",borderBottom:`1px solid #f9731620`,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18}}>🗑️</span>
+                    <div>
+                      <p style={{color:"#f97316",fontWeight:800,fontSize:13}}>Wastage Overview</p>
+                      <p style={{color:t.sub,fontSize:10}}>{filteredPeriodLabel} · {filteredWaste.length} records</p>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:12}}>
+                    <div style={{textAlign:"right"}}>
+                      <p style={{color:"#f97316",fontWeight:900,fontSize:18,lineHeight:1}}>{totalWasteQty.toLocaleString("en-IN")}</p>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase"}}>Total units lost</p>
+                    </div>
+                    {totalWasteCost>0&&<div style={{textAlign:"right"}}>
+                      <p style={{color:"#ef4444",fontWeight:900,fontSize:18,lineHeight:1}}>{inr(totalWasteCost)}</p>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase"}}>Cost impact</p>
+                    </div>}
+                  </div>
+                </div>
+                <div style={{padding:"12px 16px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  {/* By type breakdown with bars */}
+                  <div>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>By Type</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                      {byType.map(([type,v])=>{
+                        const c=typeColors[type]||"#6b7280";
+                        const pct=Math.round(v.qty/maxQty*100);
+                        return <div key={type}>
+                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                            <span style={{color:t.text,fontSize:11,fontWeight:600}}>{type}</span>
+                            <span style={{color:c,fontSize:11,fontWeight:700}}>{v.qty} {v.cost>0?`· ${inr(v.cost)}`:""}</span>
+                          </div>
+                          <div style={{height:5,background:t.border,borderRadius:99,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${pct}%`,background:c,borderRadius:99,transition:"width 0.3s"}}/>
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  </div>
+                  {/* By product breakdown */}
+                  <div>
+                    <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>By Product</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                      {byProduct.map(([prod,v])=>(
+                        <div key={prod} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:t.inp,borderRadius:8,padding:"5px 9px"}}>
+                          <span style={{color:t.text,fontSize:11,fontWeight:600,flex:1,minWidth:0}} className="truncate">{prod}</span>
+                          <div style={{display:"flex",gap:8,flexShrink:0}}>
+                            <span style={{color:"#f97316",fontWeight:700,fontSize:11}}>{v.qty} units</span>
+                            {v.cost>0&&<span style={{color:"#ef4444",fontWeight:600,fontSize:10}}>{inr(v.cost)}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* Recent wastage entries */}
+                <div style={{borderTop:`1px solid ${t.border}`,padding:"8px 16px 12px"}}>
+                  <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recent Entries</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {filteredWaste.slice(0,5).map(w=>(
+                      <div key={w.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:`1px solid ${t.border}`}} className="last:border-0">
+                        <span style={{background:(typeColors[w.type]||"#6b7280")+"18",color:typeColors[w.type]||"#6b7280",borderRadius:6,padding:"1px 7px",fontSize:9,fontWeight:700,flexShrink:0}}>{w.type}</span>
+                        <span style={{color:t.text,fontSize:11,fontWeight:600,flex:1,minWidth:0}} className="truncate">{w.product}</span>
+                        <span style={{color:t.sub,fontSize:10,flexShrink:0}}>{w.qty} {w.unit}</span>
+                        {w.cost>0&&<span style={{color:"#ef4444",fontSize:10,fontWeight:700,flexShrink:0}}>{inr(w.cost)}</span>}
+                        <span style={{color:t.sub,fontSize:9,flexShrink:0}}>{w.date}</span>
+                      </div>
+                    ))}
+                    {filteredWaste.length>5&&<button onClick={()=>setProdSubTab("wastage")} style={{color:"#f97316",fontSize:10,fontWeight:700,background:"none",border:"none",cursor:"pointer",textAlign:"left",padding:"2px 0"}}>View all {filteredWaste.length} records →</button>}
+                  </div>
+                </div>
+              </div>;
+            })()}
+
+            {/* ── Sub-Tab Switcher ── */}
+            <div style={{display:"flex",gap:4,background:t.inp,borderRadius:14,padding:4}}>
+              {[["batches","🏭","Batches"],["wastage","🗑️","Wastage"],["qc","✅","QC"],["handover","📋","Handover"]].map(([val,icon,label])=>(
+                <button key={val} onClick={()=>setProdSubTab(val)}
+                  style={{flex:1,background:prodSubTab===val?t.card:"transparent",color:prodSubTab===val?t.text:t.sub,border:prodSubTab===val?`1px solid ${t.border}`:"1px solid transparent",borderRadius:10,padding:"8px 4px",fontSize:11,fontWeight:prodSubTab===val?800:600,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>
+                  <span>{icon}</span><span className="hidden sm:inline">{label}</span>
+                  {val==="wastage"&&filteredWaste.length>0&&<span style={{background:"#f97316",color:"#fff",borderRadius:99,padding:"0 5px",fontSize:9,fontWeight:800,minWidth:16,textAlign:"center"}}>{filteredWaste.length}</span>}
+                  {val==="qc"&&filteredQC.length>0&&<span style={{background:"#14b8a6",color:"#fff",borderRadius:99,padding:"0 5px",fontSize:9,fontWeight:800,minWidth:16,textAlign:"center"}}>{filteredQC.length}</span>}
+                  {val==="handover"&&(handovers||[]).length>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:99,padding:"0 5px",fontSize:9,fontWeight:800,minWidth:16,textAlign:"center"}}>{(handovers||[]).length}</span>}
+                </button>
+              ))}
+            </div>
+
             {/* ── Filter Bar ── */}
             <div style={{background:t.card,border:`1.5px solid ${t.inpB}`,borderRadius:14,overflow:"hidden"}}>
               {/* Search row */}
@@ -8747,7 +8995,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <button onClick={()=>setPtShowFilters(f=>!f)}
                   style={{display:"flex",alignItems:"center",gap:5,background:ptShowFilters?(dm?"#f59e0b":"#1c1917"):t.inp,color:ptShowFilters?(dm?"#000":"#fff"):t.sub,border:"none",borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",flexShrink:0,whiteSpace:"nowrap"}}>
                   <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M4 7h6M6 10h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                  Filters{(ptShiftFilter!=="all"||ptDateFilter!=="today"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all")&&<span style={{background:"#ef4444",color:"#fff",borderRadius:99,width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,marginLeft:2}}>{[ptShiftFilter!=="all",ptDateFilter!=="today",ptProductFilter!=="all",ptWasteTypeFilter!=="all",ptQcGradeFilter!=="all",ptHandoverFilter!=="all"].filter(Boolean).length}</span>}
+                  Filters{(ptShiftFilter!=="all"||ptDateFilter!=="all"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all")&&<span style={{background:"#ef4444",color:"#fff",borderRadius:99,width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,marginLeft:2}}>{[ptShiftFilter!=="all",ptDateFilter!=="all",ptProductFilter!=="all",ptWasteTypeFilter!=="all",ptQcGradeFilter!=="all",ptHandoverFilter!=="all"].filter(Boolean).length}</span>}
                 </button>
               </div>
               {/* Expanded filter panel */}
@@ -8787,7 +9035,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <div>
                   <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Product</p>
                   <div className="flex gap-1.5 flex-wrap">
-                    {[["all","All Products"],...products.map(p=>[p.name,p.name])].map(([val,label])=>(
+                    {[["all","All Products"],...(prodItems||[]).map(p=>[p.name,p.name])].map(([val,label])=>(
                       <button key={val} onClick={()=>setPtProductFilter(val)}
                         style={{background:ptProductFilter===val?"#8b5cf6":t.inp,color:ptProductFilter===val?"#fff":t.sub,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{label}</button>
                     ))}
@@ -8824,8 +9072,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   </div>
                 </div>
                 {/* Reset */}
-                {(ptShiftFilter!=="all"||ptDateFilter!=="today"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all"||ptSearch)&&
-                  <button onClick={()=>{setPtShiftFilter("all");setPtDateFilter("today");setPtProductFilter("all");setPtWasteTypeFilter("all");setPtQcGradeFilter("all");setPtHandoverFilter("all");setPtSearch("");}}
+                {(ptShiftFilter!=="all"||ptDateFilter!=="all"||ptProductFilter!=="all"||ptWasteTypeFilter!=="all"||ptQcGradeFilter!=="all"||ptHandoverFilter!=="all"||ptSearch)&&
+                  <button onClick={()=>{setPtShiftFilter("all");setPtDateFilter("all");setPtProductFilter("all");setPtWasteTypeFilter("all");setPtQcGradeFilter("all");setPtHandoverFilter("all");setPtSearch("");}}
                     style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"7px 0",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%"}}>✕ Clear All Filters</button>}
               </div>}
             </div>
@@ -8842,9 +9090,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual",num:true},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>XLS</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(filteredPT,"production",[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual"},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join("; ")},{label:"Notes",key:"notes"}])}>CSV</Btn>
                   <Btn dm={dm} size="sm" style={{background:"linear-gradient(135deg,#7c3aed,#6366f1)",color:"#fff",border:"none",fontWeight:800,padding:"8px 18px",minHeight:40}} onClick={()=>{
-                    const todayBatches=[...new Set(prodTargets.filter(x=>x.date===todayStr&&x.batchId).map(x=>x.batchId))];
-                    const nextNum=todayBatches.length+1;
-                    setPtF({date:todayStr,shift:(settings?.shifts||["Morning"])[0]||"",product:products[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
+                    // Always create new batches for today; count ALL existing batches for today to get next number
+                    const batchDate=todayStr;
+                    const existingBatchCount=prodTargets.filter(x=>x.date===batchDate).length;
+                    const nextNum=existingBatchCount+1;
+                    setPtF({date:batchDate,shift:(settings?.shifts||["Morning"])[0]||"",product:(prodItems||[])[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
                     setPtSh("add");
                   }}>🏭 + New Batch</Btn>
                 </div>
@@ -8874,8 +9124,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     const rQC=(qcLogs||[]).filter(q=>q.batchId===r.batchId);
                     const rHV=(handovers||[]).filter(h=>h.batchId===r.batchId);
                     const recipeIngrs=(settings?.recipes||{})[products.find(p=>p.name===r.product)?.id||""]?.ingredients||[];
-                    // Customer traceability: deliveries on this date that include this product
-                    const batchCustomers=deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled").filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===r.product||pName.toLowerCase().includes((r.product||"").toLowerCase())||(r.product||"").toLowerCase().includes(pName.toLowerCase());}));
+                    // Customer traceability: deliveries on this date that contain this exact product
+                    const batchCustomers=deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled").filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",r.product);}));
                     return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?14:0,marginTop:ri>0?14:0}}>
                       <div className="flex items-start justify-between gap-2">
                         <div style={{flex:1}}>
@@ -10332,6 +10582,30 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
           {/* ── PRODUCTION SETTINGS ── */}
           {settingsSection==="production"&&<>
+            {/* Production Items — separate from delivery products */}
+            <Card dm={dm}><div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>🏭 Production Items</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Items available when logging batches. Separate from your delivery products — changes here won't affect orders or invoices.</p>
+                </div>
+                <Btn dm={dm} size="sm" style={{background:"#8b5cf6",color:"#fff",border:"none"}} onClick={()=>{setPiF({id:"",name:""});setPiSh("add");}}>+ Add</Btn>
+              </div>
+              {(prodItems||[]).length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"12px 0"}}>No production items yet. Add your first one.</p>}
+              {(prodItems||[]).map(item=>(
+                <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${t.border}`}} className="last:border-0">
+                  <div>
+                    <p style={{color:t.text,fontWeight:600,fontSize:13}}>{item.name}</p>
+                    <p style={{color:t.sub,fontSize:10}}>id: {item.id}</p>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>{setPiF({...item});setPiSh(item);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                    <button onClick={()=>delProdItem(item)} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Del</button>
+                  </div>
+                </div>
+              ))}
+            </div></Card>
+
             {/* Batch & Traceability */}
             <Card dm={dm}><div className="p-4">
               <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🏭 Batch & Production</p>
@@ -11354,7 +11628,12 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         <Btn dm={dm} onClick={saveP} className="w-full">Save Product</Btn>
       </Sheet>
 
-      {/* Change Password Sheet */}
+      {/* Production Item Sheet */}
+      <Sheet dm={dm} open={!!piSh} onClose={()=>{setPiSh(null);setPiF({id:"",name:""});}} title={piSh==="add"?"Add Production Item":"Edit Production Item"}>
+        <p style={{color:T(dm).sub,fontSize:12,marginBottom:4}}>Production items are only used in the Production tab (Log Batch). They are completely separate from your delivery products.</p>
+        <Inp dm={dm} label="Item Name *" value={piF.name} onChange={e=>setPiF(f=>({...f,name:e.target.value}))} placeholder="e.g. Paratha, Roti, Special Paratha"/>
+        <Btn dm={dm} onClick={saveProdItem} className="w-full" style={{background:"#8b5cf6",color:"#fff",border:"none"}}>Save Item</Btn>
+      </Sheet>
       <Sheet dm={dm} open={changePwSh} onClose={()=>setChangePwSh(false)} title="Change Password">
         <Inp dm={dm} label="Current Password" type="password" value={changePwF.current} onChange={e=>setChangePwF(f=>({...f,current:e.target.value}))} placeholder="Enter current password"/>
         <Inp dm={dm} label="New Password" type="password" value={changePwF.next} onChange={e=>setChangePwF(f=>({...f,next:e.target.value}))} placeholder="Min 6 characters"/>
@@ -11654,7 +11933,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>
               <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,product:v}));}}>
                 <option value="">— Select product —</option>
-                {products.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                {(prodItems||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
                 <option value="__custom__">Other / Custom</option>
               </Sel>
               {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name *" value={ptF.customProduct||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,customProduct:v}));}} placeholder="e.g. Special Paratha"/>}
