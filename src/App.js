@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import ReactDOM from "react-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
 import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
@@ -37,6 +38,41 @@ function checkPw(input, stored) {
   return input === stored; // legacy plain-text fallback
 }
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
+
+// ═══════════════════════════════════════════════════════════════
+//  DEVICE & SESSION FINGERPRINTING
+// ═══════════════════════════════════════════════════════════════
+function getDeviceInfo() {
+  const ua = navigator.userAgent || "";
+  let browser = "Unknown";
+  if (/Edg[/]/.test(ua)) browser = "Edge";
+  else if (/OPR[/]|Opera/.test(ua)) browser = "Opera";
+  else if (/Brave/.test(ua)) browser = "Brave";
+  else if (/Firefox/.test(ua)) browser = "Firefox";
+  else if (/Safari/.test(ua) && !/Chrome/.test(ua)) browser = "Safari";
+  else if (/Chrome/.test(ua)) browser = "Chrome";
+  let os = "Unknown";
+  if (/Windows/.test(ua)) os = "Windows";
+  else if (/Android/.test(ua)) os = "Android";
+  else if (/iPhone|iPad/.test(ua)) os = /iPad/.test(ua) ? "iPadOS" : "iOS";
+  else if (/Mac/.test(ua)) os = "macOS";
+  else if (/Linux/.test(ua)) os = "Linux";
+  let deviceType = "Desktop";
+  if (/Mobi|Android|iPhone/.test(ua)) deviceType = "Mobile";
+  else if (/iPad|Tablet/.test(ua)) deviceType = "Tablet";
+  const screenRes = `${window.screen?.width||0}×${window.screen?.height||0}`;
+  const tz = Intl?.DateTimeFormat?.()?.resolvedOptions?.()?.timeZone || "Unknown";
+  const lang = navigator.language || "en";
+  return { browser, os, deviceType, screenRes, tz, lang, ua: ua.slice(0, 120) };
+}
+const DEVICE_ID_KEY = "__crm_did__";
+function getDeviceId() {
+  try {
+    let id = sessionStorage.getItem(DEVICE_ID_KEY);
+    if (!id) { id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); sessionStorage.setItem(DEVICE_ID_KEY, id); }
+    return id;
+  } catch { return "did_" + Math.random().toString(36).slice(2); }
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  FIREBASE REALTIME DATABASE
@@ -113,24 +149,54 @@ const today = () => new Date().toISOString().slice(0,10);
 // suffixes so "Paratha Pack (5 pcs)" and "Paratha" both normalise to "paratha".
 // Returns true ONLY when the core product name is the same — prevents
 // "Paratha" from matching "Roti" or "Special Paratha" from matching "Paratha".
+// ─────────────────────────────────────────────────────────────────────────────
+//  SMART PRODUCT NAME MATCHING  (v2 — advanced fuzzy engine)
+//  Normalises → exact → prefix → token-set → Levenshtein similarity
+//  Returns true when two names refer to the same product with high confidence.
+// ─────────────────────────────────────────────────────────────────────────────
 function normProd(name) {
   return (name||"")
     .toLowerCase()
-    .replace(/\s*\(.*?\)/g,"")   // remove parenthetical e.g. "(5 pcs)"
-    .replace(/\bpack\b/g,"")     // remove the word pack
-    .replace(/\bspecial\b/g,"")  // treat special variants as base name
+    .replace(/\s*\(.*?\)/g,"")    // strip parentheticals "(5 pcs)"
+    .replace(/\bpack\b/g,"")      // remove "pack"
+    .replace(/\bspecial\b/g,"")   // treat special variants as base
+    .replace(/\bextra\b/g,"")     // strip "extra"
+    .replace(/\bregular\b/g,"")   // strip "regular"
+    .replace(/\bdeluxe\b/g,"")    // strip "deluxe"
+    .replace(/[^a-z0-9\s]/g," ")  // remove punctuation
+    .replace(/\b(\d+)\s*(pcs?|pieces?|nos?|units?|kgs?|gms?|g|kg|ml|l)\b/g,"") // strip quantities
     .replace(/\s+/g," ")
     .trim();
+}
+function levenSim(a,b) {
+  // Returns 0-1 similarity (1=identical)
+  if(!a||!b)return 0;
+  if(a===b)return 1;
+  const la=a.length, lb=b.length;
+  if(Math.abs(la-lb)>Math.max(la,lb)*0.6)return 0; // too different in length
+  const dp=Array.from({length:lb+1},(_,i)=>i);
+  for(let i=1;i<=la;i++){
+    let prev=dp[0]; dp[0]=i;
+    for(let j=1;j<=lb;j++){const tmp=dp[j];dp[j]=a[i-1]===b[j-1]?prev:1+Math.min(prev,dp[j],dp[j-1]);prev=tmp;}
+  }
+  return 1-dp[lb]/Math.max(la,lb);
 }
 function prodNamesMatch(a,b){
   if(!a||!b)return false;
   const na=normProd(a), nb=normProd(b);
   if(!na||!nb)return false;
-  // exact after normalisation
+  // 1. Exact normalised match
   if(na===nb)return true;
-  // one is a leading-word subset of the other (e.g. "paratha" inside "paratha roti")
-  // but NOT a suffix — prevents "paratha" matching "masala paratha" from the middle
+  // 2. Leading-word prefix (prevents mid-word false positives)
   if(nb.startsWith(na+" ")||na.startsWith(nb+" "))return true;
+  // 3. Token-set ratio: both share all tokens of the shorter name
+  const ta=na.split(" ").filter(Boolean);
+  const tb=nb.split(" ").filter(Boolean);
+  const shorter=ta.length<=tb.length?ta:tb;
+  const longer =ta.length<=tb.length?tb:ta;
+  if(shorter.length>0&&shorter.every(tok=>longer.includes(tok)))return true;
+  // 4. Levenshtein similarity ≥ 0.82 (strict — avoids false positives)
+  if(levenSim(na,nb)>=0.82)return true;
   return false;
 }
 const ts    = () => new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
@@ -142,17 +208,27 @@ const mapU  = (a,lat,lng) => lat&&lng ? `https://maps.google.com/?q=${lat},${lng
 function lineTotal(lines) {
   return Object.values(safeO(lines)).reduce((s,l) => s + (l.qty||0)*(l.priceAmount||0), 0);
 }
+function lineTotalWithTax(lines, taxRate) {
+  const sub = lineTotal(lines);
+  if(!taxRate||+taxRate<=0) return sub;
+  return Math.round(sub * (1 + (+taxRate)/100) * 100) / 100;
+}
 function lineRows(lines, prods) {
   return prods.map(p => ({...p,...(safeO(lines)[p.id]||{qty:0,priceAmount:0})})).filter(l=>l.qty>0);
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+//  MULTI-LANGUAGE SYSTEM  (per-account, stored on Firebase user)
+//  Usage: const { t, lang } = useLang();  then t("key") anywhere
+// ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
-const ALL_TABS = ["Dashboard","Customers","Deliveries","Payments","Supplies","Expenses","P&L","Analytics","Production","GPS","Settings"];
+const ALL_TABS = ["Dashboard","Customers","Deliveries","Payments","Supplies","Expenses","P&L","Analytics","Production","Ingredients","Staff","Machines","Vehicles","GPS","Settings"];
 const ROLE_DEF = {
   admin:   ALL_TABS,
-  factory: ["Dashboard","Customers","Deliveries","Supplies","Production"],
+  factory: ["Dashboard","Customers","Deliveries","Supplies","Production","Ingredients","Staff","Machines"],
   agent:   ["Dashboard","Customers","Deliveries","GPS"],
 };
 
@@ -320,9 +396,33 @@ const D_SETTINGS = {
   featureShiftManagement: true,
   featureOrderDateOverride: false,
   featureCreditLimit: false,
+  creditLimitDefault: 0,
   featureTaxCalc: false,
+  taxRate: 0,
   featureRouteOpt: false,
   featureMultiCurrency: false,
+  // ── Phase 1 ──
+  featurePWA: false,
+  featureTickRedesign: true,
+  // ── Phase 2 ──
+  featureIngredientTracking: false,
+  featureStaffAttendance: false,
+  featureMachineMaintenance: false,
+  featureVanManagement: false,
+  // ── Phase 3 ──
+  featureGST: false,
+  gstCompanyGSTIN: "",
+  gstDefaultHSN: "",
+  gstCGSTPct: 9,
+  gstSGSTPct: 9,
+  featureCustomDashboard: false,
+  featureGoogleSheets: false,
+  googleSheetsId: "",
+  googleSheetsApiKey: "",
+  googleSheetsWebAppUrl: "",
+  featurePrintLabels: false,
+  featureMultiLanguage: false,
+  defaultLanguage: "en",
   // ── Alerts ──
   alertLowStock: true,
   alertOverdueDelivery: true,
@@ -336,6 +436,50 @@ const D_SETTINGS = {
   companyAddress: "",
   // ── Backup ──
   autoBackupReminder: 7,
+  // ── Vehicle / Van Management Settings ──
+  vehicleTypes: ["Van","Car","Bike","Truck","Auto","Other"],
+  vehicleLogTypes: ["Trip","Maintenance","Breakdown","Fuel Fill","Insurance","Other"],
+  vehicleStatuses: ["OK","Needs Service","Offline","Under Repair"],
+  vehicleFuelTypes: ["Petrol","Diesel","CNG","Electric","LPG"],
+  vehicleRequireDriver: false,
+  vehicleRequireKms: false,
+  vehicleShowFuelCost: true,
+  vehicleShowMaintCost: true,
+  vehicleShowOdometer: true,
+  vehicleShowFuelLiters: true,
+  vehicleShowFuelType: true,
+  vehicleShowNextService: true,
+  vehicleShowPriority: false,
+  vehicleShowRouteStops: false,
+  vehicleShowTollCost: false,
+  // ── Machine Maintenance Settings ──
+  machineCategories: ["Mixer","Oven","Sealer","Generator","Conveyor","Other"],
+  machineLogTypes: ["Servicing","Breakdown","Repair","Inspection","Oil Change","Other"],
+  machineStatuses: ["Operational","Needs Service","Under Repair","Retired"],
+  machineSeverityLevels: ["Low","Medium","High","Critical"],
+  machineDefaultIntervalDays: 30,
+  machineAlertBeforeDays: 3,
+  machineRequireNextDue: true,
+  machineShowTechnician: true,
+  machineShowPartsReplaced: true,
+  machineShowPartsCost: true,
+  machineShowLaborCost: true,
+  machineShowDowntime: true,
+  machineShowSeverity: true,
+  machineShowWarrantyInfo: false,
+  // ── Staff Attendance Settings ──
+  staffStatuses: ["Present","Absent","Half Day","Late","On Leave"],
+  staffDepartments: ["Production","Delivery","Packaging","Cleaning","Admin","Other"],
+  staffEmploymentTypes: ["Full-time","Part-time","Contract","Daily Wage"],
+  staffDefaultShift: "Morning",
+  staffRequireInOutTime: false,
+  staffAllowCustomName: true,
+  staffOvertimeThresholdHrs: 9,
+  staffShowDepartment: true,
+  staffShowBreakDuration: false,
+  staffShowOvertimeReason: false,
+  staffShowTask: false,
+  staffShowTemperature: false,
 };
 
 // Default wastage data
@@ -488,7 +632,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 @media print{@page{size:A4;margin:1cm}body{padding:0}.no-print{display:none!important}}.print-bar{position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);gap:12px}.print-bar a{background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.print-bar a.dl{background:#059669}
 </style></head><body>
 <div class="hdr">
-  <div><div class="brand">${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:48px;max-width:120px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}<span>🫓 ${co}</span></div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
+  <div><div class="brand">${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:48px;max-width:120px;object-fit:contain;margin-bottom:4px;display:block"/>`:`<span>${settings?.appEmoji||"🫓"} </span>`}<span>${coLogo?"":""} ${co}</span></div><div class="bsub">${cosub}</div>${coPhone?`<div class="bsub">📞 ${coPhone}</div>`:""}${gst?`<div class="bsub">GST: ${gst}</div>`:""}</div>
   <div><div class="ititle">${type==="customer"?"CUSTOMER REPORT":"INVOICE"}</div>
   <div class="imeta">${invoiceNo}</div>
   <div class="imeta">Date: ${record.date||today()}</div>
@@ -531,6 +675,7 @@ function exportAgentReceipt(d, products, settings, invNo) {
   const cosub  = settings?.companySubtitle || "Malabar Paratha Factory · Goa, India";
   const gst    = settings?.companyGST      || "";
   const coPhone= settings?.companyPhone    || "";
+  const coLogo = settings?.companyLogo     || "";
   const rows   = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
   const orderTotal = lineTotal(d.orderLines||{});
   const replAmt    = +(d.replacement?.amount)||0;
@@ -581,7 +726,8 @@ body{font-family:Arial,sans-serif;color:#1c1917;background:#fff;padding:0;max-wi
 @media print{@page{size:80mm auto;margin:0}body{max-width:100%}.print-bar{display:none!important}body{padding-top:0}}
 </style></head><body>
 <div class="brand-bar">
-  <div class="brand-name">🫓 ${co}</div>
+  ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:44px;max-width:110px;object-fit:contain;display:block;margin:0 auto 6px"/>`:``}
+  <div class="brand-name">${coLogo?"":co.includes("TAS")?"🫓 ":""} ${co}</div>
   <div class="brand-sub">${cosub}</div>
   ${coPhone?`<div class="brand-sub">📞 ${coPhone}</div>`:""}
   ${gst?`<div class="brand-sub">GST: ${gst}</div>`:""}
@@ -671,6 +817,195 @@ ${collected>0?`<div class="collected-box"><div><div style="font-size:10px;font-w
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  MULTI-LANGUAGE — i18n translation dictionary + useT() hook
+//  Supports: English (en), Hindi (hi), Malayalam (ml), Kannada (kn)
+// ═══════════════════════════════════════════════════════════════
+const TRANSLATIONS = {
+  en: {
+    dashboard:"Dashboard", customers:"Customers", deliveries:"Deliveries",
+    payments:"Payments", supplies:"Supplies", expenses:"Expenses",
+    production:"Production", ingredients:"Ingredients", staff:"Staff",
+    machines:"Machines", vehicles:"Vehicles", gps:"GPS", settings:"Settings",
+    analytics:"Analytics", wastage:"Wastage", pandl:"P&L",
+    newOrder:"New Order", today:"Today", thisWeek:"This Week", thisMonth:"This Month",
+    totalDue:"Total Due", revenue:"Revenue", pending:"Pending", delivered:"Delivered",
+    inTransit:"In Transit", cancelled:"Cancelled", noDeliveries:"No deliveries scheduled for today",
+    goodMorning:"Good morning", goodAfternoon:"Good afternoon", goodEvening:"Good evening",
+    viewAll:"View all", configure:"Configure", save:"Save", cancel:"Cancel",
+    invoice:"Invoice", receipt:"Receipt", label:"Label",
+  },
+  hi: {
+    dashboard:"डैशबोर्ड", customers:"ग्राहक", deliveries:"डिलीवरी",
+    payments:"भुगतान", supplies:"आपूर्ति", expenses:"खर्च",
+    production:"उत्पादन", ingredients:"सामग्री", staff:"स्टाफ",
+    machines:"मशीनें", vehicles:"वाहन", gps:"जीपीएस", settings:"सेटिंग",
+    analytics:"विश्लेषण", wastage:"बर्बादी", pandl:"लाभ और हानि",
+    newOrder:"नया ऑर्डर", today:"आज", thisWeek:"इस सप्ताह", thisMonth:"इस महीने",
+    totalDue:"कुल बकाया", revenue:"राजस्व", pending:"लंबित", delivered:"डिलीवर",
+    inTransit:"रास्ते में", cancelled:"रद्द", noDeliveries:"आज कोई डिलीवरी निर्धारित नहीं है",
+    goodMorning:"सुप्रभात", goodAfternoon:"नमस्कार", goodEvening:"शुभ संध्या",
+    viewAll:"सब देखें", configure:"कॉन्फ़िगर करें", save:"सहेजें", cancel:"रद्द करें",
+    invoice:"चालान", receipt:"रसीद", label:"लेबल",
+  },
+  mr: {
+    dashboard:"डॅशबोर्ड", customers:"ग्राहक", deliveries:"डिलिव्हरी",
+    payments:"पेमेंट", supplies:"पुरवठा", expenses:"खर्च",
+    production:"उत्पादन", ingredients:"घटक", staff:"कर्मचारी",
+    machines:"यंत्रे", vehicles:"वाहने", gps:"जीपीएस", settings:"सेटिंग्ज",
+    analytics:"विश्लेषण", wastage:"नुकसान", pandl:"नफा-तोटा",
+    newOrder:"नवीन ऑर्डर", today:"आज", thisWeek:"या आठवड्यात", thisMonth:"या महिन्यात",
+    totalDue:"एकूण थकबाकी", revenue:"उत्पन्न", pending:"प्रलंबित", delivered:"डिलिव्हर झाले",
+    inTransit:"रस्त्यात", cancelled:"रद्द", noDeliveries:"आज कोणतीही डिलिव्हरी नाही",
+    goodMorning:"सुप्रभात", goodAfternoon:"नमस्कार", goodEvening:"शुभ संध्याकाळ",
+    viewAll:"सर्व पहा", configure:"सेट करा", save:"जतन करा", cancel:"रद्द करा",
+    invoice:"इनव्हॉइस", receipt:"पावती", label:"लेबल",
+  }
+};
+// useT(settings, userLang?) → t(key) translation function
+// userLang (from user object in Firebase) always wins over global settings default
+function useT(settings, userLang) {
+  const lang = userLang || (settings?.featureMultiLanguage ? (settings?.defaultLanguage||"en") : "en");
+  return (key) => TRANSLATIONS[lang]?.[key] ?? TRANSLATIONS["en"]?.[key] ?? key;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EXPORT DELIVERY LABEL — name, address, QR code (data URI)
+//  Uses qrcodejs via CDN (loaded inline in the popup window).
+// ═══════════════════════════════════════════════════════════════
+function exportDeliveryLabel(d, settings) {
+  const co      = settings?.companyName    || "TAS Healthy World";
+  const cosub   = settings?.companySubtitle|| "Malabar Paratha Factory · Goa, India";
+  const coPhone = settings?.companyPhone   || "";
+  const delivId = (d.id||"").slice(-10).toUpperCase();
+  const qrData  = encodeURIComponent(JSON.stringify({id:delivId,customer:d.customer,phone:d.phone||"",address:d.address||"",date:d.date||""}));
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Label — ${d.customer}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f3f4f6;display:flex;justify-content:center;align-items:flex-start;padding:24px;min-height:100vh}
+.label{background:#fff;border:2.5px solid #111827;border-radius:16px;width:380px;padding:20px 22px;box-shadow:0 4px 24px rgba(0,0,0,0.10)}
+.header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:14px}
+.brand{font-size:15px;font-weight:900;color:#111827;letter-spacing:-0.02em}
+.brand-sub{font-size:9px;color:#6b7280;margin-top:2px}
+.badge{background:#111827;color:#fff;font-size:9px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:0.07em;text-transform:uppercase}
+.to-label{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:5px}
+.cust-name{font-size:22px;font-weight:900;color:#111827;letter-spacing:-0.02em;line-height:1.1}
+.phone{font-size:13px;color:#374151;margin-top:5px;font-weight:600}
+.address{font-size:12px;color:#6b7280;margin-top:5px;line-height:1.6}
+.divider{border:none;border-top:1.5px dashed #e5e7eb;margin:14px 0}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.meta-item{font-size:10px;color:#9ca3af}
+.meta-val{font-weight:700;color:#111827;font-size:11px;margin-top:1px}
+.qr-wrap{display:flex;justify-content:center;margin-bottom:12px}
+#qr canvas,#qr img{border-radius:8px;border:1.5px solid #e5e7eb}
+.footer{font-size:9px;color:#9ca3af;text-align:center;line-height:1.7}
+.print-bar{position:fixed;top:0;left:0;right:0;background:#111827;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-size:13px;gap:10px}
+.print-bar button{padding:7px 18px;border-radius:8px;border:none;font-weight:700;font-size:12px;cursor:pointer;color:#fff}
+.pbp{background:#2563eb}.pbc{background:#6b7280}
+@media print{.print-bar{display:none!important}body{background:#fff;padding:0}
+  .label{box-shadow:none;border-radius:0;width:100%}}
+</style></head><body>
+<div class="print-bar">
+  <span style="font-weight:700">🏷️ Label — ${d.customer||"—"}</span>
+  <div style="display:flex;gap:8px">
+    <button class="pbp" onclick="window.print()">🖨 Print</button>
+    <button class="pbc" onclick="window.close()">✕ Close</button>
+  </div>
+</div>
+<div class="label">
+  <div class="header">
+    <div>
+      <div class="brand">${co}</div>
+      <div class="brand-sub">${cosub}</div>
+    </div>
+    <div class="badge">Delivery Label</div>
+  </div>
+  <div class="to-label">Deliver To</div>
+  <div class="cust-name">${d.customer||"—"}</div>
+  ${d.phone?`<div class="phone">📞 ${d.phone}</div>`:""}
+  ${d.address?`<div class="address">📍 ${d.address}</div>`:""}
+  <hr class="divider"/>
+  <div class="meta-grid">
+    <div class="meta-item">Order ID<div class="meta-val">#${delivId}</div></div>
+    <div class="meta-item">Date<div class="meta-val">${d.date||"—"}</div></div>
+    <div class="meta-item">Status<div class="meta-val">${d.status||"Pending"}</div></div>
+    <div class="meta-item">Agent<div class="meta-val">${d.agent||d.createdBy||"—"}</div></div>
+  </div>
+  <div class="qr-wrap"><div id="qr"></div></div>
+  <hr class="divider"/>
+  <div class="footer">
+    Scan QR to view delivery details · ${co}${coPhone?" · "+coPhone:""}<br>
+    Computer-generated label · Do not discard
+  </div>
+</div>
+<script>
+  window.addEventListener("load", function(){
+    try {
+      new QRCode(document.getElementById("qr"), {
+        text: decodeURIComponent("${qrData}"),
+        width: 120, height: 120,
+        colorDark: "#111827", colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch(e) {
+      document.getElementById("qr").innerHTML = '<div style="font-size:10px;color:#9ca3af;padding:10px">QR unavailable offline</div>';
+    }
+    setTimeout(()=>window.print(), 1200);
+  });
+</script>
+</body></html>`;
+
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PUSH TO GOOGLE SHEETS — append rows via Sheets API v4
+//  Requires: Google Sheet ID + an API key with Sheets write scope
+//  OR: Apps Script Web App URL (simpler, no OAuth needed)
+//  This implementation uses Apps Script Web App URL approach:
+//    Deploy a bound Apps Script as Web App (Execute as: Me, Access: Anyone)
+//    and paste the /exec URL in settings.googleSheetsWebAppUrl
+// ═══════════════════════════════════════════════════════════════
+async function pushToGoogleSheets(sheetName, rows, settings) {
+  const webAppUrl = settings?.googleSheetsWebAppUrl || "";
+  const sheetId   = settings?.googleSheetsId || "";
+
+  if (!webAppUrl && !sheetId) {
+    alert("Google Sheets not configured.\nGo to Settings → Advanced & Integrations → Google Sheets to set it up.");
+    return { ok: false, error: "not_configured" };
+  }
+
+  // Prefer Apps Script Web App URL (no CORS/auth issues)
+  if (webAppUrl) {
+    try {
+      const payload = { sheet: sheetName, rows };
+      const res = await fetch(webAppUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" }, // avoid CORS preflight
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      if (text.toLowerCase().includes("error")) throw new Error(text);
+      return { ok: true };
+    } catch (e) {
+      console.error("Google Sheets push failed:", e);
+      alert(`Google Sheets push failed: ${e.message}\nCheck your Apps Script Web App URL.`);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  alert("Configure a Google Apps Script Web App URL in Settings for direct push.\nSee the help text in Settings → Google Sheets.");
+  return { ok: false, error: "no_webapp_url" };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  exportDeliveryInvoice — Full A4 printable invoice for a single delivery.
 //  Shows: invoice number, bill-to, itemised order, replacement deduction,
@@ -683,10 +1018,22 @@ function exportDeliveryInvoice(d, products, settings, invNo) {
   const coPhone = settings?.companyPhone    || "";
   const coAddr  = settings?.companyAddress  || "";
   const coLogo  = settings?.companyLogo     || "";
+  // ── GST ──────────────────────────────────────────────────────
+  const gstEnabled = !!settings?.featureGST;
+  const gstin      = settings?.gstCompanyGSTIN || "";
+  const hsnCode    = settings?.gstDefaultHSN   || "";
+  const cgstPct    = gstEnabled ? +(settings?.gstCGSTPct??9)  : 0;
+  const sgstPct    = gstEnabled ? +(settings?.gstSGSTPct??9)  : 0;
   const rows    = lineRows(d.orderLines||{}, products).filter(r=>r.qty>0);
   const gross   = lineTotal(d.orderLines||{});
+  const taxRate = +(settings?.taxRate||0);
+  const taxAmt  = taxRate>0 ? Math.round(gross*(taxRate/100)*100)/100 : 0;
+  // GST amounts (applied on taxable value = gross)
+  const cgstAmt = gstEnabled ? Math.round(gross*(cgstPct/100)*100)/100 : 0;
+  const sgstAmt = gstEnabled ? Math.round(gross*(sgstPct/100)*100)/100 : 0;
+  const gstTotal= cgstAmt + sgstAmt;
   const replAmt = +(d.replacement?.amount)||0;
-  const net     = Math.max(0, gross - replAmt);
+  const net     = Math.max(0, gross + (gstEnabled ? gstTotal : taxAmt) - replAmt);
   const partial = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
   const balance = Math.max(0, net - partial);
   const now     = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
@@ -781,12 +1128,13 @@ body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-siz
 <div class="header">
   <div>
     ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:52px;max-width:130px;object-fit:contain;margin-bottom:6px;display:block"/>`:""}
-    <div class="brand-name">🫓 ${co}</div>
+    <div class="brand-name">${coLogo?"":settings?.appEmoji||"🫓"} ${co}</div>
     <div class="brand-sub">
       ${cosub}<br>
       ${coAddr?coAddr+"<br>":""}
       ${coPhone?`📞 ${coPhone}<br>`:""}
-      ${gst?`GST: ${gst}`:""}
+      ${gst?`GST: ${gst}<br>`:""}
+      ${gstEnabled&&gstin?`<b>GSTIN: ${gstin}</b>`:""}
     </div>
   </div>
   <div class="inv-block">
@@ -821,6 +1169,7 @@ body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-siz
     <tr>
       <th style="width:40px">#</th>
       <th>Product</th>
+      ${gstEnabled&&hsnCode?`<th>HSN</th>`:""}
       <th>Unit</th>
       <th class="r">Qty</th>
       <th class="r">Unit Price</th>
@@ -832,12 +1181,13 @@ body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-siz
     <tr>
       <td style="color:#9ca3af;font-size:11px">${i+1}</td>
       <td><div class="item-name">${r.name}</div><div class="item-sku">${r.unit}</div></td>
+      ${gstEnabled&&hsnCode?`<td style="color:#6b7280;font-size:11px">${hsnCode}</td>`:""}
       <td style="color:#6b7280">${r.unit}</td>
       <td class="r">${r.qty}</td>
       <td class="r">₹${r.priceAmount.toLocaleString("en-IN")}</td>
       <td class="r" style="font-weight:700">₹${(r.qty*r.priceAmount).toLocaleString("en-IN")}</td>
     </tr>`).join("")}
-    ${rows.length===0?`<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:20px">No items recorded</td></tr>`:""}
+    ${rows.length===0?`<tr><td colspan="${gstEnabled&&hsnCode?7:6}" style="color:#9ca3af;text-align:center;padding:20px">No items recorded</td></tr>`:""}
   </tbody>
 </table>
 
@@ -845,6 +1195,11 @@ body{font-family:'Inter',Arial,sans-serif;color:#111827;background:#fff;font-siz
 <div class="totals-wrap">
   <div class="totals-box">
     <div class="tot-row gross"><span>Subtotal</span><span>₹${gross.toLocaleString("en-IN")}</span></div>
+    ${gstEnabled
+      ? `<div class="tot-row" style="color:#6b7280"><span>CGST @${cgstPct}%${hsnCode?" (HSN "+hsnCode+")":""}</span><span>+₹${cgstAmt.toLocaleString("en-IN")}</span></div>
+         <div class="tot-row" style="color:#6b7280"><span>SGST @${sgstPct}%</span><span>+₹${sgstAmt.toLocaleString("en-IN")}</span></div>
+         <div class="tot-row" style="color:#374151;font-weight:600"><span>Total GST</span><span>+₹${gstTotal.toLocaleString("en-IN")}</span></div>`
+      : taxRate>0?`<div class="tot-row" style="color:#6b7280"><span>Tax (${taxRate}%)</span><span>+₹${taxAmt.toLocaleString("en-IN")}</span></div>`:""}
     ${replAmt>0?`<div class="tot-row repl"><span>🔄 Replacement Deduction</span><span>−₹${replAmt.toLocaleString("en-IN")}</span></div>`:""}
     <div class="tot-row net"><span>Net Payable</span><span>₹${net.toLocaleString("en-IN")}</span></div>
     ${partial>0?`<div class="tot-row collected"><span>✓ Amount Collected</span><span>₹${partial.toLocaleString("en-IN")}</span></div>`:""}
@@ -1237,6 +1592,8 @@ function exportTabPDF(tabName, data, columns, settings, extraHtml="") {
   const cosub  = settings?.companySubtitle||"";
   const gst    = settings?.companyGST||"";
   const coPhone= settings?.companyPhone||"";
+  const coLogo = settings?.companyLogo||"";
+  const appEmoji=settings?.appEmoji||"🫓";
   const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const rows = data.map(row=>
     `<tr>${columns.map(c=>{
@@ -1281,7 +1638,8 @@ tbody tr:nth-child(even) td{background:#f8fafc}
 <div class="cover">
   <div style="display:flex;justify-content:space-between;align-items:flex-start">
     <div>
-      <div class="co-name">🫓 ${co}</div>
+      ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:48px;max-width:130px;object-fit:contain;margin-bottom:10px;display:block;background:rgba(255,255,255,0.1);border-radius:6px;padding:4px"/>`:``}
+      <div class="co-name">${coLogo?"":appEmoji+" "}${co}</div>
       ${cosub?`<div style="font-size:11px;opacity:0.5;margin-bottom:4px">${cosub}</div>`:""}
       ${gst?`<div style="font-size:11px;opacity:0.5;margin-bottom:2px">GST: ${gst}</div>`:""}
       ${coPhone?`<div style="font-size:11px;opacity:0.5">📞 ${coPhone}</div>`:""}
@@ -1577,6 +1935,8 @@ function exportPnLCSV({mData,filtD,filtE,filtS,filtW,customers,deliveries,expens
 // ─── HIGH-QUALITY TAB EXPORT — EXCEL (XLSX-compatible) ──────────────────────
 function exportTabExcel(tabName, data, columns, settings) {
   const co  = settings?.companyName||"TAS Healthy World";
+  const coLogo = settings?.companyLogo||"";
+  const appEmoji = settings?.appEmoji||"🫓";
   const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   // Build XML for a real .xlsx using SpreadsheetML
   const esc = v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -1632,7 +1992,7 @@ function exportTabExcel(tabName, data, columns, settings) {
 <Worksheet ss:Name="${esc(tabName)}">
 <Table>
   <Row ss:StyleID="s1">
-    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">🫓 ${esc(co)} — ${esc(tabName)} Report</Data></Cell>
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">${esc(coLogo?"":appEmoji+" ")}${esc(co)} — ${esc(tabName)} Report</Data></Cell>
   </Row>
   <Row ss:StyleID="s5">
     <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Exported on: ${esc(now)} · ${data.length} records</Data></Cell>
@@ -1759,25 +2119,17 @@ function Sheet({open,title,onClose,children,dm}){
   const scrollYRef=useRef(0);
   useEffect(()=>{
     if(open){
-      scrollYRef.current=window.scrollY||window.pageYOffset||0;
-      document.body.style.overflow="hidden";
-      document.body.style.position="fixed";
-      document.body.style.top=`-${scrollYRef.current}px`;
-      document.body.style.width="100%";
-      document.body.style.touchAction="none"; // prevents background scroll on Android
+      // Lock scroll on the main content area, not the body
+      // (body touchAction:none would kill scroll inside the sheet itself)
+      document.documentElement.style.overflow="hidden";
+    } else {
+      document.documentElement.style.overflow="";
     }
-    return()=>{
-      document.body.style.overflow="";
-      document.body.style.position="";
-      document.body.style.top="";
-      document.body.style.width="";
-      document.body.style.touchAction="";
-      if(open) window.scrollTo(0,scrollYRef.current);
-    };
+    return()=>{ document.documentElement.style.overflow=""; };
   },[open]);
   if(!open)return null;
-  return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:t.card,maxHeight:"min(94dvh,94svh,94vh)",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)",WebkitTransform:"translateZ(0)",transform:"translateZ(0)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
+  return ReactDOM.createPortal(<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:t.card,maxHeight:"min(94dvh,94svh,94vh)",overflow:"hidden",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)",WebkitTransform:"translateZ(0)",transform:"translateZ(0)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
       {/* Drag handle — mobile only */}
       <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
         <div style={{width:40,height:4,borderRadius:99,background:t.border}}/>
@@ -1788,9 +2140,9 @@ function Sheet({open,title,onClose,children,dm}){
         <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.inpB}`,width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>✕</button>
       </div>
       {/* Content */}
-      <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
+      <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",touchAction:"pan-y",flex:1,minHeight:0,paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
     </div>
-  </div>;
+  </div>, document.body);
 }
 function Toast({msg,onDone}){
   // Fix: empty dep array so the timer only starts once, not on every re-render
@@ -1799,7 +2151,7 @@ function Toast({msg,onDone}){
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
-  return <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}}>
+  return ReactDOM.createPortal(<div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center px-4 crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}}>
     <div style={{background:t.card,border:`1.5px solid ${t.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.4)",borderRadius:24,paddingBottom:"env(safe-area-inset-bottom,0px)",width:"100%",maxWidth:380}} className="p-6 flex flex-col gap-5 crm-confirm-modal">
       <div style={{width:44,height:44,borderRadius:12,background:"rgba(220,38,38,0.1)",border:"1.5px solid rgba(220,38,38,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>⚠️</div>
       <div>
@@ -1808,7 +2160,7 @@ function Confirm({msg,onYes,onNo,dm}){
       </div>
       <div className="flex gap-3"><Btn dm={dm} v="ghost" size="md" className="flex-1" onClick={onNo}>Cancel</Btn><Btn v="danger" size="md" className="flex-1" onClick={onYes}>Delete</Btn></div>
     </div>
-  </div>;
+  </div>, document.body);
 }
 function Search({value,onChange,placeholder,dm}){
   const t=T(dm);
@@ -2468,14 +2820,26 @@ function Login({users,onLogin,dm,settings}){
     setBusy(true);setErr("");
     setTimeout(()=>{
       const found=users.find(x=>x.username.toLowerCase()===u.trim().toLowerCase()&&checkPw(p,x.password)&&x.active);
-      if(found)onLogin({...found,loginAt:Date.now()});
-      else setErr("Invalid username or password.");
+      if(found){
+        onLogin({...found,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo()});
+      } else {
+        // Log failed attempt to Firebase audit log (non-blocking)
+        try{
+          const dev=getDeviceInfo();
+          fbWrite("tas_failed_logins/"+uid(),{
+            username:u.trim()||"(empty)",ts:new Date().toLocaleString("en-IN"),
+            browser:dev.browser,os:dev.os,deviceType:dev.deviceType,
+            loginAt:Date.now()
+          }).catch(()=>{});
+        }catch{}
+        setErr("Invalid username or password.");
+      }
       setBusy(false);
     },400);
   }
   function pickStaff(name){
     const shared=users.find(x=>x.active&&x.role!=="admin");
-    if(shared)onLogin({...shared,loginAt:Date.now(),displayOverride:name});
+    if(shared)onLogin({...shared,loginAt:Date.now(),displayOverride:name,deviceId:DEVICE_ID,...getDeviceInfo()});
     else setErr("No active staff account found. Create one in Settings.");
   }
   function enterPin(digit){
@@ -2484,7 +2848,7 @@ function Login({users,onLogin,dm,settings}){
     setPinVal(next);
     if(next.length===4){
       setTimeout(()=>{
-        if(pinTarget&&pinTarget.pin===next&&pinTarget.active){onLogin({...pinTarget,loginAt:Date.now()});}
+        if(pinTarget&&pinTarget.pin===next&&pinTarget.active){onLogin({...pinTarget,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo()});}
         else{setErr("Incorrect PIN. Try again.");setPinVal("");}
       },200);
     }
@@ -2669,7 +3033,7 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     /* 16px on ALL inputs prevents iOS & old Android auto-zoom */
     input,select,textarea{touch-action:manipulation;font-size:16px!important;-webkit-text-size-adjust:100%;}
     html{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
-    body{overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;}
+    body{overscroll-behavior:none;-webkit-overflow-scrolling:touch;margin:0;padding:0;}
 
     /* Font rendering — crisp on all screens */
     *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;}
@@ -2704,10 +3068,9 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
     }
 
     /* ── iOS & Android momentum scrolling ── */
-    .crm-sheet-scroll,.crm-tab-content,[style*="overflow-y:auto"],[style*="overflowY"]{
+    .crm-sheet-scroll,[style*="overflow-y: auto"],[style*="overflow-y:auto"]{
       -webkit-overflow-scrolling:touch;
       overscroll-behavior:contain;
-      overflow-y:auto;
     }
 
     /* ── Focus styles ── */
@@ -2848,8 +3211,8 @@ if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
         min-width:22px!important;min-height:22px!important;
         accent-color:#3b82f6;
       }
-      /* Larger scroll momentum on touch */
-      [style*="overflow"]{-webkit-overflow-scrolling:touch;}
+      /* Momentum scrolling on all scrollable elements */
+      *{-webkit-overflow-scrolling:touch;}
     }
 
     /* ═══════════════════════════════
@@ -2971,7 +3334,7 @@ if(typeof document!=="undefined"&&!document.getElementById("crmAnimStyle")){
     @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.3)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}
 
     /* ── Animated components ── */
-    .crm-tab-content{animation:fadeSlideUp 0.22s cubic-bezier(.25,.46,.45,.94) both}
+    .crm-tab-content{animation:fadeSlideUp 0.22s cubic-bezier(.25,.46,.45,.94) both;position:relative;z-index:0;}
     .crm-card-enter{animation:scaleIn 0.18s cubic-bezier(.25,.46,.45,.94) both}
     .crm-sheet-backdrop{animation:fadeIn 0.18s ease both}
     .crm-sheet-panel-mobile{animation:sheetUp 0.28s cubic-bezier(.32,1,.6,1) both}
@@ -3003,15 +3366,43 @@ if(typeof document!=="undefined"&&!document.getElementById("crmAnimStyle")){
     @media(prefers-reduced-motion:reduce){
       *{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
     }
+
+    /* ── Cross-browser & cross-device compatibility ── */
+    /* Firefox: hide scrollbar utility */
+    .scrollbar-hide{scrollbar-width:none}
+    .scrollbar-hide::-webkit-scrollbar{display:none}
+    /* Safari iOS: prevent tap callout and selection flicker */
+    button,a{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+    /* Input zoom prevention on iOS (font-size<16 causes zoom) */
+    input,select,textarea{font-size:max(16px, 1em)!important}
+    /* Safe area for notch devices (iPhone X+, Android notch) */
+    .crm-safe-bottom{padding-bottom:max(0.75rem,env(safe-area-inset-bottom,0px))}
+    /* Edge: fix flexbox gap fallback */
+    @supports not (gap:1rem){.flex{margin:-4px}.flex>*{margin:4px}}
+    /* Firefox: select appearance */
+    select{-moz-appearance:none}
+    /* Brave/Opera: ensure backdrop-filter fallback */
+    @supports not (backdrop-filter:blur(1px)){
+      .crm-sheet-backdrop{background:rgba(0,0,0,0.85)!important}
+    }
+    /* Chrome/Edge: fix overscroll bounce on app shell */
+    html,body{overscroll-behavior:none}
+    /* Firefox: input number spinner removal */
+    input[type=number]{-moz-appearance:textfield}
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+    /* Safari: fix date input styling */
+    input[type=date]{-webkit-appearance:none;appearance:none}
+    /* All browsers: smooth font rendering */
+    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    /* iOS Safari: momentum scrolling for scroll containers */
+    .crm-sheet-scroll,[data-scroll]{-webkit-overflow-scrolling:touch}
+    /* Tablet: better touch targets */
+    @media(pointer:coarse){button,a,select{min-height:44px}}
   `;
   document.head.appendChild(_as);
 }
 // This lets multiple devices have independent sessions in Firebase
-function getDeviceId(){
-  let id=sessionStorage.getItem("tas_device_id");
-  if(!id){id=Date.now().toString(36)+Math.random().toString(36).slice(2,8);sessionStorage.setItem("tas_device_id",id);}
-  return id;
-}
 const DEVICE_ID=getDeviceId();
 
 // Clean up stale session nodes — runs once on app load.
@@ -3019,7 +3410,7 @@ const DEVICE_ID=getDeviceId();
 // This scans all sess nodes and deletes those older than 2× SESSION_TTL (16 hours).
 async function cleanStaleSessions(){
   try{
-    const r=ref(db,"");
+    const r=ref(db);
     const snap=await fbGet(r);
     if(!snap.exists())return;
     const allKeys=Object.keys(snap.val()||{});
@@ -3065,7 +3456,7 @@ export default function Root(){
   },[]);
 
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
-  const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+  const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
     <p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Connecting to cloud…</p>
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -3244,8 +3635,21 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [qcLogs,    setQcLogs]   = useStore("tas9_qclogs", []);
   const [handovers, setHandovers]= useStore("tas9_handovers", []);
   const [notices,   setNotices]  = useStore("tas9_notices", []);
+  // ── PHASE 2 STORES ────────────────────────────────────────────
+  const [ingLogs,   setIngLogs]  = useStore("tas9_ing_logs", []);   // ingredient consumption
+  const [ingItems,  setIngItems] = useStore("tas9_ing_items", []);   // ingredient master list
+  const [staffLogs, setStaffLogs]= useStore("tas9_staff_logs", []); // attendance/shift
+  const [staffList, setStaffList]= useStore("tas9_staff_list", []); // staff master list
+  const [machineLogs,setMachineLogs]=useStore("tas9_machine_logs",[]); // maintenance log
+  const [machineList,setMachineList]=useStore("tas9_machine_list",[]); // machine master list
+  const [vehLogs,   setVehLogs]  = useStore("tas9_veh_logs",  []);  // vehicle trip/maintenance log
+  const [vehList,   setVehList]  = useStore("tas9_veh_list",  []);  // vehicle list
   const [briefingDismissed, setBriefingDismissed] = useStore("tas_pref_briefing_dismissed_"+sess.id,"");
   const [briefingPinned, setBriefingPinned] = useStore("tas_pref_briefing_pinned_"+sess.id, true);
+  // ── PER-USER DASHBOARD WIDGET PREFS (featureCustomDashboard) ──
+  // Stored per user-id so each role/person can customise their own view.
+  // Falls back to the global dashWidgets setting when the feature is off.
+  const [userDashWidgets, setUserDashWidgets] = useStore("tas_pref_dashwidgets_"+sess.id, null);
   // ── INVOICE SEQUENCE COUNTER (persisted in Firebase) ──
   // Format: {seq: N, issued: {deliveryId: "TAS-YYYY-NNNN", ...}}
   const [invRegistry, setInvRegistry] = useStore("tas9_inv_registry", {seq:0, issued:{}});
@@ -3346,7 +3750,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   // Fix: useCallback so addLog is a stable reference — prevents cascading re-renders
   // in any child component that receives it as a prop
   const addLog=useCallback((action,detail)=>{
-    const e={id:uid(),user:displayName,role:sess.role,action,detail,ts:ts()};
+    const dev=getDeviceInfo();
+    const e={id:uid(),user:displayName,role:sess.role,action,detail,ts:ts(),
+      browser:dev.browser,os:dev.os,deviceType:dev.deviceType,deviceId:DEVICE_ID};
     setAct(p=>[e,...p.slice(0,999)]);
   },[displayName,sess.role]);
 
@@ -3539,7 +3945,10 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     return days.map(date=>({date:date.slice(5),Revenue:deliveries.filter(d=>d.date===date&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0),Expenses:expenses.filter(e=>e.date===date).reduce((s,e)=>s+(e.amount||0),0)}));
   },[deliveries,expenses,todayStr]);
 
-  const widgets=settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"];
+  // When featureCustomDashboard is on, each user's personal widget list takes precedence
+  const widgets = settings?.featureCustomDashboard && userDashWidgets!=null
+    ? userDashWidgets
+    : (settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"]);
   const q=srch.toLowerCase();
   const [delivStatusFilter,setDelivStatusFilter]=useState("all");
   const [delivDateFilter,setDelivDateFilter]=useState("all"); // "all"|"today"|"yesterday"|"week"|"custom"
@@ -3568,7 +3977,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const fSup=useMemo(()=>supplies.filter(s=>!q||s.item.toLowerCase().includes(q)||s.supplier?.toLowerCase().includes(q)||s.date?.includes(q)||(s.notes||"").toLowerCase().includes(q)),[supplies,q]);
 
   const blkOL=()=>products.reduce((a,p)=>({...a,[p.id]:{qty:0,priceAmount:p.prices?.[0]||0}}),{});
-  const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today()});
+  const blkC=()=>({name:"",phone:"",address:"",lat:"",lng:"",orderLines:blkOL(),paid:0,pending:0,partialPay:0,notes:"",active:true,joinDate:today(),creditLimit:0});
   const blkD=()=>({customer:"",customerId:null,orderLines:blkOL(),date:today(),deliveryDate:"",status:"Pending",notes:"",address:"",lat:0,lng:0,createdBy:sess.name,createdAt:ts(),replacement:{done:false,item:"",reason:"",qty:""},partialPayment:{enabled:false,amount:""},batchId:""});
   const blkS=()=>({item:"",qty:"",unit:"kg",date:today(),supplier:"",cost:"",notes:"",minStock:""});
   const blkE=()=>({category:settings?.expenseCategories?.[0]||"Gas",amount:"",date:today(),notes:"",receipt:"",vendor:"",paymentMethod:"Cash",approvedBy:"",tags:""});
@@ -3604,6 +4013,22 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [calExpandedDay,setCalExpandedDay]=useState(null);
   const [lastSync,setLastSync]=useState(null);
   useEffect(()=>{const fn=ts=>{setLastSync(ts);};_syncListeners.add(fn);return()=>_syncListeners.delete(fn);},[]);
+
+  // ── PWA: manifest + service worker (featurePWA) ──
+  useEffect(()=>{
+    if(!settings?.featurePWA) return;
+    const appName=settings?.appName||"TAS Healthy World";
+    const manifestData={name:appName,short_name:appName.split(" ")[0],start_url:"/",display:"standalone",background_color:"#0f1923",theme_color:"#1e3a5f",description:settings?.appSubtitle||"Operations CRM",icons:[{src:"/logo192.png",sizes:"192x192",type:"image/png"},{src:"/logo512.png",sizes:"512x512",type:"image/png"}]};
+    const blob=new Blob([JSON.stringify(manifestData)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    let link=document.getElementById("__pwa_manifest__");
+    if(!link){link=document.createElement("link");link.id="__pwa_manifest__";link.rel="manifest";document.head.appendChild(link);}
+    link.href=url;
+    [["apple-mobile-web-app-capable","yes"],["apple-mobile-web-app-status-bar-style","black-translucent"],["apple-mobile-web-app-title",appName],["mobile-web-app-capable","yes"]].forEach(([name,content])=>{let m=document.querySelector(`meta[name="${name}"]`);if(!m){m=document.createElement("meta");m.name=name;document.head.appendChild(m);}m.content=content;});
+    if("serviceWorker" in navigator){const swCode=`self.addEventListener('install',e=>e.waitUntil(caches.open('tas-v1').then(c=>c.addAll(['/']))));self.addEventListener('fetch',e=>{if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).catch(()=>caches.match('/')));}});self.addEventListener('activate',e=>e.waitUntil(clients.claim()));`;const swBlob=new Blob([swCode],{type:"text/javascript"});const swUrl=URL.createObjectURL(swBlob);navigator.serviceWorker.register(swUrl).catch(()=>{});}
+    return()=>{URL.revokeObjectURL(url);};
+  },[settings?.featurePWA,settings?.appName,settings?.appSubtitle]);
+
   const [ptSh,setPtSh]=useState(null);
   const [ptF,setPtF]=useState(()=>({date:today(),shift:"",product:"",actual:0,notes:"",batchId:"",batchLabel:"Batch 1",qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]}));
   const [ptDateFilter,setPtDateFilter]=useState("all");
@@ -3725,6 +4150,106 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [detailModal,setDetailModal]=useState(null); // {type:"expense"|"delivery"|"customer"|"date"|"agent"|"supply", data:...}
   const closeDetail=()=>setDetailModal(null);
 
+  // ── PHASE 2 STATE ────────────────────────────────────────────
+  const [ingSh,setIngSh]=useState(null); const [ingF,setIngF]=useState({ingredient:"",qty:"",unit:"kg",date:today(),batchId:"",notes:"",loggedBy:""});
+  const [ingItemSh,setIngItemSh]=useState(null); const [ingItemF,setIngItemF]=useState({name:"",unit:"kg",stock:""});
+  const [ingSearch,setIngSearch]=useState(""); const [ingDateFilter,setIngDateFilter]=useState("all");
+  const [staffSh,setStaffSh]=useState(null); const [staffF,setStaffF]=useState({staffId:"",staffName:"",date:today(),shift:"Morning",status:"Present",inTime:"",outTime:"",breakMins:"",department:"",task:"",overtimeReason:"",notes:"",temperature:"",loggedBy:""});
+  const [staffMemberSh,setStaffMemberSh]=useState(null); const [staffMemberF,setStaffMemberF]=useState({name:"",role:"",phone:"",department:"",employmentType:"Full-time",joinDate:"",emergencyContact:"",emergencyPhone:""});
+  const [staffSearch,setStaffSearch]=useState(""); const [staffDateFilter,setStaffDateFilter]=useState("all"); const [staffSubTab,setStaffSubTab]=useState("log");
+  const [machSh,setMachSh]=useState(null); const [machF,setMachF]=useState({machineId:"",machineName:"",date:today(),type:"Servicing",severity:"Medium",issue:"",action:"",technician:"",partsReplaced:"",partsCost:"",laborCost:"",cost:"",downtimeHrs:"",nextDue:"",loggedBy:"",status:"Operational"});
+  const [machItemSh,setMachItemSh]=useState(null); const [machItemF,setMachItemF]=useState({name:"",category:"",location:"",serialNo:"",purchaseCost:"",purchaseDate:"",warrantyExpiry:"",notes:""});
+  const [machSearch,setMachSearch]=useState(""); const [machSubTab,setMachSubTab]=useState("log");
+  const [vehSh,setVehSh]=useState(null); const [vehF,setVehF]=useState({vehicleId:"",vehicleName:"",date:today(),type:"Trip",kms:"",odometerStart:"",odometerEnd:"",driver:"",destination:"",routeStops:"",fuelCost:"",fuelLiters:"",fuelType:"",tollCost:"",maintenanceCost:"",nextServiceDue:"",priority:"Normal",notes:"",status:"OK"});
+  const [vehItemSh,setVehItemSh]=useState(null); const [vehItemF,setVehItemF]=useState({name:"",regNo:"",type:"Van",color:"",year:"",assignedDriver:"",capacity:"",insuranceExpiry:"",fitnessExpiry:"",notes:""});
+  const [vehSearch,setVehSearch]=useState(""); const [vehSubTab,setVehSubTab]=useState("log");
+
+  // INGREDIENT CONSUMPTION
+  function saveIng(){
+    if(!ingF.ingredient.trim()||!ingF.qty){notify("Ingredient and quantity required");return;}
+    const rec={...ingF,qty:+ingF.qty||0,loggedBy:displayName,id:uid(),createdAt:ts()};
+    if(ingSh==="add"){
+      setIngLogs(p=>[rec,...p]);
+      // Auto-deduct from supplies if matching item found
+      const match=supplies.find(s=>(s.item||"").toLowerCase().includes(ingF.ingredient.toLowerCase())||ingF.ingredient.toLowerCase().includes((s.item||"").toLowerCase()));
+      if(match){setSup(p=>p.map(s=>s.id===match.id?{...s,qty:Math.max(0,(s.qty||0)-(+ingF.qty||0))}:s));addLog("Ingredient consumed (auto-deducted)",`${ingF.ingredient} ×${ingF.qty} from "${match.item}"`);}
+      else{addLog("Ingredient consumed",`${ingF.ingredient} ×${ingF.qty}`);}
+      notify("Consumption logged ✓");
+    } else {
+      setIngLogs(p=>p.map(x=>x.id===ingSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));
+      addLog("Edited ingredient log",ingF.ingredient);notify("Updated ✓");
+    }
+    setIngSh(null);
+  }
+  function delIng(r){ask(`Delete consumption record?`,()=>{setIngLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted ingredient log",r.ingredient);notify("Deleted");});}
+  function saveIngItem(){
+    if(!ingItemF.name.trim()){notify("Name required");return;}
+    const rec={...ingItemF,id:ingItemSh==="add"?uid():ingItemSh.id,stock:+ingItemF.stock||0};
+    if(ingItemSh==="add"){setIngItems(p=>[...p,rec]);addLog("Added ingredient",rec.name);notify("Added ✓");}
+    else{setIngItems(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited ingredient",rec.name);notify("Updated ✓");}
+    setIngItemSh(null);
+  }
+
+  // STAFF ATTENDANCE
+  function saveStaff(){
+    if(!staffF.staffName.trim()||!staffF.date){notify("Staff name and date required");return;}
+    const rec={...staffF,loggedBy:displayName,id:uid(),createdAt:ts()};
+    if(staffSh==="add"){setStaffLogs(p=>[rec,...p]);addLog("Staff attendance logged",`${staffF.staffName} — ${staffF.status}`);notify("Logged ✓");}
+    else{setStaffLogs(p=>p.map(x=>x.id===staffSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited staff log",staffF.staffName);notify("Updated ✓");}
+    setStaffSh(null);
+  }
+  function delStaff(r){ask(`Delete attendance record?`,()=>{setStaffLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted staff log",r.staffName);notify("Deleted");});}
+  function saveStaffMember(){
+    if(!staffMemberF.name.trim()){notify("Name required");return;}
+    const rec={...staffMemberF,id:staffMemberSh==="add"?uid():staffMemberSh.id};
+    if(staffMemberSh==="add"){setStaffList(p=>[...p,rec]);addLog("Added staff member",rec.name);notify("Added ✓");}
+    else{setStaffList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited staff member",rec.name);notify("Updated ✓");}
+    setStaffMemberSh(null);
+  }
+
+  // MACHINE MAINTENANCE
+  function saveMach(){
+    if(!machF.machineName.trim()||!machF.date){notify("Machine and date required");return;}
+    const totalCost=(+machF.partsCost||0)+(+machF.laborCost||0)+(+machF.cost||0);
+    const rec={...machF,cost:totalCost,partsCost:+machF.partsCost||0,laborCost:+machF.laborCost||0,downtimeHrs:+machF.downtimeHrs||0,loggedBy:displayName,id:uid(),createdAt:ts()};
+    if(machSh==="add"){setMachineLogs(p=>[rec,...p]);addLog("Maintenance logged",`${machF.machineName} — ${machF.type}`);notify("Logged ✓");}
+    else{setMachineLogs(p=>p.map(x=>x.id===machSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited maintenance log",machF.machineName);notify("Updated ✓");}
+    setMachSh(null);
+  }
+  function delMach(r){ask(`Delete maintenance record?`,()=>{setMachineLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted maintenance log",r.machineName);notify("Deleted");});}
+  function saveMachItem(){
+    if(!machItemF.name.trim()){notify("Name required");return;}
+    const rec={...machItemF,id:machItemSh==="add"?uid():machItemSh.id};
+    if(machItemSh==="add"){setMachineList(p=>[...p,rec]);addLog("Added machine",rec.name);notify("Added ✓");}
+    else{setMachineList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited machine",rec.name);notify("Updated ✓");}
+    setMachItemSh(null);
+  }
+
+  // VEHICLE MANAGEMENT
+  function saveVeh(){
+    if(!machF.machineName||!vehF.vehicleName.trim()||!vehF.date){notify("Vehicle and date required");return;}
+    const rec={...vehF,fuelCost:+vehF.fuelCost||0,maintenanceCost:+vehF.maintenanceCost||0,kms:+vehF.kms||0,loggedBy:displayName,id:uid(),createdAt:ts()};
+    if(vehSh==="add"){setVehLogs(p=>[rec,...p]);addLog("Vehicle log added",`${vehF.vehicleName} — ${vehF.type}`);notify("Logged ✓");}
+    else{setVehLogs(p=>p.map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
+    setVehSh(null);
+  }
+  function saveVehFixed(){
+    if(!vehF.vehicleName.trim()||!vehF.date){notify("Vehicle and date required");return;}
+    const kms=vehF.odometerEnd&&vehF.odometerStart?(+vehF.odometerEnd-(+vehF.odometerStart||0)):+vehF.kms||0;
+    const rec={...vehF,fuelCost:+vehF.fuelCost||0,fuelLiters:+vehF.fuelLiters||0,tollCost:+vehF.tollCost||0,maintenanceCost:+vehF.maintenanceCost||0,kms,odometerStart:+vehF.odometerStart||0,odometerEnd:+vehF.odometerEnd||0,loggedBy:displayName,id:vehSh==="add"?uid():vehSh.id,createdAt:ts()};
+    if(vehSh==="add"){setVehLogs(p=>[rec,...p]);addLog("Vehicle log added",`${vehF.vehicleName} — ${vehF.type}`);notify("Logged ✓");}
+    else{setVehLogs(p=>p.map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
+    setVehSh(null);
+  }
+  function delVeh(r){ask(`Delete vehicle log?`,()=>{setVehLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted vehicle log",r.vehicleName);notify("Deleted");});}
+  function saveVehItem(){
+    if(!vehItemF.name.trim()){notify("Name required");return;}
+    const rec={...vehItemF,id:vehItemSh==="add"?uid():vehItemSh.id};
+    if(vehItemSh==="add"){setVehList(p=>[...p,rec]);addLog("Added vehicle",rec.name);notify("Added ✓");}
+    else{setVehList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited vehicle",rec.name);notify("Updated ✓");}
+    setVehItemSh(null);
+  }
+
   // CUSTOMERS
   function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
@@ -3732,9 +4257,23 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
-  function pickCust(name){const c=customers.find(x=>x.name===name);setDf(f=>({...f,customer:name,customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
+  function pickCust(id){const c=customers.find(x=>x.id===id);setDf(f=>({...f,customer:c?.name||"",customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
   function saveD(){
     if(!dF.customer){notify("Select a customer");return;}
+    // Credit limit check
+    if(settings?.featureCreditLimit){
+      const custRec=customers.find(c=>c.id===dF.customerId);
+      const limit=+(custRec?.creditLimit||0);
+      if(limit>0){
+        const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
+        const orderAmt=lineTotalWithTax(dF.orderLines||{},taxRt);
+        const currentPending=+(custRec?.pending||0);
+        if(currentPending+orderAmt>limit){
+          notify(`⚠️ Credit limit exceeded! Pending: ₹${currentPending.toLocaleString("en-IN")} + this order: ₹${orderAmt.toLocaleString("en-IN")} > limit: ₹${limit.toLocaleString("en-IN")}`);
+          return;
+        }
+      }
+    }
     // If replacement has an amount, deduct it from customer's pending balance
     const replAmt = +dF.replacement?.amount||0;
     if(replAmt>0 && dF.customerId){
@@ -3762,20 +4301,30 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
       if(delivItems.length>0){
         setProdTargets(prev=>prev.map(pt=>{
           if(pt.date!==delivDate) return pt;
-          const matches=delivItems.some(item=>pt.product&&(pt.product===item||item.toLowerCase().includes(pt.product.toLowerCase())||pt.product.toLowerCase().includes(item.toLowerCase())));
+          // Use prodNamesMatch for consistent fuzzy matching (same as batch-side logic)
+        const matches=delivItems.some(item=>pt.product&&prodNamesMatch(item,pt.product));
           if(!matches) return pt;
           const existing=pt.linkedInvoices||[];
           if(existing.includes(newInvNo)) return pt;
           return {...pt,linkedInvoices:[...existing,newInvNo]};
         }));
       }
-      setDeliv(p=>[...p,{...dF,id:newId,invNo:newInvNo,partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
+      // ── Auto-stamp batchId onto this new delivery if a same-date matching batch exists ──
+      let autoBatchId = "";
+      if(settings?.prodAutoLinkDeliveries!==false){
+        const todayBatches=prodTargets.filter(pt=>pt.date===delivDate);
+        const matchedBatch=todayBatches.find(pt=>
+          delivItems.some(item=>prodNamesMatch(item,pt.product||""))
+        );
+        if(matchedBatch) autoBatchId=matchedBatch.batchId||"";
+      }
+      setDeliv(p=>[...p,{...dF,id:newId,invNo:newInvNo,batchId:autoBatchId||dF.batchId||"",partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
       addLog("Added delivery",`${dF.customer} [${newInvNo}]`);
       notify(`Delivery added · ${newInvNo} ✓`);
       addNotif("Delivery Added",`${dF.customer} — ${newInvNo}`,"success");
       captureGPS("delivery_saved",dF.customer);
     }
-    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id,partialPayment:{...dF.partialPayment,amount:partialAmt}}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
+    else{setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);}
     setDsh(null);
   }
   function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
@@ -4126,20 +4675,159 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
   function importAll(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.customers&&!d.deliveries&&!d.products){notify("Invalid backup file — missing data");return;}ask("⚠️ This will overwrite ALL current data with the backup. This cannot be undone. Are you sure?",()=>{if(d.customers)setCust(d.customers);if(d.deliveries)setDeliv(d.deliveries);if(d.supplies)setSup(d.supplies);if(d.expenses)setExp(d.expenses);if(d.products)setProd(d.products);if(d.users)setUsers(d.users);if(d.wastage)setWaste(d.wastage);addLog("Imported backup","Full restore");notify("Imported ✓");});}catch{notify("Invalid backup file");}};r.readAsText(f);e.target.value="";}
 
-  const TABS=isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb));
+  const featureGatedTabs = [
+    ...(settings?.featureVanManagement ? [] : ["Vehicles"]),
+    ...(settings?.featureMachineMaintenance ? [] : ["Machines"]),
+    ...(settings?.featureStaffAttendance ? [] : ["Staff"]),
+  ];
+  const TABS=(isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb))).filter(tb=>!featureGatedTabs.includes(tb));
   const expCats=settings?.expenseCategories||["Gas","Labour","Transport","Packaging","Utilities","Maintenance","Other"];
   const delivStats=settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"];
   const supUnits=settings?.supplyUnits||["kg","g","L","mL","pcs","bags","boxes","dozen"];
 
   // Tab icons for nav
-  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Payments":"💳","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","GPS":"📍","Settings":"⚙️"};
+  const TAB_ICONS={"Dashboard":"📊","Customers":"👥","Deliveries":"🚚","Payments":"💳","Supplies":"📦","Expenses":"💸","Wastage":"🗑️","P&L":"📈","Analytics":"🔍","Production":"🏭","Ingredients":"🧂","Staff":"🧑‍🍳","Machines":"⚙️","Vehicles":"🚐","GPS":"📍","Settings":"⚙️"};
+  // i18n — translate nav labels and key UI strings when featureMultiLanguage is on
+  // Use this user's saved language preference (stored on user object in Firebase)
+  const t18n = useT(settings, sess?.lang);
+  const TAB_LABELS = {"Dashboard":t18n("dashboard"),"Customers":t18n("customers"),"Deliveries":t18n("deliveries"),"Payments":t18n("payments"),"Supplies":t18n("supplies"),"Expenses":t18n("expenses"),"P&L":t18n("pandl"),"Analytics":t18n("analytics"),"Production":t18n("production"),"Ingredients":t18n("ingredients"),"Staff":t18n("staff"),"Machines":t18n("machines"),"Vehicles":t18n("vehicles"),"GPS":t18n("gps"),"Settings":t18n("settings"),"Wastage":t18n("wastage")};
 
-  if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+
+  // ─────────────────────────────────────────────────────────────
+  // SecuritySessions — proper component so hooks are legal
+  // ─────────────────────────────────────────────────────────────
+  function SecuritySessions({dm,t,ask,addLog,notify}){
+    const [liveSessions,setLiveSessions]=useState([]);
+    useEffect(()=>{
+      const r=ref(db);
+      const unsub=onValue(r,(snap)=>{
+        if(!snap.exists())return;
+        const val=snap.val()||{};
+        const now=Date.now();
+        const sessions=Object.entries(val)
+          .filter(([k])=>k.startsWith("tas9_sess_"))
+          .map(([k,v])=>{
+            const s=(v&&v.v!==undefined)?v.v:v;
+            if(!s||!s.loginAt)return null;
+            const age=now-s.loginAt;
+            if(age>SESSION_TTL*1.5)return null;
+            return{
+              deviceKey:k,
+              isMe:k==="tas9_sess_"+DEVICE_ID,
+              name:s.displayOverride||s.name||"Unknown",
+              username:s.username||"—",
+              role:s.role||"—",
+              browser:s.browser||"Unknown",
+              os:s.os||"Unknown",
+              deviceType:s.deviceType||"Desktop",
+              screenRes:s.screenRes||"—",
+              tz:s.tz||"—",
+              loginAt:s.loginAt,
+              loginAtLabel:new Date(s.loginAt).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}),
+              lastSeen:age<60000?"Just now":age<3600000?`${Math.floor(age/60000)}m ago`:`${Math.floor(age/3600000)}h ago`,
+            };
+          }).filter(Boolean).sort((a,b)=>b.loginAt-a.loginAt);
+        setLiveSessions(sessions);
+      });
+      return()=>unsub();
+    },[]);
+    const deviceIcon=(d)=>d==="Mobile"?"📱":d==="Tablet"?"📟":"💻";
+    const browserIcon=(b)=>b==="Chrome"?"🟡":b==="Firefox"?"🦊":b==="Safari"?"🧭":b==="Edge"?"🔵":b==="Opera"?"🔴":b==="Brave"?"🦁":"🌐";
+    return<Card dm={dm}><div className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p style={{color:t.text,fontWeight:700,fontSize:14}}>🛡️ Active Sessions</p>
+          <p style={{color:t.sub,fontSize:11,marginTop:2}}>{liveSessions.length} device{liveSessions.length!==1?"s":""} currently logged in</p>
+        </div>
+        <button onClick={()=>ask("Force logout all OTHER devices? Your current session will remain active.",async()=>{
+          const r=ref(db);
+          const snap=await fbGet(r).catch(()=>null);
+          if(!snap||!snap.exists())return;
+          const all=Object.keys(snap.val()||{}).filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
+          for(const k of all) await fbRemove(ref(db,k)).catch(()=>{});
+          addLog("Force-logged out all other devices","Security action by admin");
+          notify("All other devices logged out ✓");
+        })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+          🔴 Logout All Others
+        </button>
+      </div>
+      {liveSessions.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"20px 0"}}>No active sessions found.</p>
+      :liveSessions.map(s=>(
+        <div key={s.deviceKey} style={{background:s.isMe?(dm?"rgba(16,185,129,0.08)":"rgba(16,185,129,0.05)"):t.inp,border:`1.5px solid ${s.isMe?"#10b98140":t.border}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div style={{fontSize:28,flexShrink:0}}>{deviceIcon(s.deviceType)}</div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span style={{color:t.text,fontWeight:700,fontSize:13}}>{s.name}</span>
+                  {s.isMe&&<span style={{background:"#10b98120",color:"#10b981",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99}}>● THIS DEVICE</span>}
+                  <span style={{background:s.role==="admin"?"#f59e0b20":s.role==="factory"?"#8b5cf620":"#0ea5e920",color:s.role==="admin"?"#f59e0b":s.role==="factory"?"#8b5cf6":"#0ea5e9",fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:99,textTransform:"uppercase"}}>{s.role}</span>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span style={{color:t.sub,fontSize:11}}>{browserIcon(s.browser)} {s.browser} · {s.os}</span>
+                  <span style={{color:t.sub,fontSize:11}}>🖥 {s.screenRes}</span>
+                  <span style={{color:t.sub,fontSize:11}}>🕐 {s.loginAtLabel}</span>
+                  <span style={{color:t.sub,fontSize:11}}>⏱ {s.lastSeen}</span>
+                </div>
+                {s.tz&&s.tz!=="—"&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>🌍 {s.tz} · @{s.username}</p>}
+              </div>
+            </div>
+            {!s.isMe&&<button onClick={()=>ask(`Log out ${s.name}'s session on ${s.os}?`,async()=>{
+              await fbRemove(ref(db,s.deviceKey)).catch(()=>{});
+              addLog("Force-logged out session",`${s.name} (${s.os} ${s.browser})`);
+              notify("Session terminated ✓");
+            })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+              Log Out
+            </button>}
+          </div>
+        </div>
+      ))}
+    </div></Card>;
+  }
+
+  function FailedLoginAttempts({dm,t,ask,notify}){
+    const [failedLogins,setFailedLogins]=useState([]);
+    useEffect(()=>{
+      const r=ref(db,"tas_failed_logins");
+      const unsub=onValue(r,(snap)=>{
+        if(!snap.exists()){setFailedLogins([]);return;}
+        const raw=snap.val()||{};
+        const list=Object.values(raw).sort((a,b)=>(b.loginAt||0)-(a.loginAt||0)).slice(0,50);
+        setFailedLogins(list);
+      });
+      return()=>unsub();
+    },[]);
+    if(failedLogins.length===0)return null;
+    return <Card dm={dm}><div className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p style={{color:"#ef4444",fontWeight:700,fontSize:14}}>⚠️ Failed Login Attempts</p>
+          <p style={{color:t.sub,fontSize:11,marginTop:1}}>{failedLogins.length} failed attempt{failedLogins.length!==1?"s":""} recorded</p>
+        </div>
+        <button onClick={()=>ask("Clear all failed login records?",()=>{fbRemove(ref(db,"tas_failed_logins")).catch(()=>{});setFailedLogins([]);notify("Cleared ✓");})}
+          style={{color:"#ef4444",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Clear</button>
+      </div>
+      {failedLogins.slice(0,20).map((l,i)=>(
+        <div key={i} style={{borderBottom:`1px solid ${t.border}`,padding:"7px 0"}} className="last:border-0">
+          <div className="flex items-center justify-between gap-2">
+            <span style={{color:"#ef4444",fontSize:12,fontWeight:600}}>@{l.username||"(unknown)"}</span>
+            <span style={{color:t.sub,fontSize:10}}>{l.ts}</span>
+          </div>
+          <div className="flex gap-x-3 flex-wrap mt-0.5">
+            {l.browser&&<span style={{color:t.sub,fontSize:9}}>🌐 {l.browser}</span>}
+            {l.os&&<span style={{color:t.sub,fontSize:9}}>💻 {l.os}</span>}
+            {l.deviceType&&<span style={{color:t.sub,fontSize:9}}>📱 {l.deviceType}</span>}
+          </div>
+        </div>
+      ))}
+    </div></Card>;
+  }
 
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
-    <div style={{background:t.bg,minHeight:"100svh",fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}} className="flex flex-col lg:flex-row">
+    <div style={{background:t.bg,fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}} className="flex flex-col h-[100svh] overflow-hidden lg:flex-row lg:h-screen lg:overflow-hidden">
 
       {/* ── DESKTOP SIDEBAR (lg+) ─────────────────────────────── */}
       <aside style={{background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,width:224,minHeight:"100vh"}} className="hidden lg:flex flex-col shrink-0 sticky top-0 h-screen overflow-y-auto">
@@ -4160,7 +4848,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 :{color:"rgba(232,237,245,0.65)",borderLeft:"2px solid transparent",paddingLeft:14,borderRadius:"0 4px 4px 0","--si-delay":`${0.04+idx*0.03}s`}}
               className="flex items-center gap-2.5 py-2 text-left w-full transition-all rounded-r text-sm crm-sidebar-item crm-list-item">
               <span style={{fontSize:13,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-              <span style={{fontSize:12,fontWeight:tab===tb?600:500,letterSpacing:"0.005em"}} className="truncate">{tb}</span>
+              <span style={{fontSize:12,fontWeight:tab===tb?600:500,letterSpacing:"0.005em"}} className="truncate">{TAB_LABELS[tb]||tb}</span>
               {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:700,background:"#3b82f6",color:"#fff",borderRadius:99,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} className="crm-notif-badge">{pendingD.length}</span>}
             </button>
           ))}
@@ -4193,7 +4881,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pb-0" style={{paddingBottom:"calc(72px + env(safe-area-inset-bottom,0px))"}}>
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto min-h-0 lg:h-screen" style={{paddingBottom:"calc(72px + env(safe-area-inset-bottom,0px))",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
 
       {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
       <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30 crm-header-enter crm-header">
@@ -5145,7 +5833,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             if(custStatusFilter==="active") displayCust=displayCust.filter(c=>c.active);
             else if(custStatusFilter==="inactive") displayCust=displayCust.filter(c=>!c.active);
             else if(custStatusFilter==="owing") displayCust=displayCust.filter(c=>(c.pending||0)>0);
-            else if(custStatusFilter==="clear") displayCust=displayCust.filter(c=>!(c.pending||0)>0);
+            else if(custStatusFilter==="clear") displayCust=displayCust.filter(c=>(c.pending||0)===0);
             displayCust=displayCust.map(c=>{
               const cDelivs=deliveries.filter(d=>d.customerId===c.id);
               const cDone=cDelivs.filter(d=>d.status==="Delivered");
@@ -5720,10 +6408,23 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <span style={{background:remaining>0?"#f59e0b15":"#10b98115",borderRadius:6,padding:"3px 8px",color:remaining>0?"#f59e0b":"#10b981"}}>Due: <b>{inr(remaining)}</b></span>
                           </div>}
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            <button onClick={e=>{e.stopPropagation();setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();const _dateMode=d.date===today()?"today":d.date>today()?"future":"past";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
                             <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
                             {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
-                            {can("deliv_markDone")&&d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>}
+                            {can("deliv_markDone")&&(settings?.featureTickRedesign!==false?(
+  <button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
+    style={{minHeight:40,padding:"0 14px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:7,transition:"all 0.15s",flexShrink:0,
+      background:d.status==="Delivered"?"#10b98118":"#10b981",
+      color:d.status==="Delivered"?"#10b981":"#fff",
+      border:`2px solid ${d.status==="Delivered"?"#10b98144":"#10b981"}`}}>
+    <span style={{width:18,height:18,borderRadius:5,border:`2px solid ${d.status==="Delivered"?"#10b981":"#fff"}`,background:d.status==="Delivered"?"#10b981":"transparent",display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      {d.status==="Delivered"&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </span>
+    {d.status==="Delivered"?"Done":"Mark Done"}
+  </button>
+):(
+  d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>
+))}
                           </div>
                         </div>;
                       })}
@@ -5935,9 +6636,24 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>PDF</button>
                           {(isAdmin||(sess?.role==="agent"&&(settings?.receiptVisibleTo||["agent"]).includes("agent"))||(sess?.role==="factory"&&(settings?.receiptVisibleTo||["agent"]).includes("factory")))&&settings?.agentInvoiceEnabled!==false&&<button onClick={()=>setLastReceiptData({delivery:d,amt:d.partialPayment?.amount||0,note:d.partialPayment?.note||"",customer:d.customer,ts:d.partialPayment?.collectedAt||d.date,viewOnly:true})} style={{background:"#0ea5e9",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🧾 Receipt</button>}
                           {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
+                          {settings?.featurePrintLabels&&<button onClick={()=>exportDeliveryLabel(d,settings)} style={{background:"#0891b2",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🏷️ Label</button>}
                           <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>WA</button>
                           {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
-                          {can("deliv_markDone")&&d.status!=="Delivered"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>✓ Done</button>}
+                          {can("deliv_markDone")&&(settings?.featureTickRedesign!==false?(
+  <button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
+    style={{minHeight:44,padding:"0 16px",borderRadius:12,fontSize:13,fontWeight:800,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:8,cursor:"pointer",flexShrink:0,transition:"all 0.15s",
+      background:d.status==="Delivered"?"#10b98122":"#10b981",
+      color:d.status==="Delivered"?"#10b981":"#fff",
+      border:`2px solid ${d.status==="Delivered"?"#10b98155":"#10b981"}`,
+      boxShadow:d.status!=="Delivered"?"0 2px 8px #10b98144":"none"}}>
+    <span style={{width:20,height:20,borderRadius:6,border:`2px solid ${d.status==="Delivered"?"#10b981":"#fff"}`,background:d.status==="Delivered"?"#10b981":"transparent",display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+      {d.status==="Delivered"&&<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5l3 3 6-7" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </span>
+    {d.status==="Delivered"?"Delivered":"Mark Done"}
+  </button>
+):(
+  d.status!=="Delivered"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>✓ Done</button>
+))}
                           {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
                           {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
                         </div>
@@ -9237,7 +9953,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     // Customer traceability: deliveries on this date that contain this exact product
                     // Use direct batchId match first; fall back to product+date if no deliveries have batchId yet
                     const batchIdLinkedDelivs=deliveries.filter(d=>d.batchId===r.batchId&&d.status!=="Cancelled");
-                    const batchCustomers=batchIdLinkedDelivs.length>0?batchIdLinkedDelivs:deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled"&&!d.batchId).filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",r.product);}));
+                    // Fallback: same-date deliveries with no batchId that match this product
+                    // (covers legacy data or deliveries added before batch was created)
+                    const unlinkedSameDateDelivs=deliveries.filter(d=>d.date===r.date&&d.status!=="Cancelled"&&!d.batchId)
+                      .filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",r.product);}));
+                    const batchCustomers=batchIdLinkedDelivs.length>0?batchIdLinkedDelivs:unlinkedSameDateDelivs;
                     return <div key={r.id} style={{borderTop:ri>0?`1px solid ${t.border}`:"none",paddingTop:ri>0?14:0,marginTop:ri>0?14:0}}>
                       <div className="flex items-start justify-between gap-2">
                         <div style={{flex:1}}>
@@ -9640,6 +10360,849 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         })()}
 
         {/* GPS TAB */}
+        {/* ═══════════════════════════════════════════════════════
+            INGREDIENTS — Consumption Tracking
+        ═══════════════════════════════════════════════════════ */}
+        {tab==="Ingredients"&&(()=>{
+          const shifts=settings?.shifts||["Morning","Afternoon","Night"];
+          const tStr=today();
+          const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+          const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+          const fLogs=(ingLogs||[]).filter(l=>{
+            const mS=!ingSearch||l.ingredient.toLowerCase().includes(ingSearch.toLowerCase())||(l.notes||"").toLowerCase().includes(ingSearch.toLowerCase());
+            const mD=ingDateFilter==="all"||(ingDateFilter==="today"&&l.date===tStr)||(ingDateFilter==="yesterday"&&l.date===yStr)||(ingDateFilter==="week"&&l.date>=wStr&&l.date<=tStr);
+            return mS&&mD;
+          }).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt||"")||b.date.localeCompare(a.date));
+          const totalToday=(ingLogs||[]).filter(l=>l.date===tStr).reduce((s,l)=>s+(l.qty||0),0);
+          const uniqueIng=[...new Set((ingLogs||[]).map(l=>l.ingredient))].length;
+          // Build stock summary: master list minus consumed
+          const stockMap={};
+          (ingItems||[]).forEach(it=>{stockMap[it.name]={...it,consumed:0};});
+          (ingLogs||[]).forEach(l=>{if(stockMap[l.ingredient])stockMap[l.ingredient].consumed+=(l.qty||0);else stockMap[l.ingredient]={name:l.ingredient,unit:l.unit||"kg",stock:0,consumed:l.qty||0};});
+          return <>
+            {/* Stats */}
+            <div className="crm-grid-4" style={{marginBottom:8}}>
+              {[
+                {label:"Total Logs",val:(ingLogs||[]).length,color:"#3b82f6"},
+                {label:"Today Consumed",val:`${totalToday} units`,color:"#f59e0b"},
+                {label:"Ingredients",val:uniqueIng,color:"#8b5cf6"},
+                {label:"Master List",val:(ingItems||[]).length,color:"#10b981"},
+              ].map(s=>(
+                <div key={s.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <p style={{color:s.color,fontWeight:900,fontSize:22,lineHeight:1}}>{s.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Sub-tabs */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
+              {[["log","📋 Log"],["stock","📦 Stock"]].map(([k,lbl])=>(
+                <button key={k} onClick={()=>setIngDateFilter(k==="stock"?"all":ingDateFilter)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:((ingDateFilter==="stock"&&k==="stock")||(ingDateFilter!=="stock"&&k==="log"))?700:500,background:((ingDateFilter==="stock"&&k==="stock")||(ingDateFilter!=="stock"&&k==="log"))?t.accent:"transparent",color:((ingDateFilter==="stock"&&k==="stock")||(ingDateFilter!=="stock"&&k==="log"))?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              ))}
+            </div>
+            {ingDateFilter!=="stock"&&<>
+              {/* Filters */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input value={ingSearch} onChange={e=>setIngSearch(e.target.value)} placeholder="Search ingredient…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
+                <select value={ingDateFilter} onChange={e=>setIngDateFilter(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:13,outline:"none",WebkitAppearance:"none"}}>
+                  {[["all","All time"],["today","Today"],["yesterday","Yesterday"],["week","This week"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+                {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setIngF({ingredient:"",qty:"",unit:(settings?.supplyUnits||["kg"])[0]||"kg",date:today(),notes:"",loggedBy:displayName});setIngSh("add");}}>+ Log</Btn>}
+              </div>
+              {/* Logs */}
+              {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🧂</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No consumption logs yet</p></div>
+              :fLogs.map(l=>(
+                <div key={l.id} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{l.ingredient}</p>
+                        <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.qty} {l.unit}</span>
+                        {l.batchId&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>Batch</span>}
+                      </div>
+                      <div style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}}>
+                        <span style={{color:t.sub,fontSize:11}}>📅 {l.date}</span>
+                        {l.loggedBy&&<span style={{color:t.sub,fontSize:11}}>👤 {l.loggedBy}</span>}
+                        {l.notes&&<span style={{color:t.sub,fontSize:11}}>📝 {l.notes}</span>}
+                      </div>
+                    </div>
+                    {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setIngF({...l});setIngSh(l);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>delIng(l)} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>
+              ))}
+            </>}
+            {ingDateFilter==="stock"&&<>
+              {/* Master list + stock */}
+              {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setIngItemF({name:"",unit:"kg",stock:""});setIngItemSh("add");}}>+ Add Ingredient</Btn>}
+              {Object.values(stockMap).length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{color:t.sub,fontSize:14}}>No ingredients yet</p></div>
+              :Object.values(stockMap).map((it,i)=>{
+                const net=(+it.stock||0)-(it.consumed||0);
+                const isLow=net<5;
+                return <div key={i} style={{background:t.card,border:`1.5px solid ${isLow?"#ef444440":t.border}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:14}}>{it.name}</p>
+                      <div style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}}>
+                        <span style={{color:t.sub,fontSize:11}}>Opening: {it.stock||0} {it.unit}</span>
+                        <span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>Used: {it.consumed||0} {it.unit}</span>
+                        <span style={{color:isLow?"#ef4444":"#10b981",fontSize:11,fontWeight:700}}>Balance: {net} {it.unit} {isLow?"⚠️ LOW":""}</span>
+                      </div>
+                    </div>
+                    {isAdmin&&it.id&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setIngItemF({name:it.name,unit:it.unit,stock:it.stock||""});setIngItemSh(it);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>ask(`Remove "${it.name}" from master list?`,()=>{setIngItems(p=>p.filter(x=>x.id!==it.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {/* Ingredient log sheet */}
+            <Sheet dm={dm} open={!!ingSh} onClose={()=>setIngSh(null)} title={ingSh==="add"?"🧂 Log Consumption":"✏️ Edit Log"}>
+              <Inp dm={dm} label="Ingredient *" value={ingF.ingredient} onChange={e=>setIngF(f=>({...f,ingredient:e.target.value}))} placeholder="e.g. Whole Wheat Flour"/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Quantity *" type="number" value={ingF.qty} onChange={e=>setIngF(f=>({...f,qty:e.target.value}))}/>
+                <Sel dm={dm} label="Unit" value={ingF.unit} onChange={e=>setIngF(f=>({...f,unit:e.target.value}))}>
+                  {(settings?.supplyUnits||["kg","g","L","ml","pcs"]).map(u=><option key={u}>{u}</option>)}
+                </Sel>
+              </div>
+              <Inp dm={dm} label="Date" type="date" value={ingF.date} onChange={e=>setIngF(f=>({...f,date:e.target.value}))}/>
+              <Inp dm={dm} label="Notes" value={ingF.notes} onChange={e=>setIngF(f=>({...f,notes:e.target.value}))} placeholder="Optional notes"/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setIngSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveIng}>Save</Btn>
+              </div>
+            </Sheet>
+            {/* Ingredient item sheet */}
+            <Sheet dm={dm} open={!!ingItemSh} onClose={()=>setIngItemSh(null)} title={ingItemSh==="add"?"➕ Add Ingredient":"✏️ Edit Ingredient"}>
+              <Inp dm={dm} label="Name *" value={ingItemF.name} onChange={e=>setIngItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Whole Wheat Flour"/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Sel dm={dm} label="Unit" value={ingItemF.unit} onChange={e=>setIngItemF(f=>({...f,unit:e.target.value}))}>
+                  {(settings?.supplyUnits||["kg","g","L","ml","pcs"]).map(u=><option key={u}>{u}</option>)}
+                </Sel>
+                <Inp dm={dm} label="Opening Stock" type="number" value={ingItemF.stock} onChange={e=>setIngItemF(f=>({...f,stock:e.target.value}))}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setIngItemSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveIngItem}>Save</Btn>
+              </div>
+            </Sheet>
+          </>;
+        })()}
+
+        {/* ═══════════════════════════════════════════════════════
+            STAFF — Attendance & Shift Log
+        ═══════════════════════════════════════════════════════ */}
+        {tab==="Staff"&&(()=>{
+          const shifts=settings?.shifts||["Morning","Afternoon","Night"];
+          const tStr=today();
+          const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+          const presentToday=(staffLogs||[]).filter(l=>l.date===tStr&&l.status==="Present").length;
+          const absentToday=(staffLogs||[]).filter(l=>l.date===tStr&&l.status==="Absent").length;
+          const fLogs=(staffLogs||[]).filter(l=>{
+            const mS=!staffSearch||l.staffName.toLowerCase().includes(staffSearch.toLowerCase());
+            const mD=staffDateFilter==="all"||(staffDateFilter==="today"&&l.date===tStr)||(staffDateFilter==="week"&&l.date>=wStr&&l.date<=tStr);
+            return mS&&mD;
+          }).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||"").localeCompare(a.createdAt||""));
+          return <>
+            <div className="crm-grid-4" style={{marginBottom:8}}>
+              {[
+                {label:"Total Staff",val:(staffList||[]).length,color:"#3b82f6"},
+                {label:"Present Today",val:presentToday,color:"#10b981"},
+                {label:"Absent Today",val:absentToday,color:"#ef4444"},
+                {label:"Total Logs",val:(staffLogs||[]).length,color:"#8b5cf6"},
+              ].map(s=>(
+                <div key={s.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <p style={{color:s.color,fontWeight:900,fontSize:22,lineHeight:1}}>{s.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Sub-tabs */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
+              {[["log","📋 Attendance Log"],["roster","👥 Staff Roster"]].map(([k,lbl])=>(
+                <button key={k} onClick={()=>setStaffSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:staffSubTab===k?700:500,background:staffSubTab===k?t.accent:"transparent",color:staffSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              ))}
+            </div>
+            {staffSubTab==="log"&&<>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input value={staffSearch} onChange={e=>setStaffSearch(e.target.value)} placeholder="Search staff…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
+                <select value={staffDateFilter} onChange={e=>setStaffDateFilter(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:13,outline:"none",WebkitAppearance:"none"}}>
+                  {[["all","All time"],["today","Today"],["week","This week"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setStaffF({staffId:"",staffName:"",date:today(),shift:settings?.staffDefaultShift||shifts[0]||"Morning",status:(settings?.staffStatuses||["Present"])[0],inTime:"",outTime:"",breakMins:"",department:"",task:"",overtimeReason:"",notes:"",temperature:"",loggedBy:displayName});setStaffSh("add");}}>+ Log</Btn>}
+              </div>
+              {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🧑‍🍳</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No attendance records yet</p></div>
+              :fLogs.map(l=>{
+                const sc=l.status==="Present"?"#10b981":l.status==="Absent"?"#ef4444":l.status==="Late"?"#f59e0b":l.status==="On Leave"?"#8b5cf6":"#3b82f6";
+                const hoursInfo=(()=>{
+                  if(!l.inTime||!l.outTime)return null;
+                  const [ih,im]=l.inTime.split(":").map(Number);
+                  const [oh,om]=l.outTime.split(":").map(Number);
+                  const totalMins=(oh*60+om)-(ih*60+im)-(+l.breakMins||0);
+                  if(totalMins<=0)return null;
+                  const hrs=totalMins/60;
+                  const threshold=settings?.staffOvertimeThresholdHrs||9;
+                  const isOT=hrs>threshold;
+                  return {hrs,isOT,otHrs:isOT?(hrs-threshold).toFixed(1):0,display:`${Math.floor(hrs)}h ${Math.round((hrs%1)*60)}m`};
+                })();
+                return <div key={l.id} style={{background:t.card,border:`1.5px solid ${sc}30`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      {/* Row 1: name + badges */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{l.staffName}</p>
+                        <span style={{background:sc+"20",color:sc,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.status}</span>
+                        {l.shift&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{l.shift}</span>}
+                        {hoursInfo?.isOT&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚡ OT +{hoursInfo.otHrs}h</span>}
+                        {l.department&&<span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{l.department}</span>}
+                      </div>
+                      {/* Row 2: time + hours */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                        <span style={{color:t.sub,fontSize:11}}>📅 {l.date}</span>
+                        {l.inTime&&<span style={{color:"#10b981",fontSize:11,fontWeight:600}}>🕐 {l.inTime}</span>}
+                        {l.outTime&&<span style={{color:"#ef4444",fontSize:11,fontWeight:600}}>🕓 {l.outTime}</span>}
+                        {hoursInfo&&<span style={{color:hoursInfo.isOT?"#f59e0b":"#10b981",fontSize:11,fontWeight:700}}>⏱ {hoursInfo.display}</span>}
+                        {l.breakMins>0&&<span style={{color:t.sub,fontSize:11}}>☕ {l.breakMins}m break</span>}
+                      </div>
+                      {/* Row 3: extra info */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {l.task&&<span style={{color:t.sub,fontSize:11}}>📋 {l.task}</span>}
+                        {l.overtimeReason&&<span style={{color:"#f59e0b",fontSize:11}}>📌 {l.overtimeReason}</span>}
+                        {l.loggedBy&&<span style={{color:t.sub,fontSize:11}}>👤 {l.loggedBy}</span>}
+                        {l.notes&&<span style={{color:t.sub,fontSize:11}}>📝 {l.notes}</span>}
+                        {l.temperature&&<span style={{color:t.sub,fontSize:11}}>🌡 {l.temperature}°C</span>}
+                      </div>
+                    </div>
+                    {(isAdmin||isFactory)&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setStaffF({...l});setStaffSh(l);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>delStaff(l)} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {staffSubTab==="roster"&&<>
+              {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setStaffMemberF({name:"",role:"",phone:"",department:"",employmentType:"Full-time",salaryType:"",joinDate:"",emergencyContact:"",emergencyPhone:"",notes:""});setStaffMemberSh("add");}}>+ Add Staff</Btn>}
+              {(staffList||[]).length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{color:t.sub,fontSize:14}}>No staff members added yet</p></div>
+              :(staffList||[]).map(m=>{
+                const todayLog=(staffLogs||[]).filter(l=>l.staffName===m.name&&l.date===today()).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))[0];
+                const statusColor=todayLog?.status==="Present"?"#10b981":todayLog?.status==="Absent"?"#ef4444":todayLog?.status==="Late"?"#f59e0b":null;
+                const totalLogs=(staffLogs||[]).filter(l=>l.staffName===m.name).length;
+                return <div key={m.id} style={{background:t.card,border:`1.5px solid ${statusColor?statusColor+"30":t.border}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{m.name}</p>
+                        {m.employmentType&&<span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{m.employmentType}</span>}
+                        {todayLog?<span style={{background:statusColor+"20",color:statusColor,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{todayLog.status} today</span>:<span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>Not logged today</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                        {m.role&&<span style={{color:t.sub,fontSize:11}}>🔧 {m.role}</span>}
+                        {m.department&&<span style={{color:"#8b5cf6",fontSize:11,fontWeight:600}}>🏢 {m.department}</span>}
+                        {m.phone&&<span style={{color:t.sub,fontSize:11}}>📞 {m.phone}</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {m.joinDate&&<span style={{color:t.sub,fontSize:11}}>📅 Joined {m.joinDate}</span>}
+                        {todayLog?.inTime&&<span style={{color:"#10b981",fontSize:11,fontWeight:600}}>🕐 In: {todayLog.inTime}</span>}
+                        {todayLog?.outTime&&<span style={{color:"#ef4444",fontSize:11,fontWeight:600}}>🕓 Out: {todayLog.outTime}</span>}
+                        <span style={{color:t.sub,fontSize:11}}>{totalLogs} log{totalLogs!==1?"s":""}</span>
+                        {m.emergencyContact&&<span style={{color:t.sub,fontSize:11}}>🆘 {m.emergencyContact}</span>}
+                      </div>
+                    </div>
+                    {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setStaffMemberF({...m});setStaffMemberSh(m);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>ask(`Remove "${m.name}" from roster?`,()=>{setStaffList(p=>p.filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {/* Attendance log sheet */}
+            <Sheet dm={dm} open={!!staffSh} onClose={()=>setStaffSh(null)} title={staffSh==="add"?"🧑‍🍳 Log Attendance":"✏️ Edit Attendance"}>
+              {/* Staff member selector */}
+              <Sel dm={dm} label="Staff Member *" value={staffF.staffName} onChange={e=>{const m=(staffList||[]).find(x=>x.name===e.target.value);setStaffF(f=>({...f,staffName:e.target.value,staffId:m?.id||"",department:m?.department||f.department}));}}>
+                <option value="">Select staff…</option>
+                {(staffList||[]).map(m=><option key={m.id}>{m.name}</option>)}
+                {settings?.staffAllowCustomName!==false&&<option value="__custom__">+ Enter name manually</option>}
+              </Sel>
+              {staffF.staffName==="__custom__"&&<Inp dm={dm} label="Staff Name *" value={staffF._customName||""} onChange={e=>setStaffF(f=>({...f,_customName:e.target.value,staffName:e.target.value}))} placeholder="Enter name"/>}
+
+              {/* Date + Shift */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Date *" type="date" value={staffF.date} onChange={e=>setStaffF(f=>({...f,date:e.target.value}))}/>
+                <Sel dm={dm} label="Shift" value={staffF.shift} onChange={e=>setStaffF(f=>({...f,shift:e.target.value}))}>
+                  {shifts.map(s=><option key={s}>{s}</option>)}
+                </Sel>
+              </div>
+
+              {/* Status */}
+              <div>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Attendance Status</p>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(settings?.staffStatuses||["Present","Absent","Half Day","Late","On Leave"]).map(st=>{
+                    const sc=st==="Present"?"#10b981":st==="Absent"?"#ef4444":st==="Late"?"#f59e0b":st==="On Leave"?"#8b5cf6":"#3b82f6";
+                    return <button key={st} onClick={()=>setStaffF(f=>({...f,status:st}))}
+                      style={{padding:"7px 14px",borderRadius:20,border:`1.5px solid ${staffF.status===st?sc:t.border}`,background:staffF.status===st?sc+"20":"transparent",color:staffF.status===st?sc:t.sub,fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.12s"}}>
+                      {st}
+                    </button>;
+                  })}
+                </div>
+              </div>
+
+              {/* In/Out time */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label={`In Time${settings?.staffRequireInOutTime?" *":""}`} type="time" value={staffF.inTime} onChange={e=>setStaffF(f=>({...f,inTime:e.target.value}))}/>
+                <Inp dm={dm} label={`Out Time${settings?.staffRequireInOutTime?" *":""}`} type="time" value={staffF.outTime} onChange={e=>setStaffF(f=>({...f,outTime:e.target.value}))}/>
+              </div>
+
+              {/* Computed hours display */}
+              {staffF.inTime&&staffF.outTime&&(()=>{
+                const [ih,im]=staffF.inTime.split(":").map(Number);
+                const [oh,om]=staffF.outTime.split(":").map(Number);
+                const totalMins=(oh*60+om)-(ih*60+im)-(+staffF.breakMins||0);
+                const hrs=totalMins/60;
+                const threshold=settings?.staffOvertimeThresholdHrs||9;
+                if(totalMins<=0) return null;
+                return <div style={{background:hrs>threshold?"#f59e0b15":"#10b98115",border:`1px solid ${hrs>threshold?"#f59e0b40":"#10b98140"}`,borderRadius:10,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{color:t.sub,fontSize:12,fontWeight:600}}>Total Hours</span>
+                  <span style={{color:hrs>threshold?"#f59e0b":"#10b981",fontSize:14,fontWeight:800}}>
+                    {Math.floor(hrs)}h {Math.round((hrs%1)*60)}m {hrs>threshold?`⚡ +${(hrs-threshold).toFixed(1)}h OT`:""}
+                  </span>
+                </div>;
+              })()}
+
+              {/* Break duration */}
+              {settings?.staffShowBreakDuration&&<Inp dm={dm} label="Break Duration (mins)" type="number" value={staffF.breakMins} onChange={e=>setStaffF(f=>({...f,breakMins:e.target.value}))} placeholder="e.g. 30"/>}
+
+              {/* Department */}
+              {settings?.staffShowDepartment!==false&&<Sel dm={dm} label="Department" value={staffF.department} onChange={e=>setStaffF(f=>({...f,department:e.target.value}))}>
+                <option value="">Select department…</option>
+                {(settings?.staffDepartments||["Production","Delivery","Packaging","Cleaning","Admin","Other"]).map(d=><option key={d}>{d}</option>)}
+              </Sel>}
+
+              {/* Task */}
+              {settings?.staffShowTask&&<Inp dm={dm} label="Task / Assignment" value={staffF.task} onChange={e=>setStaffF(f=>({...f,task:e.target.value}))} placeholder="What were they working on?"/>}
+
+              {/* Overtime reason */}
+              {settings?.staffShowOvertimeReason&&<Inp dm={dm} label="Overtime Reason" value={staffF.overtimeReason} onChange={e=>setStaffF(f=>({...f,overtimeReason:e.target.value}))} placeholder="Reason for overtime (if any)"/>}
+
+              <Inp dm={dm} label="Notes" value={staffF.notes} onChange={e=>setStaffF(f=>({...f,notes:e.target.value}))} placeholder="Optional notes"/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setStaffSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveStaff}>Save</Btn>
+              </div>
+            </Sheet>
+            {/* Staff member sheet */}
+            <Sheet dm={dm} open={!!staffMemberSh} onClose={()=>setStaffMemberSh(null)} title={staffMemberSh==="add"?"➕ Add Staff Member":"✏️ Edit Staff Member"}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Name *" value={staffMemberF.name} onChange={e=>setStaffMemberF(f=>({...f,name:e.target.value}))} placeholder="Full name"/>
+                <Sel dm={dm} label="Role / Designation" value={staffMemberF.role} onChange={e=>setStaffMemberF(f=>({...f,role:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {(settings?.staffRoles||["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"]).map(r=><option key={r}>{r}</option>)}
+                  <option value="__other__">Other (type below)</option>
+                </Sel>
+              </div>
+              {staffMemberF.role==="__other__"&&<Inp dm={dm} label="Custom Role" value={staffMemberF._customRole||""} onChange={e=>setStaffMemberF(f=>({...f,_customRole:e.target.value,role:e.target.value}))} placeholder="Enter role"/>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Sel dm={dm} label="Department" value={staffMemberF.department||""} onChange={e=>setStaffMemberF(f=>({...f,department:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {(settings?.staffDepartments||["Production","Delivery","Packaging","Cleaning","Admin","Other"]).map(d=><option key={d}>{d}</option>)}
+                </Sel>
+                <Sel dm={dm} label="Employment Type" value={staffMemberF.employmentType||"Full-time"} onChange={e=>setStaffMemberF(f=>({...f,employmentType:e.target.value}))}>
+                  {(settings?.staffEmploymentTypes||["Full-time","Part-time","Contract","Daily Wage"]).map(x=><option key={x}>{x}</option>)}
+                </Sel>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Phone" value={staffMemberF.phone} onChange={e=>setStaffMemberF(f=>({...f,phone:e.target.value}))} placeholder="Mobile number"/>
+                <Inp dm={dm} label="Join Date" type="date" value={staffMemberF.joinDate} onChange={e=>setStaffMemberF(f=>({...f,joinDate:e.target.value}))}/>
+              </div>
+              <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Emergency Contact</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Contact Name" value={staffMemberF.emergencyContact} onChange={e=>setStaffMemberF(f=>({...f,emergencyContact:e.target.value}))} placeholder="e.g. Spouse / Parent"/>
+                <Inp dm={dm} label="Contact Phone" value={staffMemberF.emergencyPhone} onChange={e=>setStaffMemberF(f=>({...f,emergencyPhone:e.target.value}))} placeholder="Emergency number"/>
+              </div>
+              {settings?.staffShowSalaryType&&<Sel dm={dm} label="Salary Type" value={staffMemberF.salaryType||""} onChange={e=>setStaffMemberF(f=>({...f,salaryType:e.target.value}))}>
+                <option value="">Select…</option>
+                {(settings?.staffSalaryTypes||["Monthly","Weekly","Daily","Per Hour","Per Piece"]).map(x=><option key={x}>{x}</option>)}
+              </Sel>}
+              <Inp dm={dm} label="Notes" value={staffMemberF.notes||""} onChange={e=>setStaffMemberF(f=>({...f,notes:e.target.value}))} placeholder="Additional notes about this staff member"/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setStaffMemberSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveStaffMember}>Save</Btn>
+              </div>
+            </Sheet>
+          </>;
+        })()}
+
+        {/* ═══════════════════════════════════════════════════════
+            MACHINES — Maintenance Log
+        ═══════════════════════════════════════════════════════ */}
+        {tab==="Machines"&&(()=>{
+          const tStr=today();
+          const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+          const fLogs=(machineLogs||[]).filter(l=>!machSearch||l.machineName.toLowerCase().includes(machSearch.toLowerCase())||(l.issue||"").toLowerCase().includes(machSearch.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+          const totalCost=(machineLogs||[]).reduce((s,l)=>s+(l.cost||0),0);
+          const overdueMachines=(machineList||[]).filter(m=>{const last=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];return last?.nextDue&&last.nextDue<tStr;});
+          return <>
+            <div className="crm-grid-4" style={{marginBottom:8}}>
+              {[
+                {label:"Machines",val:(machineList||[]).length,color:"#3b82f6"},
+                {label:"Total Logs",val:(machineLogs||[]).length,color:"#8b5cf6"},
+                {label:"Total Cost",val:inr(totalCost),color:"#ef4444"},
+                {label:"Overdue",val:overdueMachines.length,color:overdueMachines.length>0?"#ef4444":"#10b981"},
+              ].map(s=>(
+                <div key={s.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <p style={{color:s.color,fontWeight:900,fontSize:22,lineHeight:1}}>{s.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            {overdueMachines.length>0&&<div style={{background:"#ef444410",border:"1px solid #ef444430",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>⚠️</span>
+              <div><p style={{color:"#ef4444",fontWeight:700,fontSize:13}}>Maintenance Overdue</p><p style={{color:"#ef4444",fontSize:11}}>{overdueMachines.map(m=>m.name).join(", ")}</p></div>
+            </div>}
+            {/* Sub-tabs */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
+              {[["log","📋 Maintenance Log"],["machines","⚙️ Machines"]].map(([k,lbl])=>(
+                <button key={k} onClick={()=>setMachSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:machSubTab===k?700:500,background:machSubTab===k?t.accent:"transparent",color:machSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              ))}
+            </div>
+            {machSubTab==="log"&&<>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input value={machSearch} onChange={e=>setMachSearch(e.target.value)} placeholder="Search machine or issue…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
+                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setMachF({machineId:"",machineName:"",date:today(),type:(settings?.machineLogTypes||["Servicing"])[0],severity:"Medium",issue:"",action:"",technician:"",partsReplaced:"",partsCost:"",laborCost:"",cost:"",downtimeHrs:"",nextDue:"",loggedBy:displayName,status:(settings?.machineStatuses||["Operational"])[0]});setMachSh("add");}}>+ Log</Btn>}
+              </div>
+              {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>⚙️</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No maintenance logs yet</p></div>
+              :fLogs.map(l=>{
+                const tc=l.type==="Breakdown"?"#ef4444":l.type==="Routine"?"#3b82f6":"#f59e0b";
+                const sevColor=l.severity==="Critical"?"#ef4444":l.severity==="High"?"#f97316":l.severity==="Medium"?"#f59e0b":"#10b981";
+                return <div key={l.id} style={{background:t.card,border:`1.5px solid ${tc}25`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      {/* Row 1: machine + badges */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{l.machineName}</p>
+                        <span style={{background:tc+"20",color:tc,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.type}</span>
+                        {l.severity&&<span style={{background:sevColor+"20",color:sevColor,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.severity}</span>}
+                        {l.status&&l.status!=="Operational"&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.status}</span>}
+                        {l.nextDue&&l.nextDue<tStr&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠️ Overdue</span>}
+                      </div>
+                      {/* Row 2: issue + action */}
+                      {l.issue&&<p style={{color:t.text,fontSize:12,marginBottom:2}}>🔍 <span style={{fontWeight:600}}>{l.issue}</span></p>}
+                      {l.action&&<p style={{color:t.sub,fontSize:12,marginBottom:4}}>🔧 {l.action}</p>}
+                      {/* Row 3: stats */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                        <span style={{color:t.sub,fontSize:11}}>📅 {l.date}</span>
+                        {l.technician&&<span style={{color:"#3b82f6",fontSize:11,fontWeight:600}}>👷 {l.technician}</span>}
+                        {l.cost>0&&<span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>💸 {inr(l.cost)}</span>}
+                        {l.downtimeHrs>0&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⏸ {l.downtimeHrs}h downtime</span>}
+                        {l.nextDue&&<span style={{color:l.nextDue<tStr?"#ef4444":"#10b981",fontSize:11,fontWeight:600}}>📆 Next: {l.nextDue}{l.nextDue<tStr?" ⚠️":""}</span>}
+                      </div>
+                      {/* Row 4: parts + cost breakdown */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {l.partsReplaced&&<span style={{color:t.sub,fontSize:11}}>🔩 {l.partsReplaced}</span>}
+                        {l.partsCost>0&&<span style={{color:t.sub,fontSize:11}}>Parts: {inr(l.partsCost)}</span>}
+                        {l.laborCost>0&&<span style={{color:t.sub,fontSize:11}}>Labour: {inr(l.laborCost)}</span>}
+                        {l.loggedBy&&<span style={{color:t.sub,fontSize:11}}>👤 {l.loggedBy}</span>}
+                      </div>
+                    </div>
+                    {(isAdmin||isFactory)&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setMachF({...l,cost:l.cost?.toString()||""});setMachSh(l);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>delMach(l)} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {machSubTab==="machines"&&<>
+              {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setMachItemF({name:"",location:"",notes:""});setMachItemSh("add");}}>+ Add Machine</Btn>}
+              {(machineList||[]).length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{color:t.sub,fontSize:14}}>No machines added yet</p></div>
+              :(machineList||[]).map(m=>{
+                const lastLog=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const isOverdue=lastLog?.nextDue&&lastLog.nextDue<tStr;
+                const totalCostM=(machineLogs||[]).filter(l=>l.machineName===m.name).reduce((s,l)=>s+(l.cost||0),0);
+                const logCount=(machineLogs||[]).filter(l=>l.machineName===m.name).length;
+                return <div key={m.id} style={{background:t.card,border:`1.5px solid ${isOverdue?"#ef444440":t.border}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{m.name}</p>
+                        {m.category&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{m.category}</span>}
+                        {isOverdue&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠️ Overdue</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,marginBottom:2,flexWrap:"wrap"}}>
+                        {m.location&&<span style={{color:t.sub,fontSize:11}}>📍 {m.location}</span>}
+                        {m.serialNo&&<span style={{color:t.sub,fontSize:11}}>🔖 S/N: {m.serialNo}</span>}
+                        {m.purchaseDate&&<span style={{color:t.sub,fontSize:11}}>📅 Bought: {m.purchaseDate}</span>}
+                        {m.warrantyExpiry&&<span style={{color:m.warrantyExpiry<tStr?"#ef4444":"#10b981",fontSize:11,fontWeight:600}}>🛡 Warranty: {m.warrantyExpiry}{m.warrantyExpiry<tStr?" (expired)":""}</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {lastLog&&<span style={{color:t.sub,fontSize:11}}>🔧 Last: {lastLog.date} ({lastLog.type})</span>}
+                        {lastLog?.nextDue&&<span style={{color:isOverdue?"#ef4444":"#10b981",fontSize:11,fontWeight:600}}>📆 Due: {lastLog.nextDue}</span>}
+                        {logCount>0&&<span style={{color:t.sub,fontSize:11}}>{logCount} log{logCount!==1?"s":""}</span>}
+                        {totalCostM>0&&<span style={{color:"#ef4444",fontSize:11,fontWeight:600}}>💸 {inr(totalCostM)} total</span>}
+                        {!lastLog&&<span style={{color:t.sub,fontSize:11}}>No logs yet</span>}
+                      </div>
+                      {m.notes&&<p style={{color:t.sub,fontSize:11,marginTop:3}}>📝 {m.notes}</p>}
+                    </div>
+                    {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setMachItemF({...m});setMachItemSh(m);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>ask(`Remove "${m.name}"?`,()=>{setMachineList(p=>p.filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {/* Maintenance log sheet */}
+            <Sheet dm={dm} open={!!machSh} onClose={()=>setMachSh(null)} title={machSh==="add"?"⚙️ Log Maintenance Event":"✏️ Edit Log"}>
+              {/* Machine selector */}
+              <Sel dm={dm} label="Machine *" value={machF.machineName} onChange={e=>setMachF(f=>({...f,machineName:e.target.value}))}>
+                <option value="">Select machine…</option>
+                {(machineList||[]).map(m=><option key={m.id}>{m.name}</option>)}
+                <option value="__custom__">+ Enter manually</option>
+              </Sel>
+              {machF.machineName==="__custom__"&&<Inp dm={dm} label="Machine Name *" value={machF._customName||""} onChange={e=>setMachF(f=>({...f,_customName:e.target.value,machineName:e.target.value}))}/>}
+
+              {/* Date + Type */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Date *" type="date" value={machF.date} onChange={e=>setMachF(f=>({...f,date:e.target.value}))}/>
+                <Sel dm={dm} label="Event Type" value={machF.type} onChange={e=>setMachF(f=>({...f,type:e.target.value}))}>
+                  {(settings?.machineLogTypes||["Servicing","Breakdown","Repair","Inspection","Oil Change","Other"]).map(x=><option key={x}>{x}</option>)}
+                </Sel>
+              </div>
+
+              {/* Severity */}
+              {settings?.machineShowSeverity!==false&&<div>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Severity</p>
+                <div style={{display:"flex",gap:8}}>
+                  {(settings?.machineSeverityLevels||["Low","Medium","High","Critical"]).map(sv=>{
+                    const sc=sv==="Critical"?"#ef4444":sv==="High"?"#f97316":sv==="Medium"?"#f59e0b":"#10b981";
+                    return <button key={sv} onClick={()=>setMachF(f=>({...f,severity:sv}))}
+                      style={{flex:1,padding:"8px 0",borderRadius:10,border:`1.5px solid ${machF.severity===sv?sc:t.border}`,background:machF.severity===sv?sc+"18":"transparent",color:machF.severity===sv?sc:t.sub,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      {sv}
+                    </button>;
+                  })}
+                </div>
+              </div>}
+
+              {/* Issue + Action */}
+              <Inp dm={dm} label="Issue / Description *" value={machF.issue} onChange={e=>setMachF(f=>({...f,issue:e.target.value}))} placeholder="Describe the issue or work done"/>
+              <Inp dm={dm} label="Action Taken" value={machF.action} onChange={e=>setMachF(f=>({...f,action:e.target.value}))} placeholder="What was done to fix it"/>
+
+              {/* Technician */}
+              {settings?.machineShowTechnician!==false&&<Inp dm={dm} label="Technician / Engineer" value={machF.technician} onChange={e=>setMachF(f=>({...f,technician:e.target.value}))} placeholder="Name of person who did the work"/>}
+
+              {/* Parts replaced */}
+              {settings?.machineShowPartsReplaced!==false&&<Inp dm={dm} label="Parts Replaced" value={machF.partsReplaced} onChange={e=>setMachF(f=>({...f,partsReplaced:e.target.value}))} placeholder="e.g. Belt, Motor, Filter (comma separated)"/>}
+
+              {/* Cost breakdown */}
+              <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>💰 Cost Breakdown</p>
+              <div style={{display:"grid",gridTemplateColumns:`${settings?.machineShowPartsCost!==false?"1fr ":""}${settings?.machineShowLaborCost!==false?"1fr ":""}1fr`.trim(),gap:8}}>
+                {settings?.machineShowPartsCost!==false&&<Inp dm={dm} label="Parts Cost ₹" type="number" value={machF.partsCost} onChange={e=>setMachF(f=>({...f,partsCost:e.target.value}))} placeholder="0"/>}
+                {settings?.machineShowLaborCost!==false&&<Inp dm={dm} label="Labour Cost ₹" type="number" value={machF.laborCost} onChange={e=>setMachF(f=>({...f,laborCost:e.target.value}))} placeholder="0"/>}
+                <Inp dm={dm} label="Other Cost ₹" type="number" value={machF.cost} onChange={e=>setMachF(f=>({...f,cost:e.target.value}))} placeholder="0"/>
+              </div>
+              {/* Total cost preview */}
+              {((+machF.partsCost||0)+(+machF.laborCost||0)+(+machF.cost||0))>0&&(
+                <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{color:t.sub,fontSize:12,fontWeight:600}}>Total Cost</span>
+                  <span style={{color:"#ef4444",fontSize:14,fontWeight:800}}>{inr((+machF.partsCost||0)+(+machF.laborCost||0)+(+machF.cost||0))}</span>
+                </div>
+              )}
+
+              {/* Downtime + Next due */}
+              <div style={{display:"grid",gridTemplateColumns:`${settings?.machineShowDowntime!==false?"1fr ":""}1fr`.trim(),gap:8}}>
+                {settings?.machineShowDowntime!==false&&<Inp dm={dm} label="Downtime (hrs)" type="number" value={machF.downtimeHrs} onChange={e=>setMachF(f=>({...f,downtimeHrs:e.target.value}))} placeholder="0"/>}
+                <Inp dm={dm} label={`Next Service Due${settings?.machineRequireNextDue?" *":""}`} type="date" value={machF.nextDue} onChange={e=>setMachF(f=>({...f,nextDue:e.target.value}))}/>
+              </div>
+
+              {/* Status after */}
+              <Sel dm={dm} label="Machine Status After" value={machF.status} onChange={e=>setMachF(f=>({...f,status:e.target.value}))}>
+                {(settings?.machineStatuses||["Operational","Needs Service","Under Repair","Retired"]).map(x=><option key={x}>{x}</option>)}
+              </Sel>
+
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setMachSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveMach}>Save</Btn>
+              </div>
+            </Sheet>
+            {/* Machine item sheet */}
+            <Sheet dm={dm} open={!!machItemSh} onClose={()=>setMachItemSh(null)} title={machItemSh==="add"?"➕ Add Machine":"✏️ Edit Machine"}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Machine Name *" value={machItemF.name} onChange={e=>setMachItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Roti Press #1"/>
+                <Sel dm={dm} label="Category" value={machItemF.category||""} onChange={e=>setMachItemF(f=>({...f,category:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {(settings?.machineCategories||["Mixer","Oven","Sealer","Generator","Conveyor","Other"]).map(x=><option key={x}>{x}</option>)}
+                </Sel>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Location / Area" value={machItemF.location} onChange={e=>setMachItemF(f=>({...f,location:e.target.value}))} placeholder="e.g. Production Floor"/>
+                <Inp dm={dm} label="Serial Number" value={machItemF.serialNo} onChange={e=>setMachItemF(f=>({...f,serialNo:e.target.value}))} placeholder="Serial / model no."/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Purchase Date" type="date" value={machItemF.purchaseDate} onChange={e=>setMachItemF(f=>({...f,purchaseDate:e.target.value}))}/>
+                <Inp dm={dm} label="Purchase Cost ₹" type="number" value={machItemF.purchaseCost} onChange={e=>setMachItemF(f=>({...f,purchaseCost:e.target.value}))} placeholder="0"/>
+              </div>
+              <Inp dm={dm} label="Warranty Expiry" type="date" value={machItemF.warrantyExpiry} onChange={e=>setMachItemF(f=>({...f,warrantyExpiry:e.target.value}))}/>
+              <Inp dm={dm} label="Notes" value={machItemF.notes} onChange={e=>setMachItemF(f=>({...f,notes:e.target.value}))} placeholder="Model info, supplier, etc."/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setMachItemSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveMachItem}>Save</Btn>
+              </div>
+            </Sheet>
+          </>;
+        })()}
+
+        {/* ═══════════════════════════════════════════════════════
+            VEHICLES — Van / Fleet Management
+        ═══════════════════════════════════════════════════════ */}
+        {tab==="Vehicles"&&(()=>{
+          const tStr=today();
+          const fLogs=(vehLogs||[]).filter(l=>!vehSearch||l.vehicleName.toLowerCase().includes(vehSearch.toLowerCase())||(l.driver||"").toLowerCase().includes(vehSearch.toLowerCase())||(l.destination||"").toLowerCase().includes(vehSearch.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+          const totalFuel=(vehLogs||[]).reduce((s,l)=>s+(l.fuelCost||0),0);
+          const totalMaint=(vehLogs||[]).reduce((s,l)=>s+(l.maintenanceCost||0),0);
+          const totalKms=(vehLogs||[]).reduce((s,l)=>s+(l.kms||0),0);
+          return <>
+            <div className="crm-grid-4" style={{marginBottom:8}}>
+              {[
+                {label:"Vehicles",val:(vehList||[]).length,color:"#3b82f6"},
+                {label:"Total Km",val:totalKms.toLocaleString("en-IN"),color:"#8b5cf6"},
+                {label:"Fuel Cost",val:inr(totalFuel),color:"#f59e0b"},
+                {label:"Maintenance",val:inr(totalMaint),color:"#ef4444"},
+              ].map(s=>(
+                <div key={s.label} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
+                  <p style={{color:s.color,fontWeight:900,fontSize:s.val.toString().length>6?17:22,lineHeight:1}}>{s.val}</p>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Sub-tabs */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
+              {[["log","📋 Trip / Maintenance Log"],["fleet","🚐 Fleet"]].map(([k,lbl])=>(
+                <button key={k} onClick={()=>setVehSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:vehSubTab===k?700:500,background:vehSubTab===k?t.accent:"transparent",color:vehSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              ))}
+            </div>
+            {vehSubTab==="log"&&<>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input value={vehSearch} onChange={e=>setVehSearch(e.target.value)} placeholder="Search vehicle, driver…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
+                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setVehF({vehicleId:"",vehicleName:"",date:today(),type:(settings?.vehicleLogTypes||["Trip"])[0],kms:"",odometerStart:"",odometerEnd:"",driver:"",destination:"",routeStops:"",fuelCost:"",fuelLiters:"",fuelType:(settings?.vehicleFuelTypes||["Petrol"])[0],tollCost:"",maintenanceCost:"",nextServiceDue:"",priority:"Normal",notes:"",status:(settings?.vehicleStatuses||["OK"])[0]});setVehSh("add");}}>+ Log</Btn>}
+              </div>
+              {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🚐</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No vehicle logs yet</p></div>
+              :fLogs.map(l=>{
+                const tc=l.type==="Maintenance"?"#f59e0b":l.type==="Breakdown"?"#ef4444":l.type==="Fuel Fill"?"#10b981":"#3b82f6";
+                const prioColor=l.priority==="Critical"?"#ef4444":l.priority==="Urgent"?"#f59e0b":null;
+                const totalCostL=(l.fuelCost||0)+(l.maintenanceCost||0)+(l.tollCost||0);
+                return <div key={l.id} style={{background:t.card,border:`1.5px solid ${prioColor?prioColor+"40":tc+"25"}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      {/* Row 1: vehicle + badges */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{l.vehicleName}</p>
+                        <span style={{background:tc+"20",color:tc,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.type}</span>
+                        {l.status&&l.status!=="OK"&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.status}</span>}
+                        {prioColor&&<span style={{background:prioColor+"20",color:prioColor,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{l.priority==="Critical"?"🔴":"🟡"} {l.priority}</span>}
+                        {l.fuelType&&<span style={{background:"#10b98120",color:"#10b981",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>⛽ {l.fuelType}</span>}
+                      </div>
+                      {/* Row 2: date + driver + destination */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                        <span style={{color:t.sub,fontSize:11}}>📅 {l.date}</span>
+                        {l.driver&&<span style={{color:"#3b82f6",fontSize:11,fontWeight:600}}>👤 {l.driver}</span>}
+                        {l.destination&&<span style={{color:t.sub,fontSize:11}}>📍 {l.destination}</span>}
+                        {l.kms>0&&<span style={{color:"#8b5cf6",fontSize:11,fontWeight:700}}>📏 {l.kms} km</span>}
+                      </div>
+                      {/* Row 3: odometer + route */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                        {l.odometerStart>0&&<span style={{color:t.sub,fontSize:11}}>Start: {l.odometerStart} km</span>}
+                        {l.odometerEnd>0&&<span style={{color:t.sub,fontSize:11}}>End: {l.odometerEnd} km</span>}
+                        {l.routeStops&&<span style={{color:t.sub,fontSize:11}}>🗺 {l.routeStops}</span>}
+                      </div>
+                      {/* Row 4: costs */}
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {l.fuelLiters>0&&<span style={{color:"#10b981",fontSize:11,fontWeight:600}}>⛽ {l.fuelLiters}L</span>}
+                        {l.fuelCost>0&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⛽ {inr(l.fuelCost)}</span>}
+                        {l.maintenanceCost>0&&<span style={{color:"#ef4444",fontSize:11,fontWeight:600}}>🔧 {inr(l.maintenanceCost)}</span>}
+                        {l.tollCost>0&&<span style={{color:t.sub,fontSize:11}}>🛣 {inr(l.tollCost)}</span>}
+                        {totalCostL>0&&<span style={{color:"#ef4444",fontSize:11,fontWeight:700}}>Total: {inr(totalCostL)}</span>}
+                        {l.nextServiceDue&&<span style={{color:l.nextServiceDue<tStr?"#ef4444":"#10b981",fontSize:11,fontWeight:600}}>📆 Next: {l.nextServiceDue}</span>}
+                      </div>
+                      {l.notes&&<p style={{color:t.sub,fontSize:11,marginTop:3}}>📝 {l.notes}</p>}
+                    </div>
+                    {(isAdmin||isFactory)&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setVehF({...l,fuelCost:l.fuelCost?.toString()||"",maintenanceCost:l.maintenanceCost?.toString()||"",kms:l.kms?.toString()||""});setVehSh(l);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>delVeh(l)} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {vehSubTab==="fleet"&&<>
+              {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setVehItemF({name:"",regNo:"",type:"Van",notes:""});setVehItemSh("add");}}>+ Add Vehicle</Btn>}
+              {(vehList||[]).length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{color:t.sub,fontSize:14}}>No vehicles added yet</p></div>
+              :(vehList||[]).map(v=>{
+                const logs=(vehLogs||[]).filter(l=>l.vehicleName===v.name);
+                const totalV=logs.reduce((s,l)=>s+(l.kms||0),0);
+                const totalFuelV=logs.reduce((s,l)=>s+(l.fuelCost||0),0);
+                const lastLog=logs.sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const insuranceExpired=v.insuranceExpiry&&v.insuranceExpiry<tStr;
+                const fitnessExpired=v.fitnessExpiry&&v.fitnessExpiry<tStr;
+                const anyAlert=insuranceExpired||fitnessExpired;
+                return <div key={v.id} style={{background:t.card,border:`1.5px solid ${anyAlert?"#ef444440":t.border}`,borderRadius:14,padding:"14px 16px"}} className="crm-list-item">
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                        <p style={{color:t.text,fontWeight:700,fontSize:14}}>{v.name}</p>
+                        {v.type&&<span style={{background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>{v.type}</span>}
+                        {v.color&&<span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>🎨 {v.color}</span>}
+                        {insuranceExpired&&<span style={{background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠️ Insurance expired</span>}
+                        {fitnessExpired&&<span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠️ Fitness expired</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,marginBottom:2,flexWrap:"wrap"}}>
+                        {v.regNo&&<span style={{color:t.sub,fontSize:11}}>🔖 {v.regNo}</span>}
+                        {v.year&&<span style={{color:t.sub,fontSize:11}}>📅 {v.year}</span>}
+                        {v.assignedDriver&&<span style={{color:"#3b82f6",fontSize:11,fontWeight:600}}>👤 {v.assignedDriver}</span>}
+                        {v.capacity&&<span style={{color:t.sub,fontSize:11}}>📦 {v.capacity}</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        <span style={{color:t.sub,fontSize:11}}>Trips: {logs.filter(l=>l.type==="Trip").length}</span>
+                        <span style={{color:"#8b5cf6",fontSize:11,fontWeight:600}}>Total km: {totalV.toLocaleString("en-IN")}</span>
+                        {totalFuelV>0&&<span style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>⛽ {inr(totalFuelV)}</span>}
+                        {lastLog&&<span style={{color:t.sub,fontSize:11}}>Last: {lastLog.date}</span>}
+                        {v.insuranceExpiry&&!insuranceExpired&&<span style={{color:"#10b981",fontSize:11}}>🛡 Ins. until {v.insuranceExpiry}</span>}
+                        {v.fitnessExpiry&&!fitnessExpired&&<span style={{color:"#10b981",fontSize:11}}>✅ Fit. until {v.fitnessExpiry}</span>}
+                      </div>
+                      {v.notes&&<p style={{color:t.sub,fontSize:11,marginTop:3}}>📝 {v.notes}</p>}
+                    </div>
+                    {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{setVehItemF({...v});setVehItemSh(v);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                      <button onClick={()=>ask(`Remove "${v.name}"?`,()=>{setVehList(p=>p.filter(x=>x.id!==v.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                    </div>}
+                  </div>
+                </div>;
+              })}
+            </>}
+            {/* Vehicle log sheet */}
+            <Sheet dm={dm} open={!!vehSh} onClose={()=>setVehSh(null)} title={vehSh==="add"?"🚐 Log Trip / Event":"✏️ Edit Log"}>
+              {/* Vehicle selector */}
+              <Sel dm={dm} label="Vehicle *" value={vehF.vehicleName} onChange={e=>setVehF(f=>({...f,vehicleName:e.target.value}))}>
+                <option value="">Select vehicle…</option>
+                {(vehList||[]).map(v=><option key={v.id}>{v.name}</option>)}
+                <option value="__custom__">+ Enter manually</option>
+              </Sel>
+              {vehF.vehicleName==="__custom__"&&<Inp dm={dm} label="Vehicle Name *" value={vehF._customName||""} onChange={e=>setVehF(f=>({...f,_customName:e.target.value,vehicleName:e.target.value}))}/>}
+
+              {/* Date + Type */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Date *" type="date" value={vehF.date} onChange={e=>setVehF(f=>({...f,date:e.target.value}))}/>
+                <Sel dm={dm} label="Event Type" value={vehF.type} onChange={e=>setVehF(f=>({...f,type:e.target.value}))}>
+                  {(settings?.vehicleLogTypes||["Trip","Maintenance","Breakdown","Fuel Fill","Insurance","Other"]).map(x=><option key={x}>{x}</option>)}
+                </Sel>
+              </div>
+
+              {/* Priority */}
+              {settings?.vehicleShowPriority!==false&&<div>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Priority</p>
+                <div style={{display:"flex",gap:8}}>
+                  {["Normal","Urgent","Critical"].map(p=>(
+                    <button key={p} onClick={()=>setVehF(f=>({...f,priority:p}))}
+                      style={{flex:1,padding:"8px 0",borderRadius:10,border:`1.5px solid ${vehF.priority===p?(p==="Critical"?"#ef4444":p==="Urgent"?"#f59e0b":"#10b981"):(t.border)}`,background:vehF.priority===p?(p==="Critical"?"#ef444415":p==="Urgent"?"#f59e0b15":"#10b98115"):"transparent",color:vehF.priority===p?(p==="Critical"?"#ef4444":p==="Urgent"?"#f59e0b":"#10b981"):t.sub,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      {p==="Critical"?"🔴":p==="Urgent"?"🟡":"🟢"} {p}
+                    </button>
+                  ))}
+                </div>
+              </div>}
+
+              {/* Driver + Destination */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label={`Driver${settings?.vehicleRequireDriver?" *":""}`} value={vehF.driver} onChange={e=>setVehF(f=>({...f,driver:e.target.value}))} placeholder="Driver name"/>
+                <Inp dm={dm} label="Destination / Route" value={vehF.destination} onChange={e=>setVehF(f=>({...f,destination:e.target.value}))} placeholder="Area / route"/>
+              </div>
+
+              {/* Route stops */}
+              {settings?.vehicleShowRouteStops&&<Inp dm={dm} label="Route Stops" value={vehF.routeStops} onChange={e=>setVehF(f=>({...f,routeStops:e.target.value}))} placeholder="e.g. Mapusa → Panjim → Vasco"/>}
+
+              {/* Odometer */}
+              {settings?.vehicleShowOdometer!==false&&<>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Odometer Readings</p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                  <Inp dm={dm} label="Start (km)" type="number" value={vehF.odometerStart} onChange={e=>setVehF(f=>({...f,odometerStart:e.target.value}))} placeholder="0"/>
+                  <Inp dm={dm} label="End (km)" type="number" value={vehF.odometerEnd} onChange={e=>setVehF(f=>({...f,odometerEnd:e.target.value}))} placeholder="0"/>
+                  <div>
+                    <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:4}}>KM DRIVEN</p>
+                    <div style={{background:t.inp,border:`1.5px solid ${t.inpB}`,borderRadius:10,padding:"9px 12px",fontSize:14,color:t.sub,fontWeight:700}}>
+                      {vehF.odometerEnd&&vehF.odometerStart?Math.max(0,(+vehF.odometerEnd||0)-(+vehF.odometerStart||0)):vehF.kms||"—"}
+                    </div>
+                  </div>
+                </div>
+                <Inp dm={dm} label="Manual KM Override" type="number" value={vehF.kms} onChange={e=>setVehF(f=>({...f,kms:e.target.value}))} placeholder="Leave blank if using odometer"/>
+              </>}
+
+              {/* Fuel section */}
+              {(settings?.vehicleShowFuelCost!==false||settings?.vehicleShowFuelLiters!==false||settings?.vehicleShowFuelType!==false)&&<>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>⛽ Fuel Details</p>
+                <div style={{display:"grid",gridTemplateColumns:`${settings?.vehicleShowFuelType!==false?"1fr ":""}${settings?.vehicleShowFuelLiters!==false?"1fr ":""}${settings?.vehicleShowFuelCost!==false?"1fr":""}`.trim(),gap:8}}>
+                  {settings?.vehicleShowFuelType!==false&&<Sel dm={dm} label="Fuel Type" value={vehF.fuelType} onChange={e=>setVehF(f=>({...f,fuelType:e.target.value}))}>
+                    <option value="">Select…</option>
+                    {(settings?.vehicleFuelTypes||["Petrol","Diesel","CNG","Electric","LPG"]).map(x=><option key={x}>{x}</option>)}
+                  </Sel>}
+                  {settings?.vehicleShowFuelLiters!==false&&<Inp dm={dm} label="Litres" type="number" value={vehF.fuelLiters} onChange={e=>setVehF(f=>({...f,fuelLiters:e.target.value}))} placeholder="0"/>}
+                  {settings?.vehicleShowFuelCost!==false&&<Inp dm={dm} label="Fuel Cost ₹" type="number" value={vehF.fuelCost} onChange={e=>setVehF(f=>({...f,fuelCost:e.target.value}))} placeholder="0"/>}
+                </div>
+              </>}
+
+              {/* Other costs */}
+              <div style={{display:"grid",gridTemplateColumns:`${settings?.vehicleShowMaintCost!==false?"1fr ":""}${settings?.vehicleShowTollCost?"1fr":""}`.trim()||"1fr",gap:8}}>
+                {settings?.vehicleShowMaintCost!==false&&<Inp dm={dm} label="Maintenance Cost ₹" type="number" value={vehF.maintenanceCost} onChange={e=>setVehF(f=>({...f,maintenanceCost:e.target.value}))} placeholder="0"/>}
+                {settings?.vehicleShowTollCost&&<Inp dm={dm} label="Toll / Misc ₹" type="number" value={vehF.tollCost} onChange={e=>setVehF(f=>({...f,tollCost:e.target.value}))} placeholder="0"/>}
+              </div>
+
+              {/* Next service */}
+              {settings?.vehicleShowNextService!==false&&<Inp dm={dm} label="Next Service Due" type="date" value={vehF.nextServiceDue} onChange={e=>setVehF(f=>({...f,nextServiceDue:e.target.value}))}/>}
+
+              {/* Status */}
+              <Sel dm={dm} label="Vehicle Status" value={vehF.status} onChange={e=>setVehF(f=>({...f,status:e.target.value}))}>
+                {(settings?.vehicleStatuses||["OK","Needs Service","Offline","Under Repair"]).map(x=><option key={x}>{x}</option>)}
+              </Sel>
+
+              <Inp dm={dm} label="Notes" value={vehF.notes} onChange={e=>setVehF(f=>({...f,notes:e.target.value}))} placeholder="Any additional notes"/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setVehSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveVehFixed}>Save</Btn>
+              </div>
+            </Sheet>
+            {/* Vehicle fleet sheet */}
+            <Sheet dm={dm} open={!!vehItemSh} onClose={()=>setVehItemSh(null)} title={vehItemSh==="add"?"➕ Add Vehicle":"✏️ Edit Vehicle"}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Vehicle Name *" value={vehItemF.name} onChange={e=>setVehItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Delivery Van 1"/>
+                <Inp dm={dm} label="Reg. Number" value={vehItemF.regNo} onChange={e=>setVehItemF(f=>({...f,regNo:e.target.value}))} placeholder="e.g. GA 01 AB 1234"/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Sel dm={dm} label="Type" value={vehItemF.type} onChange={e=>setVehItemF(f=>({...f,type:e.target.value}))}>
+                  {(settings?.vehicleTypes||["Van","Car","Bike","Truck","Auto","Other"]).map(x=><option key={x}>{x}</option>)}
+                </Sel>
+                <Inp dm={dm} label="Color" value={vehItemF.color} onChange={e=>setVehItemF(f=>({...f,color:e.target.value}))} placeholder="e.g. White"/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Year" type="number" value={vehItemF.year} onChange={e=>setVehItemF(f=>({...f,year:e.target.value}))} placeholder="e.g. 2021"/>
+                <Inp dm={dm} label="Capacity (kg/seats)" value={vehItemF.capacity} onChange={e=>setVehItemF(f=>({...f,capacity:e.target.value}))} placeholder="e.g. 500kg"/>
+              </div>
+              <Inp dm={dm} label="Assigned Driver" value={vehItemF.assignedDriver} onChange={e=>setVehItemF(f=>({...f,assignedDriver:e.target.value}))} placeholder="Default driver name"/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Inp dm={dm} label="Insurance Expiry" type="date" value={vehItemF.insuranceExpiry} onChange={e=>setVehItemF(f=>({...f,insuranceExpiry:e.target.value}))}/>
+                <Inp dm={dm} label="Fitness Expiry" type="date" value={vehItemF.fitnessExpiry} onChange={e=>setVehItemF(f=>({...f,fitnessExpiry:e.target.value}))}/>
+              </div>
+              <Inp dm={dm} label="Notes" value={vehItemF.notes} onChange={e=>setVehItemF(f=>({...f,notes:e.target.value}))} placeholder="Model, year, additional info"/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setVehItemSh(null)}>Cancel</Btn>
+                <Btn dm={dm} v="success" className="flex-1" onClick={saveVehItem}>Save</Btn>
+              </div>
+            </Sheet>
+          </>;
+        })()}
+
+        {/* GPS */}
         {tab==="GPS"&&(()=>{
           const ACTION_META={
             session_start:    {label:"Session Start",    color:"#6366f1", icon:"🔓"},
@@ -10102,19 +11665,23 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {id:"invoice",icon:"🧾",label:"Invoice"},
             {id:"account",icon:"👤",label:"Account"},
             {id:"staff",icon:"👥",label:"Staff"},
+            {id:"staffatt",icon:"🕐",label:"Attendance"},
+            {id:"machines",icon:"⚙️",label:"Machines"},
+            {id:"vehicles",icon:"🚐",label:"Vehicles"},
             {id:"products",icon:"📦",label:"Products"},
             {id:"recipes",icon:"🧪",label:"Recipes"},
             {id:"production",icon:"🏭",label:"Production"},
             {id:"access",icon:"🔒",label:"Permissions"},
             {id:"app",icon:"🎨",label:"Branding"},
             {id:"alerts",icon:"🔔",label:"Alerts"},
+            {id:"security",icon:"🛡️",label:"Security"},
             {id:"data",icon:"💾",label:"Data"},
           ];
           return <>
           {/* Section pill nav */}
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-0 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-0 scrollbar-hide" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
             {SECS.map(s=>(
-              <button key={s.id} onClick={()=>setSettingsSection(s.id)}
+              <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
                 style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,whiteSpace:"nowrap"}}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0">
                 <span>{s.icon}</span>{s.label}
@@ -10149,19 +11716,52 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             <Card dm={dm}><div className="p-4">
               <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>💰 Finance</p>
               <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Financial controls and calculations</p>
-              {[
-                {key:"featureCreditLimit",label:"Credit Limit Enforcement",desc:"Block orders when customer exceeds their credit limit",icon:"💳",defOn:false},
-                {key:"featureTaxCalc",label:"Tax Calculation (GST/VAT)",desc:"Apply tax automatically on invoices",icon:"🧾",defOn:false},
-                {key:"featureMultiCurrency",label:"Multi-Currency Support",desc:"Accept orders in different currencies",icon:"💱",defOn:false},
-              ].map(({key,label,desc,icon,defOn})=>(
-                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <div className="flex-1 min-w-0 pr-4">
-                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
-                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+              {/* Credit Limit */}
+              {(()=>{const isOn=!!settings?.featureCreditLimit;return(
+                <div style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex items-center justify-between py-2.5">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p style={{color:t.text}} className="text-sm font-semibold">💳 Credit Limit Enforcement</p>
+                      <p style={{color:t.sub}} className="text-[11px] mt-0.5">Block orders when customer exceeds their credit limit</p>
+                    </div>
+                    <Tog dm={dm} on={isOn} onChange={()=>setSettings(s=>({...s,featureCreditLimit:!isOn}))}/>
                   </div>
-                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                  {isOn&&<div style={{paddingBottom:10}}>
+                    <Inp dm={dm} label="Default Credit Limit (₹)" type="number" inputMode="numeric"
+                      value={settings?.creditLimitDefault||""}
+                      onChange={e=>setSettings(s=>({...s,creditLimitDefault:+e.target.value||0}))}
+                      placeholder="0 = no default limit"/>
+                    <p style={{color:t.sub,fontSize:10,marginTop:4}}>Applied to new customers. Override per customer in their profile.</p>
+                  </div>}
                 </div>
-              ))}
+              );})()}
+              {/* Tax Calculation */}
+              {(()=>{const isOn=!!settings?.featureTaxCalc;return(
+                <div style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex items-center justify-between py-2.5">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p style={{color:t.text}} className="text-sm font-semibold">🧾 Tax Calculation (GST/VAT)</p>
+                      <p style={{color:t.sub}} className="text-[11px] mt-0.5">Apply tax automatically on invoices and order totals</p>
+                    </div>
+                    <Tog dm={dm} on={isOn} onChange={()=>setSettings(s=>({...s,featureTaxCalc:!isOn}))}/>
+                  </div>
+                  {isOn&&<div style={{paddingBottom:10}}>
+                    <Inp dm={dm} label="Tax Rate (%)" type="number" inputMode="decimal"
+                      value={settings?.taxRate||""}
+                      onChange={e=>setSettings(s=>({...s,taxRate:+e.target.value||0}))}
+                      placeholder="e.g. 5 for 5% GST"/>
+                    <p style={{color:t.sub,fontSize:10,marginTop:4}}>Added on top of order subtotal in invoices and totals.</p>
+                  </div>}
+                </div>
+              );})()}
+              {/* Multi-currency */}
+              <div className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                <div className="flex-1 min-w-0 pr-4">
+                  <p style={{color:t.text}} className="text-sm font-semibold">💱 Multi-Currency Support</p>
+                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Accept orders in different currencies</p>
+                </div>
+                <Tog dm={dm} on={!!settings?.featureMultiCurrency} onChange={()=>setSettings(s=>({...s,featureMultiCurrency:!s?.featureMultiCurrency}))}/>
+              </div>
             </div></Card>
 
             {/* Reports */}
@@ -10202,6 +11802,124 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
                 </div>
               ))}
+            </div></Card>
+
+            {/* ── PHASE 1: App & UX ── */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>📱 App & UX</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Install experience and interface improvements</p>
+              {[
+                {key:"featurePWA",label:"PWA / Install on Home Screen",desc:"Enable install prompt + offline service worker so the app can be added to the home screen like a native app",icon:"📲",defOn:false},
+                {key:"featureTickRedesign",label:"Redesigned Delivery Tick UI",desc:"Replace the flat Done button with a larger, cleaner toggle-style mark-delivered button on delivery cards",icon:"✅",defOn:true},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-start justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`,gap:12}}>
+                  <div className="flex-1 min-w-0">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {/* ── PHASE 2: Operations ── */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🏭 Operations</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Factory floor and fleet management features</p>
+              {[
+                {key:"featureIngredientTracking",label:"Ingredient Consumption Tracking",desc:"Auto-deduct raw ingredients (flour, oil, etc.) from stock when production batches are logged",icon:"🧪",defOn:false,configSection:null},
+                {key:"featureStaffAttendance",label:"Staff Attendance & Shift Log",desc:"Track who clocked in, when, and how many hours per shift",icon:"🕐",defOn:false,configSection:"staffatt"},
+                {key:"featureMachineMaintenance",label:"Machine Maintenance Log",desc:"Track equipment servicing history and flag overdue maintenance",icon:"🔧",defOn:false,configSection:"machines"},
+                {key:"featureVanManagement",label:"Vehicle / Van Management",desc:"Assign vans to routes, track capacity, and log fuel usage",icon:"🚐",defOn:false,configSection:"vehicles"},
+              ].map(({key,label,desc,icon,defOn,configSection})=>{const isOn=settings?.[key]!==undefined?settings[key]:defOn;return(
+                <div key={key} className="flex items-start justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`,gap:12}}>
+                  <div className="flex-1 min-w-0">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                    {isOn&&configSection&&<button onClick={()=>setSettingsSection(configSection)} style={{background:"none",border:"none",padding:0,color:t.accent,fontSize:11,fontWeight:700,cursor:"pointer",marginTop:3}}>Configure →</button>}
+                  </div>
+                  <Tog dm={dm} on={isOn} onChange={()=>setSettings(s=>({...s,[key]:!isOn}))}/>
+                </div>
+              );})}
+            </div></Card>
+
+            {/* ── PHASE 3: Advanced & Integrations ── */}
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔗 Advanced & Integrations</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Power features and third-party connections</p>
+              {[
+                {key:"featureGST",label:"GST Invoice Generation",desc:"Proper GSTIN, HSN codes, CGST/SGST breakdowns on invoices",icon:"🧾",defOn:false},
+                {key:"featureCustomDashboard",label:"Customisable Dashboard per Role",desc:"Each user picks which widgets they see on their dashboard",icon:"🎛️",defOn:false},
+                {key:"featureGoogleSheets",label:"Export to Google Sheets",desc:"Push data directly to a Google Sheet instead of downloading XLS",icon:"📊",defOn:false},
+                {key:"featurePrintLabels",label:"Print Label Generation",desc:"Generate delivery labels with name, address, and QR code for packing",icon:"🏷️",defOn:false},
+                {key:"featureMultiLanguage",label:"Multi-Language Support",desc:"Hindi, Malayalam, or Kannada alongside English",icon:"🌐",defOn:false},
+              ].map(({key,label,desc,icon,defOn})=>(
+                <div key={key} className="flex items-start justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`,gap:12}}>
+                  <div className="flex-1 min-w-0">
+                    <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                    <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+              {settings?.featureGST&&<div className="flex flex-col gap-3 mt-4 pt-4" style={{borderTop:`1.5px solid ${t.border}`}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>GST Configuration</p>
+                {[{key:"gstCompanyGSTIN",label:"Company GSTIN",placeholder:"22AAAAA0000A1Z5"},{key:"gstDefaultHSN",label:"Default HSN Code",placeholder:"e.g. 1905"}].map(({key,label,placeholder})=>(
+                  <div key={key}>
+                    <p style={{color:t.sub,fontSize:11,marginBottom:4}}>{label}</p>
+                    <input value={settings?.[key]||""} onChange={e=>setSettings(s=>({...s,[key]:e.target.value}))} placeholder={placeholder}
+                      style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,width:"100%",outline:"none"}}/>
+                  </div>
+                ))}
+                <div className="flex gap-3">
+                  {[{key:"gstCGSTPct",label:"CGST %"},{key:"gstSGSTPct",label:"SGST %"}].map(({key,label})=>(
+                    <div key={key} style={{flex:1}}>
+                      <p style={{color:t.sub,fontSize:11,marginBottom:4}}>{label}</p>
+                      <input type="number" min="0" max="28" value={settings?.[key]??9} onChange={e=>setSettings(s=>({...s,[key]:Number(e.target.value)}))}
+                        style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,width:"100%",outline:"none"}}/>
+                    </div>
+                  ))}
+                </div>
+              </div>}
+              {settings?.featureGoogleSheets&&<div className="flex flex-col gap-3 mt-4 pt-4" style={{borderTop:`1.5px solid ${t.border}`}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Google Sheets Configuration</p>
+                <div style={{background:dm?"rgba(59,130,246,0.08)":"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"10px 12px"}}>
+                  <p style={{color:"#1d4ed8",fontSize:11,fontWeight:700,marginBottom:4}}>📋 Setup Instructions</p>
+                  <p style={{color:dm?"#93c5fd":"#1e40af",fontSize:10,lineHeight:1.7}}>
+                    1. Open your Google Sheet → Extensions → Apps Script<br/>
+                    2. Create a new script, paste the TAS push handler (doPost), save & deploy<br/>
+                    3. Set <b>Execute as: Me</b> · <b>Access: Anyone</b><br/>
+                    4. Copy the <b>/exec URL</b> and paste it below
+                  </p>
+                </div>
+                <div>
+                  <p style={{color:t.sub,fontSize:11,marginBottom:4}}>Apps Script Web App URL <span style={{color:"#ef4444",fontWeight:700}}>*</span></p>
+                  <input value={settings?.googleSheetsWebAppUrl||""} onChange={e=>setSettings(s=>({...s,googleSheetsWebAppUrl:e.target.value}))} placeholder="https://script.google.com/macros/s/.../exec"
+                    style={{background:t.inp,border:`1.5px solid ${settings?.googleSheetsWebAppUrl?t.accent:t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:13,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:3}}>Primary push method — no API key or OAuth required.</p>
+                </div>
+                {[{key:"googleSheetsId",label:"Google Sheet ID (optional)",placeholder:"From the Sheet URL — used for display only"},{key:"googleSheetsApiKey",label:"API Key (optional)",placeholder:"Not needed when using Apps Script URL"}].map(({key,label,placeholder})=>(
+                  <div key={key}>
+                    <p style={{color:t.sub,fontSize:11,marginBottom:4}}>{label}</p>
+                    <input value={settings?.[key]||""} onChange={e=>setSettings(s=>({...s,[key]:e.target.value}))} placeholder={placeholder}
+                      style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,width:"100%",outline:"none"}}/>
+                  </div>
+                ))}
+                {settings?.googleSheetsWebAppUrl&&<div style={{background:dm?"rgba(16,185,129,0.08)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 12px"}}>
+                  <p style={{color:"#059669",fontSize:11,fontWeight:700}}>✓ Web App URL configured — 📊 Push to Sheets buttons now appear on Deliveries and Expenses tabs</p>
+                </div>}
+              </div>}
+              {settings?.featureMultiLanguage&&<div className="flex flex-col gap-2 mt-4 pt-4" style={{borderTop:`1.5px solid ${t.border}`}}>
+                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Default Language</p>
+                <div className="flex gap-2 flex-wrap">
+                  {[{code:"en",label:"English"},{code:"hi",label:"हिंदी"},{code:"mr",label:"मराठी"}].map(lang=>(
+                    <button key={lang.code} onClick={()=>setSettings(s=>({...s,defaultLanguage:lang.code}))}
+                      style={{background:(settings?.defaultLanguage||"en")===lang.code?t.accent:t.inp,color:(settings?.defaultLanguage||"en")===lang.code?t.accentFg:t.sub,border:`1.5px solid ${(settings?.defaultLanguage||"en")===lang.code?t.accent:t.border}`,borderRadius:10,padding:"7px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      {lang.label}
+                    </button>
+                  ))}
+                </div>
+              </div>}
             </div></Card>
           </>}
 
@@ -10326,6 +12044,27 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   {isMe&&<Btn dm={dm} v="ghost" size="sm" onClick={()=>{setChangePwF({current:"",next:"",confirm:""});setChangePwSh(true);}}>🔑 Change Password</Btn>}
                   {!isMe&&<Btn dm={dm} v="danger" size="sm" onClick={()=>delU(u)}>Remove</Btn>}
                 </div>
+                {/* ── Per-user language preference ── */}
+                {isMe&&<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.border}`}}>
+                  <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>🌐 My Language</p>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[{code:"en",label:"English"},{code:"hi",label:"हिंदी"},{code:"mr",label:"मराठी"}].map(lg=>{
+                      const active=(u.lang||"en")===lg.code;
+                      return <button key={lg.code}
+                        onClick={()=>{
+                          // Save lang on user object in Firebase + update local session
+                          setUsers(p=>p.map(x=>x.id===u.id?{...x,lang:lg.code}:x));
+                          notify(`Language set to ${lg.label} ✓`);
+                        }}
+                        style={{background:active?t.accent:t.inp,color:active?t.accentFg:t.sub,
+                          border:`1.5px solid ${active?t.accent:t.border}`,
+                          borderRadius:10,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        {lg.label}
+                      </button>;
+                    })}
+                  </div>
+                  <p style={{color:t.sub,fontSize:10,marginTop:6}}>Applies to this account across all devices. Other users keep their own language.</p>
+                </div>}
               </div></Card>;
             })}
             {/* Add second admin CTA if only one */}
@@ -10494,6 +12233,227 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 tabDef={agentTabDef} fpDef={agentFpDef} tabDefKey="agentDefaultPerms" fpDefKey="agentFinePermsDef" accounts={agentUsers}/>
             </>;
           })()}
+
+          {/* ── STAFF ATTENDANCE SETTINGS ── */}
+          {settingsSection==="staffatt"&&<>
+            <Card dm={dm}><div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>🕐 Staff Attendance & Shift Log</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Configure the Staff tab and attendance tracking</p>
+                </div>
+                <Tog dm={dm} on={settings?.featureStaffAttendance===true} onChange={()=>setSettings(s=>({...s,featureStaffAttendance:!s?.featureStaffAttendance}))}/>
+              </div>
+              {!settings?.featureStaffAttendance&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:10,padding:"10px 12px",marginBottom:8}}><p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>⚠️ Staff tab is hidden. Enable the toggle above to show it.</p></div>}
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:12}}>📋 Log Form Fields</p>
+              {[
+                {key:"staffRequireInOutTime",label:"Require In/Out Time",desc:"Make clock-in and clock-out times mandatory",defOn:false},
+                {key:"staffAllowCustomName",label:"Allow Custom (Unlisted) Names",desc:"Let staff log under a name not in the roster",defOn:true},
+                {key:"staffShowDepartment",label:"Show Department Field",desc:"Display a department selector on the attendance form",defOn:true},
+                {key:"staffShowBreakDuration",label:"Show Break Duration",desc:"Allow logging break time in minutes",defOn:false},
+                {key:"staffShowTask",label:"Show Task / Assignment",desc:"Let managers note what task the staff member was on",defOn:false},
+                {key:"staffShowOvertimeReason",label:"Show Overtime Reason",desc:"Require a reason when overtime hours are detected",defOn:false},
+                {key:"staffShowTemperature",label:"Show Temperature Field",desc:"Record body temperature for health compliance logs",defOn:false},
+                {key:"staffShowSalaryType",label:"Show Salary Type in Roster",desc:"Display salary type (daily/monthly) on staff cards",defOn:false},
+                {key:"staffShowNotes",label:"Show Notes Field",desc:"Allow adding free-text notes to each attendance record",defOn:true},
+              ].map(({key,label,desc,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 pr-4"><p style={{color:t.text}} className="text-sm font-semibold">{label}</p><p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p></div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+              <div className="mt-3">
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>⏱ Overtime Threshold (hrs/day)</p>
+                <input type="number" min="1" max="24" value={settings?.staffOvertimeThresholdHrs??9}
+                  onChange={e=>setSettings(s=>({...s,staffOvertimeThresholdHrs:Number(e.target.value)}))}
+                  style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:100,outline:"none"}}/>
+                <p style={{color:t.sub,fontSize:11,marginTop:4}}>Shifts exceeding this many hours will show an overtime indicator</p>
+              </div>
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>📅 Default Shift</p>
+              <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Pre-selected shift when logging a new attendance record</p>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(sh=>(
+                  <button key={sh} onClick={()=>setSettings(s=>({...s,staffDefaultShift:sh}))}
+                    style={{background:(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.inp,color:(settings?.staffDefaultShift||"Morning")===sh?t.accentFg:t.sub,border:`1.5px solid ${(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.border}`,borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    {sh}
+                  </button>
+                ))}
+              </div>
+            </div></Card>
+
+            {[
+              {key:"staffStatuses",label:"Attendance Statuses",desc:"Status options shown as pill buttons on the attendance log form",icon:"🔵",defaults:["Present","Absent","Half Day","Late","On Leave"]},
+              {key:"staffDepartments",label:"Departments",desc:"Department options available in the log form and staff roster",icon:"🏢",defaults:["Production","Delivery","Packaging","Cleaning","Admin","Other"]},
+              {key:"staffEmploymentTypes",label:"Employment Types",desc:"Contract types available when adding a staff member",icon:"📄",defaults:["Full-time","Part-time","Contract","Daily Wage"]},
+              {key:"staffSalaryTypes",label:"Salary Types",desc:"Pay-cycle options for staff members",icon:"💰",defaults:["Monthly","Weekly","Daily","Per Hour","Per Piece"]},
+              {key:"staffRoles",label:"Roles / Designations",desc:"Job roles available when adding a staff member",icon:"🔧",defaults:["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"]},
+            ].map(({key,label,desc,icon,defaults})=>(
+              <Card key={key} dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{icon} {label}</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>{desc}</p>
+                <div className="flex flex-col gap-2 mb-3">
+                  {(settings?.[key]||defaults).map((v,i)=>(
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={v} onChange={e=>{const arr=[...(settings?.[key]||defaults)];arr[i]=e.target.value;setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,flex:1,borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none"}}/>
+                      <button onClick={()=>{const arr=(settings?.[key]||defaults).filter((_,j)=>j!==i);setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:"#ef444420",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,width:32,height:32,fontSize:14,fontWeight:700,cursor:"pointer",flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>setSettings(s=>({...s,[key]:[...(s[key]||defaults),""]}))}
+                  style={{border:`1.5px dashed ${t.border}`,color:t.sub,width:"100%",borderRadius:10,padding:"8px",fontSize:13,fontWeight:600,cursor:"pointer",background:"transparent"}}>
+                  + Add
+                </button>
+              </div></Card>
+            ))}
+          </>}
+
+          {/* ── MACHINE MAINTENANCE SETTINGS ── */}
+          {settingsSection==="machines"&&<>
+            <Card dm={dm}><div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>⚙️ Machine Maintenance Log</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Configure the Machines tab and maintenance tracking</p>
+                </div>
+                <Tog dm={dm} on={settings?.featureMachineMaintenance===true} onChange={()=>setSettings(s=>({...s,featureMachineMaintenance:!s?.featureMachineMaintenance}))}/>
+              </div>
+              {!settings?.featureMachineMaintenance&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:10,padding:"10px 12px",marginBottom:8}}><p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>⚠️ Machines tab is hidden. Enable the toggle above to show it.</p></div>}
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:12}}>🔧 Maintenance Options</p>
+              {[
+                {key:"machineRequireNextDue",label:"Require Next Due Date",desc:"Force a next-service date when logging maintenance",defOn:true},
+                {key:"machineShowTechnician",label:"Show Technician Field",desc:"Record who carried out the maintenance work",defOn:true},
+                {key:"machineShowPartsReplaced",label:"Show Parts Replaced",desc:"List parts that were replaced during the job",defOn:true},
+                {key:"machineShowPartsCost",label:"Show Parts Cost",desc:"Record the cost of parts separately",defOn:true},
+                {key:"machineShowLaborCost",label:"Show Labour Cost",desc:"Record labour cost separately from parts",defOn:true},
+                {key:"machineShowDowntime",label:"Show Downtime (hours)",desc:"Log how many hours the machine was offline",defOn:true},
+                {key:"machineShowSeverity",label:"Show Severity Level",desc:"Classify maintenance events as Low/Medium/High/Critical",defOn:true},
+                {key:"machineShowWarrantyInfo",label:"Show Warranty Info on Machine Card",desc:"Display warranty expiry on machine listing cards",defOn:false},
+                {key:"machineShowSerialNo",label:"Show Serial Number Field",desc:"Capture serial/model numbers when adding machines",defOn:true},
+                {key:"machineShowPurchaseInfo",label:"Show Purchase Info",desc:"Record purchase date and cost when adding machines",defOn:true},
+              ].map(({key,label,desc,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 pr-4"><p style={{color:t.text}} className="text-sm font-semibold">{label}</p><p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p></div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>📆 Default Interval (days)</p>
+                  <input type="number" min="1" max="365" value={settings?.machineDefaultIntervalDays??30}
+                    onChange={e=>setSettings(s=>({...s,machineDefaultIntervalDays:Number(e.target.value)}))}
+                    style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:3}}>Days between services</p>
+                </div>
+                <div>
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>🔔 Alert Before (days)</p>
+                  <input type="number" min="0" max="30" value={settings?.machineAlertBeforeDays??3}
+                    onChange={e=>setSettings(s=>({...s,machineAlertBeforeDays:Number(e.target.value)}))}
+                    style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:"100%",outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:3}}>Days before due to warn</p>
+                </div>
+              </div>
+            </div></Card>
+
+            {[
+              {key:"machineCategories",label:"Machine Categories",desc:"Types of machines in your fleet",icon:"🏷️",defaults:["Mixer","Oven","Sealer","Generator","Conveyor","Other"]},
+              {key:"machineLogTypes",label:"Log Entry Types",desc:"Categories for maintenance log entries",icon:"📋",defaults:["Servicing","Breakdown","Repair","Inspection","Oil Change","Other"]},
+              {key:"machineStatuses",label:"Machine Statuses",desc:"Status options for individual machines",icon:"🔵",defaults:["Operational","Needs Service","Under Repair","Retired"]},
+              {key:"machineSeverityLevels",label:"Severity Levels",desc:"Severity classifications for maintenance events",icon:"⚠️",defaults:["Low","Medium","High","Critical"]},
+            ].map(({key,label,desc,icon,defaults})=>(
+              <Card key={key} dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{icon} {label}</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>{desc}</p>
+                <div className="flex flex-col gap-2 mb-3">
+                  {(settings?.[key]||defaults).map((v,i)=>(
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={v} onChange={e=>{const arr=[...(settings?.[key]||defaults)];arr[i]=e.target.value;setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,flex:1,borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none"}}/>
+                      <button onClick={()=>{const arr=(settings?.[key]||defaults).filter((_,j)=>j!==i);setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:"#ef444420",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,width:32,height:32,fontSize:14,fontWeight:700,cursor:"pointer",flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>setSettings(s=>({...s,[key]:[...(s[key]||defaults),""]}))}
+                  style={{border:`1.5px dashed ${t.border}`,color:t.sub,width:"100%",borderRadius:10,padding:"8px",fontSize:13,fontWeight:600,cursor:"pointer",background:"transparent"}}>
+                  + Add
+                </button>
+              </div></Card>
+            ))}
+          </>}
+
+          {/* ── VEHICLE / VAN MANAGEMENT SETTINGS ── */}
+          {settingsSection==="vehicles"&&<>
+            <Card dm={dm}><div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>🚐 Vehicle / Van Management</p>
+                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Configure the Vehicles tab and fleet tracking</p>
+                </div>
+                <Tog dm={dm} on={settings?.featureVanManagement===true} onChange={()=>setSettings(s=>({...s,featureVanManagement:!s?.featureVanManagement}))}/>
+              </div>
+              {!settings?.featureVanManagement&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:10,padding:"10px 12px",marginBottom:8}}><p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>⚠️ Vehicles tab is hidden. Enable the toggle above to show it.</p></div>}
+            </div></Card>
+
+            <Card dm={dm}><div className="p-4">
+              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:12}}>🔧 Log Options</p>
+              {[
+                {key:"vehicleRequireDriver",label:"Require Driver Name",desc:"Make the Driver field mandatory when logging a trip",defOn:false},
+                {key:"vehicleRequireKms",label:"Require KM Reading",desc:"Make the km driven field mandatory on every log entry",defOn:false},
+                {key:"vehicleShowFuelCost",label:"Show Fuel Cost Field",desc:"Display the fuel cost input on trip/log entries",defOn:true},
+                {key:"vehicleShowMaintCost",label:"Show Maintenance Cost Field",desc:"Display the maintenance cost input on log entries",defOn:true},
+                {key:"vehicleShowFuelLiters",label:"Show Fuel Litres",desc:"Log how many litres of fuel were added",defOn:true},
+                {key:"vehicleShowFuelType",label:"Show Fuel Type",desc:"Record petrol/diesel/CNG on each fuel entry",defOn:true},
+                {key:"vehicleShowOdometer",label:"Show Odometer Readings",desc:"Log start and end odometer for automatic km calculation",defOn:true},
+                {key:"vehicleShowTollCost",label:"Show Toll / Misc Cost",desc:"Log toll and other miscellaneous trip costs",defOn:false},
+                {key:"vehicleShowRouteStops",label:"Show Route Stops",desc:"List intermediate stops for trip routes",defOn:false},
+                {key:"vehicleShowPriority",label:"Show Priority Flag",desc:"Mark trips/events as Normal, Urgent, or Critical",defOn:false},
+                {key:"vehicleShowNextService",label:"Show Next Service Due",desc:"Set and track upcoming service dates",defOn:true},
+                {key:"vehicleShowInsuranceAlert",label:"Show Insurance Expiry Alert",desc:"Warn when vehicle insurance is expired on fleet cards",defOn:true},
+              ].map(({key,label,desc,defOn})=>(
+                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                  <div className="flex-1 pr-4"><p style={{color:t.text}} className="text-sm font-semibold">{label}</p><p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p></div>
+                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                </div>
+              ))}
+            </div></Card>
+
+            {[
+              {key:"vehicleTypes",label:"Vehicle Types",desc:"Categories used when adding a vehicle to the fleet",icon:"🚐",defaults:["Van","Car","Bike","Truck","Auto","Other"]},
+              {key:"vehicleLogTypes",label:"Log Entry Types",desc:"Types of events that can be logged for a vehicle",icon:"📋",defaults:["Trip","Maintenance","Breakdown","Fuel Fill","Insurance","Other"]},
+              {key:"vehicleStatuses",label:"Vehicle Statuses",desc:"Status options shown on each vehicle record",icon:"🔵",defaults:["OK","Needs Service","Offline","Under Repair"]},
+              {key:"vehicleFuelTypes",label:"Fuel Types",desc:"Fuel options available on the trip log form",icon:"⛽",defaults:["Petrol","Diesel","CNG","Electric","LPG"]},
+            ].map(({key,label,desc,icon,defaults})=>(
+              <Card key={key} dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{icon} {label}</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>{desc}</p>
+                <div className="flex flex-col gap-2 mb-3">
+                  {(settings?.[key]||defaults).map((v,i)=>(
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={v} onChange={e=>{const arr=[...(settings?.[key]||defaults)];arr[i]=e.target.value;setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,flex:1,borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none"}}/>
+                      <button onClick={()=>{const arr=(settings?.[key]||defaults).filter((_,j)=>j!==i);setSettings(s=>({...s,[key]:arr}));}}
+                        style={{background:"#ef444420",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,width:32,height:32,fontSize:14,fontWeight:700,cursor:"pointer",flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>setSettings(s=>({...s,[key]:[...(s[key]||defaults),""]}))}
+                  style={{border:`1.5px dashed ${t.border}`,color:t.sub,width:"100%",borderRadius:10,padding:"8px",fontSize:13,fontWeight:600,cursor:"pointer",background:"transparent"}}>
+                  + Add
+                </button>
+              </div></Card>
+            ))}
+          </>}
 
           {/* ── PRODUCTS ── */}
 
@@ -11080,6 +13040,57 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div></Card>
           </>}
 
+          {/* ── SECURITY & ACTIVE SESSIONS ── */}
+          {settingsSection==="security"&&<>
+            <SecuritySessions dm={dm} t={t} ask={ask} addLog={addLog} notify={notify}/>
+
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔐 Security Settings</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Account protection and access controls</p>
+                {[
+                  {key:"secRequire2FAAdmin",label:"Require PIN Verification for Admin Actions",desc:"Admin must enter their PIN before deleting data or resetting counters",icon:"🔑",defOn:false},
+                  {key:"secAutoLogoutIdle",label:"Auto-Logout After Inactivity",desc:"Automatically log out after 30 minutes of no activity",icon:"⏱",defOn:false},
+                  {key:"secLogFailedLogins",label:"Log Failed Login Attempts",desc:"Record failed login attempts in the audit log",icon:"⚠️",defOn:true},
+                  {key:"secShowLastLogin",label:"Show Last Login Info on Login Screen",desc:"Display last login time when signing in",icon:"📋",defOn:true},
+                ].map(({key,label,desc,icon,defOn})=>(
+                  <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p style={{color:t.text}} className="text-sm font-semibold">{icon} {label}</p>
+                      <p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p>
+                    </div>
+                    <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                  </div>
+                ))}
+              </div></Card>
+
+              <Card dm={dm}><div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>📋 Enhanced Audit Log</p>
+                  <button onClick={()=>exportCSV(actLog,"audit_log",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"},{label:"Browser",key:"browser"},{label:"OS",key:"os"},{label:"Device",key:"deviceType"}])}
+                    style={{color:"#10b981",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Export CSV</button>
+                </div>
+                <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Full activity trail with device and user context. Shows up to 200 most recent events.</p>
+                {actLog.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"16px 0"}}>No activity recorded yet.</p>
+                :actLog.slice(0,200).map(l=>(
+                  <div key={l.id} style={{borderBottom:`1px solid ${t.border}`,padding:"8px 0"}} className="last:border-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <span style={{color:t.text,fontSize:12,fontWeight:600,flex:1}}>{l.action}</span>
+                      <span style={{color:t.sub,fontSize:10,whiteSpace:"nowrap",flexShrink:0}}>{l.ts}</span>
+                    </div>
+                    <p style={{color:t.sub,fontSize:11,marginTop:1}}>{l.detail}</p>
+                    <div className="flex gap-x-3 flex-wrap mt-1">
+                      <span style={{color:t.sub,fontSize:9}}>👤 {l.user||"—"} ({l.role||"—"})</span>
+                      {l.browser&&<span style={{color:t.sub,fontSize:9}}>🌐 {l.browser}</span>}
+                      {l.os&&<span style={{color:t.sub,fontSize:9}}>💻 {l.os}</span>}
+                      {l.deviceType&&<span style={{color:t.sub,fontSize:9}}>📱 {l.deviceType}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div></Card>
+
+              <FailedLoginAttempts dm={dm} t={t} ask={ask} notify={notify}/>
+          </>}
+
           {/* ── DATA / BACKUP ── */}
           {settingsSection==="data"&&<>
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
@@ -11190,7 +13201,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 fontWeight:isActive?700:500,
               }}>
               <span style={{fontSize:18,lineHeight:1,flexShrink:0}}>{TAB_ICONS[tb]||"•"}</span>
-              {isActive&&<span style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",lineHeight:1}}>{tb}</span>}
+              {isActive&&<span style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",lineHeight:1}}>{TAB_LABELS[tb]||tb}</span>}
               {hasBadge&&<span style={{position:"absolute",top:-2,right:-2,background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
             </button>;
           })}
@@ -11283,6 +13294,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
           </div>
           <Inp dm={dm} label="Partial Payment On Hold (₹)" type="number" inputMode="numeric" value={cF.partialPay||""} onChange={e=>setCf({...cF,partialPay:e.target.value})} placeholder="Amount received but not yet fully applied"/>
+          {settings?.featureCreditLimit&&<Inp dm={dm} label="Credit Limit (₹)" type="number" inputMode="numeric" value={cF.creditLimit||""} onChange={e=>setCf({...cF,creditLimit:e.target.value})} placeholder="0 = no limit"/>}
           {(+cF.paid>0||+cF.pending>0)&&<div style={{background:t.card,borderRadius:12,padding:"10px 14px",border:`1px solid ${t.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
               <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(+cF.paid||0)}</span>
@@ -11533,11 +13545,40 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
       {/* Delivery Sheet */}
       <Sheet dm={dm} open={!!dSh} onClose={()=>setDsh(null)} title={dSh==="add"?"New Delivery":"Edit Delivery"}>
-        <Sel dm={dm} label="Customer *" value={dF.customer} onChange={e=>pickCust(e.target.value)}>
+        <Sel dm={dm} label="Customer *" value={dF.customerId||""} onChange={e=>pickCust(e.target.value)}>
           <option value="">— Select customer —</option>
-          {customers.filter(c=>c.active).map(c=><option key={c.id}>{c.name}</option>)}
+          {customers.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </Sel>
         {dF.address&&<div style={{background:"#0ea5e915",border:"1px solid #0ea5e940"}} className="rounded-xl px-3.5 py-2.5 text-xs text-sky-400 flex items-center justify-between"><span>📍 {dF.address}</span><a href={mapU(dF.address,dF.lat,dF.lng)} target="_blank" rel="noopener noreferrer" className="underline font-semibold ml-2 shrink-0">Maps</a></div>}
+        {/* ── Credit limit live warning banner ── */}
+        {settings?.featureCreditLimit&&dF.customerId&&(()=>{
+          const custRec=customers.find(c=>c.id===dF.customerId);
+          const limit=+(custRec?.creditLimit||0);
+          if(limit<=0) return null;
+          const orderAmt=lineTotal(dF.orderLines||{});
+          const pending=+(custRec?.pending||0);
+          const total=pending+orderAmt;
+          const pct=Math.min(100,Math.round((total/limit)*100));
+          const exceeded=total>limit;
+          const warning=!exceeded&&pct>=80;
+          if(!exceeded&&!warning) return null;
+          const bg=exceeded?"#ef444418":"#f59e0b18";
+          const border=exceeded?"#ef444440":"#f59e0b40";
+          const color=exceeded?"#ef4444":"#f59e0b";
+          return <div style={{background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"10px 14px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <p style={{color,fontWeight:700,fontSize:12}}>{exceeded?"🚫 Credit Limit Exceeded":"⚠️ Approaching Credit Limit"}</p>
+              <span style={{color,fontWeight:800,fontSize:12}}>{pct}%</span>
+            </div>
+            <div style={{background:exceeded?"#ef444430":"#f59e0b30",borderRadius:99,height:5,overflow:"hidden",marginBottom:6}}>
+              <div style={{width:`${pct}%`,height:"100%",background:color,borderRadius:99,transition:"width 0.3s"}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+              <span style={{color:dm?"#9ca3af":"#6b7280"}}>Pending {inr(pending)} + Order {inr(orderAmt)}</span>
+              <span style={{color,fontWeight:700}}>Limit {inr(limit)}</span>
+            </div>
+          </div>;
+        })()}
         <Hr dm={dm}/>
         <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Items{canSeePrices?" — Tap price to select":""}</p>
         <OrderEditor dm={dm} products={products} orderLines={dF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setDf(f=>({...f,orderLines:ol}))}/>
@@ -11684,10 +13725,11 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           {dF.partialPayment?.enabled&&<>
             <Inp dm={dm} label="Amount Collected (₹)" type="number" value={dF.partialPayment?.amount||""} onChange={e=>setDf(f=>({...f,partialPayment:{...f.partialPayment,amount:e.target.value}}))} placeholder="e.g. 200"/>
             {(+dF.partialPayment?.amount)>0&&(()=>{
-              const tot=lineTotal(dF.orderLines);
+              const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
+              const tot=lineTotalWithTax(dF.orderLines,taxRt);
               const remaining=tot-(+dF.partialPayment.amount);
               return <div style={{background:"#10b98115",border:"1px solid #10b98130",borderRadius:10,padding:"8px 12px",marginTop:4}}>
-                <div className="flex justify-between text-xs"><span style={{color:t.sub}}>Order Total</span><span style={{color:t.text,fontWeight:700}}>{inr(tot)}</span></div>
+                <div className="flex justify-between text-xs"><span style={{color:t.sub}}>Order Total{taxRt>0?` (incl. ${taxRt}% tax)`:""}</span><span style={{color:t.text,fontWeight:700}}>{inr(tot)}</span></div>
                 <div className="flex justify-between text-xs mt-1"><span style={{color:"#10b981"}}>Collected Now</span><span style={{color:"#10b981",fontWeight:700}}>−{inr(+dF.partialPayment.amount)}</span></div>
                 <div className="flex justify-between text-xs mt-1 pt-1" style={{borderTop:`1px solid #10b98130`}}><span style={{color:t.sub,fontWeight:700}}>Still Due</span><span style={{color:remaining>0?"#f59e0b":"#10b981",fontWeight:800}}>{inr(Math.max(0,remaining))}</span></div>
               </div>;
