@@ -1,6 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-undef, no-use-before-define, react/jsx-no-duplicate-props */
 import React, { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from "react";
 import ReactDOM from "react-dom";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
+import { db } from "./firebase";
+import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
 
 // ── GLOBAL ERROR BOUNDARY ─────────────────────────────────────────────────────
 // Catches any render crash and shows a readable screen instead of white blank
@@ -23,9 +26,6 @@ class AppErrorBoundary extends React.Component {
   }
 }
 // ─────────────────────────────────────────────────────────────────────────────
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
-import { db } from "./firebase";
-import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  App.js  —  TAS Healthy World · Operations CRM
