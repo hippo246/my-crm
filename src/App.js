@@ -4680,7 +4680,7 @@ function RootInner(){
 
   // Safety net: if Firebase hasn't responded in 10s, stop blocking on the spinner
   const [fbTimeout, setFbTimeout] = useState(false);
-  useEffect(()=>{const t=setTimeout(()=>setFbTimeout(true),10000);return()=>clearTimeout(t);},[]);
+  useEffect(()=>{const t=setTimeout(()=>setFbTimeout(true),4000);return()=>clearTimeout(t);},[]);
 
   const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>

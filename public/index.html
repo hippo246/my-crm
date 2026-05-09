@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Fix 1: Proper mobile viewport with safe-area support -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, minimum-scale=1, maximum-scale=1" />
     <title>TAS Healthy World</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -10,7 +11,42 @@
     </script>
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-      body { margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+
+      /* Fix 2: Kill white flash before React mounts — matches app's own theme colours */
+      html {
+        background: #f2f2ed;
+        min-height: 100%;
+      }
+      @media (prefers-color-scheme: dark) {
+        html { background: #0c0c10; }
+      }
+      body {
+        margin: 0;
+        background: inherit;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        /* Fix 3: Prevent iOS Safari bounce/overscroll showing white */
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      #root {
+        min-height: 100vh;
+        background: inherit;
+      }
+
+      /* Fix 4: Show a native spinner while JS bundle loads (before React takes over) */
+      #root:empty::after {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 40px;
+        margin: 45vh auto 0;
+        border: 3px solid #f59e0b;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: pre-spin 0.7s linear infinite;
+      }
+      @keyframes pre-spin { to { transform: rotate(360deg); } }
+
       input[type=number]::-webkit-inner-spin-button,
       input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       input[type=number] { -moz-appearance: textfield; }
