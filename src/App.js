@@ -1,6 +1,28 @@
 /* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-undef, no-use-before-define, react/jsx-no-duplicate-props */
-import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from "react";
 import ReactDOM from "react-dom";
+
+// ── GLOBAL ERROR BOUNDARY ─────────────────────────────────────────────────────
+// Catches any render crash and shows a readable screen instead of white blank
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(e) { return { err: e }; }
+  componentDidCatch(e, info) { console.error("App crash:", e, info); }
+  render() {
+    if (!this.state.err) return this.props.children;
+    const msg = this.state.err?.message || String(this.state.err);
+    return (
+      <div style={{minHeight:"100vh",background:"#0b1120",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px",fontFamily:"-apple-system,sans-serif"}}>
+        <div style={{fontSize:40,marginBottom:16}}>⚠️</div>
+        <p style={{color:"#e8edf5",fontWeight:700,fontSize:20,marginBottom:8,textAlign:"center"}}>Something went wrong</p>
+        <p style={{color:"#4a6080",fontSize:14,marginBottom:24,textAlign:"center",maxWidth:320}}>The app encountered an error. Try refreshing the page.</p>
+        <button onClick={()=>window.location.reload()} style={{background:"#3b6ef6",color:"#fff",border:"none",borderRadius:12,padding:"14px 28px",fontSize:16,fontWeight:600,cursor:"pointer"}}>Refresh</button>
+        <pre style={{marginTop:24,color:"#4a6080",fontSize:11,maxWidth:"90vw",overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{msg}</pre>
+      </div>
+    );
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
 import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
@@ -4588,6 +4610,10 @@ function Login({users,onLogin,dm,settings}){
 }
 
 export default function Root(){
+  return <AppErrorBoundary><RootInner/></AppErrorBoundary>;
+}
+
+function RootInner(){
   // ── COMPATIBILITY BOOTSTRAP (runs once before anything renders) ──
   // Polyfills for old Android WebView / iOS Safari / ancient browsers
   useEffect(()=>{
@@ -4651,12 +4677,17 @@ export default function Root(){
   },[]);
 
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
+
+  // Safety net: if Firebase hasn't responded in 10s, stop blocking on the spinner
+  const [fbTimeout, setFbTimeout] = useState(false);
+  useEffect(()=>{const t=setTimeout(()=>setFbTimeout(true),10000);return()=>clearTimeout(t);},[]);
+
   const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
     <p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Connecting to cloud…</p>
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
   </div>;
-  if(!fbReady) return spinner;
+  if(!fbReady && !fbTimeout) return spinner;
   const userLang = sess?.lang || null;
   if(!sess) return <LangProvider settings={settings} userLang={null}><Login users={users} onLogin={setSess} dm={dm} settings={settings}/></LangProvider>;
   return <LangProvider settings={settings} userLang={userLang}><CRM sess={sess} onLogout={()=>setSess(null)} onSessUpdate={setSess} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/></LangProvider>;
