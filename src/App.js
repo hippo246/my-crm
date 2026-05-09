@@ -4619,7 +4619,7 @@ function RootInner(){
   useEffect(()=>{
     // 1. env() CSS variable polyfill for browsers that don't support it
     //    (Android 5/6, iOS < 11.1)
-    if(!CSS?.supports?.("padding","env(safe-area-inset-bottom)")){
+    if(!(typeof CSS !== "undefined" && CSS.supports && CSS.supports("padding","env(safe-area-inset-bottom)"))){
       const style=document.createElement("style");
       style.textContent=`
         .crm-nav-bottom{padding-bottom:0px!important;}
@@ -4701,7 +4701,7 @@ function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
   const mapRef=useRef(null);
   const leafRef=useRef(null);
   const markersRef=useRef([]);
-  const [leafReady,setLeafReady]=useState(!!window.L);
+  const [leafReady,setLeafReady]=useState(typeof window !== "undefined" && !!window.L);
 
   // Load Leaflet CSS + JS from CDN once
   useEffect(()=>{
@@ -4715,6 +4715,7 @@ function GPSMap({dm,logs,actionMeta,fallbackLat,fallbackLng}){
     js.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     js.async=true;
     js.onload=()=>setLeafReady(true);
+    js.onerror=()=>console.error("Leaflet failed to load from CDN — map will be unavailable. Check network/CSP/ad-blocker settings.");
     document.head.appendChild(js);
   },[]);
 
@@ -5000,7 +5001,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const unreadNotifs=notifs.filter(n=>!n.read).length;
   function addNotif(title,body,type="info",notifType="newentry"){
     const n={id:uid(),title,body,type,ts:ts(),read:false};
-    setNotifs(p=>[n,...p.slice(0,49)]);
+    setNotifs(p=>[n,...(p||[]).slice(0,49)]);
     const targets=(settings?.notifTargets||{})[notifType]||["admin"];
     if(targets.includes(sess.role)) sendBrowserNotif(title,body);
   }
@@ -5106,10 +5107,12 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   useEffect(()=>{
     if(!sessionGpsCaptured.current && sess?.id && navigator.geolocation){
       const doCapture=()=>{ sessionGpsCaptured.current=true; captureGPS("session_start",""); };
-      if(navigator.permissions){
-        navigator.permissions.query({name:"geolocation"}).then(result=>{
-          if(result.state!=="denied") doCapture();
-        }).catch(doCapture);
+      if(navigator.permissions && typeof navigator.permissions.query === "function"){
+        try {
+          navigator.permissions.query({name:"geolocation"}).then(result=>{
+            if(result.state!=="denied") doCapture();
+          }).catch(doCapture);
+        } catch(e){ doCapture(); }
       } else {
         doCapture();
       }
