@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-undef, no-use-before-define, react/jsx-no-duplicate-props */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
@@ -73,6 +73,7 @@ function getDeviceId() {
     return id;
   } catch { return "did_" + Math.random().toString(36).slice(2); }
 }
+const DEVICE_ID = getDeviceId();
 
 // ═══════════════════════════════════════════════════════════════
 //  FIREBASE REALTIME DATABASE
@@ -220,8 +221,45 @@ function lineRows(lines, prods) {
 
 // ═══════════════════════════════════════════════════════════════
 //  MULTI-LANGUAGE SYSTEM  (per-account, stored on Firebase user)
-//  Usage: const { t, lang } = useLang();  then t("key") anywhere
+//  Usage: t18n("key") anywhere; language set in Settings → Firebase
 // ═══════════════════════════════════════════════════════════════
+const I18N_LANGS = {
+  en: {
+    Dashboard:"Dashboard", Customers:"Customers", Deliveries:"Deliveries",
+    Payments:"Payments", Supplies:"Supplies", Expenses:"Expenses",
+    "P&L":"P&L", Analytics:"Analytics", Production:"Production",
+    Ingredients:"Ingredients", Staff:"Staff", Machines:"Machines",
+    Vehicles:"Vehicles", GPS:"GPS", Settings:"Settings",
+    Active:"Active", Inactive:"Inactive", Pending:"Pending",
+    Delivered:"Delivered", "In Transit":"In Transit", Cancelled:"Cancelled",
+    Approved:"Approved", "Add Customer":"Add Customer", "Add Delivery":"Add Delivery",
+    "Add Expense":"Add Expense", "Add Supply":"Add Supply",
+  },
+  hi: {
+    Dashboard:"डैशबोर्ड", Customers:"ग्राहक", Deliveries:"डिलीवरी",
+    Payments:"भुगतान", Supplies:"आपूर्ति", Expenses:"खर्च",
+    "P&L":"लाभ-हानि", Analytics:"विश्लेषण", Production:"उत्पादन",
+    Ingredients:"सामग्री", Staff:"स्टाफ", Machines:"मशीनें",
+    Vehicles:"वाहन", GPS:"जीपीएस", Settings:"सेटिंग्स",
+    Active:"सक्रिय", Inactive:"निष्क्रिय", Pending:"लंबित",
+    Delivered:"वितरित", "In Transit":"रास्ते में", Cancelled:"रद्द",
+    Approved:"स्वीकृत",
+  },
+  ml: {
+    Dashboard:"ഡാഷ്ബോർഡ്", Customers:"ഉപഭോക്താക്കൾ", Deliveries:"ഡെലിവറി",
+    Payments:"പേയ്മെന്റ്", Supplies:"സാധനങ്ങൾ", Expenses:"ചെലവ്",
+    "P&L":"ലാഭ-നഷ്ടം", Analytics:"വിശകലനം", Production:"ഉൽപ്പാദനം",
+    Ingredients:"ചേരുവകൾ", Staff:"ജീവനക്കാർ", Machines:"യന്ത്രങ്ങൾ",
+    Vehicles:"വാഹനങ്ങൾ", GPS:"ജിപിഎസ്", Settings:"ക്രമീകരണം",
+    Active:"സജീവം", Inactive:"നിഷ്‌ക്രിയം", Pending:"തീർപ്പാകാത്ത",
+    Delivered:"ഡെലിവർ ചെയ്തു", "In Transit":"വഴിയിൽ", Cancelled:"റദ്ദ്",
+    Approved:"അംഗീകൃതം",
+  },
+};
+// Global lang ref — updated when settings load
+let _currentLang = "en";
+function t18n(key){ return (I18N_LANGS[_currentLang]||I18N_LANGS.en)[key] || I18N_LANGS.en[key] || key; }
+function setAppLang(lang){ _currentLang = I18N_LANGS[lang] ? lang : "en"; }
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
@@ -2014,32 +2052,182 @@ function exportTabExcel(tabName, data, columns, settings) {
 // ═══════════════════════════════════════════════════════════════
 //  THEME
 // ═══════════════════════════════════════════════════════════════
-// ── Corporate Design System ──────────────────────────────────────
-// Light: crisp white + cool slate, accent: deep navy blue #1e3a5f
-// Dark:  rich charcoal + steel, accent: electric sapphire #3b82f6
+// ── Phase 5 Design System ─────────────────────────────────────────
+// Light: #f8f9fb content bg, white cards, #2563eb primary CTA
+// Dark:  #0d1b2a deep navy sidebar, charcoal content
 const LT={
-  bg:"#f0f2f5",card:"#ffffff",border:"#dde1e8",
-  text:"#0f1923",sub:"#5a6478",inp:"#f4f6f9",inpB:"#cdd2dc",
-  accent:"#1e3a5f",accentFg:"#ffffff",accentHover:"#16304f",
-  accentLight:"rgba(30,58,95,0.08)",accentMid:"rgba(30,58,95,0.15)",
-  sidebar:"#0f1923",sidebarBorder:"#1c2638",
-  sidebarText:"#e8edf5",sidebarSub:"#94a3b8",
-  sidebarActive:"#60a5fa",sidebarActiveBg:"rgba(96,165,250,0.12)",
+  bg:"#f8f9fb",card:"#ffffff",border:"#e8ecf0",
+  text:"#0d1b2a",sub:"#64748b",inp:"#f1f5f9",inpB:"#cbd5e1",
+  accent:"#2563eb",accentFg:"#ffffff",accentHover:"#1d4ed8",
+  accentLight:"rgba(37,99,235,0.06)",accentMid:"rgba(37,99,235,0.12)",
+  sidebar:"#0d1b2a",sidebarBorder:"#1e2d3d",
+  sidebarText:"#f0f4f8",sidebarSub:"#7ea0be",
+  sidebarActive:"#ffffff",sidebarActiveBg:"#2563eb",
   success:"#059669",warning:"#d97706",danger:"#dc2626",
-  successBg:"#ecfdf5",warningBg:"#fffbeb",dangerBg:"#fef2f2",
+  successBg:"#f0fdf4",warningBg:"#fffbeb",dangerBg:"#fef2f2",
+  statIcon1:"#eff6ff",statIcon2:"#f0fdf4",statIcon3:"#fefce8",statIcon4:"#fdf4ff",statIcon5:"#fff7ed",
+  tableHeader:"#f8fafc",
+  topbar:"#ffffff",topbarBorder:"#e8ecf0",
+  pillGreen:"#dcfce7",pillGreenText:"#15803d",
+  pillAmber:"#fef9c3",pillAmberText:"#a16207",
+  pillRed:"#fee2e2",pillRedText:"#b91c1c",
+  pillBlue:"#dbeafe",pillBlueText:"#1d4ed8",
+  pillGray:"#f1f5f9",pillGrayText:"#475569",
+  pillPurple:"#ede9fe",pillPurpleText:"#6d28d9",
 };
 const DK={
-  bg:"#0d1117",card:"#161b22",border:"#21262d",
-  text:"#e6edf3",sub:"#8b949e",inp:"#1c2128",inpB:"#30363d",
-  accent:"#3b82f6",accentFg:"#ffffff",accentHover:"#2563eb",
-  accentLight:"rgba(59,130,246,0.1)",accentMid:"rgba(59,130,246,0.18)",
-  sidebar:"#0d1117",sidebarBorder:"#21262d",
-  sidebarText:"#e6edf3",sidebarSub:"#8b949e",
-  sidebarActive:"#60a5fa",sidebarActiveBg:"rgba(96,165,250,0.1)",
+  bg:"#0f1117",card:"#1a1f2e",border:"#252d3a",
+  text:"#e8edf5",sub:"#7ea0be",inp:"#1e2536",inpB:"#2d3748",
+  accent:"#2563eb",accentFg:"#ffffff",accentHover:"#1d4ed8",
+  accentLight:"rgba(37,99,235,0.1)",accentMid:"rgba(37,99,235,0.18)",
+  sidebar:"#0d1b2a",sidebarBorder:"#1e2d3d",
+  sidebarText:"#f0f4f8",sidebarSub:"#7ea0be",
+  sidebarActive:"#ffffff",sidebarActiveBg:"#2563eb",
   success:"#10b981",warning:"#f59e0b",danger:"#f87171",
-  successBg:"rgba(16,185,129,0.1)",warningBg:"rgba(245,158,11,0.1)",dangerBg:"rgba(248,113,113,0.1)",
+  successBg:"rgba(16,185,129,0.08)",warningBg:"rgba(245,158,11,0.08)",dangerBg:"rgba(248,113,113,0.08)",
+  statIcon1:"rgba(37,99,235,0.12)",statIcon2:"rgba(16,185,129,0.12)",statIcon3:"rgba(245,158,11,0.12)",statIcon4:"rgba(139,92,246,0.12)",statIcon5:"rgba(249,115,22,0.12)",
+  tableHeader:"#1a1f2e",
+  topbar:"#141825",topbarBorder:"#252d3a",
+  pillGreen:"rgba(16,185,129,0.12)",pillGreenText:"#10b981",
+  pillAmber:"rgba(245,158,11,0.12)",pillAmberText:"#f59e0b",
+  pillRed:"rgba(239,68,68,0.12)",pillRedText:"#f87171",
+  pillBlue:"rgba(37,99,235,0.12)",pillBlueText:"#60a5fa",
+  pillGray:"rgba(100,116,139,0.12)",pillGrayText:"#94a3b8",
+  pillPurple:"rgba(139,92,246,0.12)",pillPurpleText:"#a78bfa",
 };
 const T=(dm)=>dm?DK:LT;
+
+// ── Design System Helpers ────────────────────────────────────────
+// StatusPill: renders colored pill for delivery/payment status
+function StatusPill({status,dm}){
+  const t=T(dm);
+  const map={
+    "Delivered":[t.pillGreen,t.pillGreenText],
+    "Pending":[t.pillAmber,t.pillAmberText],
+    "In Transit":[t.pillBlue,t.pillBlueText],
+    "Cancelled":[t.pillRed,t.pillRedText],
+    "Active":[t.pillGreen,t.pillGreenText],
+    "Inactive":[t.pillGray,t.pillGrayText],
+    "Approved":[t.pillGreen,t.pillGreenText],
+    "Paid":[t.pillGreen,t.pillGreenText],
+    "Unpaid":[t.pillRed,t.pillRedText],
+    "Partial":[t.pillAmber,t.pillAmberText],
+    "Low Stock":[t.pillRed,t.pillRedText],
+  };
+  const [bg,color]=(map[status]||[t.pillGray,t.pillGrayText]);
+  return <span style={{background:bg,color,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99,display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>{status}</span>;
+}
+// AvatarCircle: colored initials circle
+function AvatarCircle({name,size=34,dm}){
+  const colors=["#2563eb","#059669","#d97706","#7c3aed","#0ea5e9","#dc2626","#0891b2","#65a30d"];
+  const idx=(name||"?").charCodeAt(0)%colors.length;
+  const initials=(name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  return <div style={{width:size,height:size,borderRadius:size*0.29,background:colors[idx],color:"#fff",fontWeight:800,fontSize:size*0.38,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,userSelect:"none",letterSpacing:"-0.01em"}}>{initials}</div>;
+}
+// StatIconBox: colored icon in soft square
+function StatIconBox({icon,bg,size=40}){
+  return <div style={{width:size,height:size,borderRadius:size*0.3,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.48,flexShrink:0}}>{icon}</div>;
+}
+// SectionHeader: tab section header with optional CTA
+function SectionHeader({title,sub,cta,dm}){
+  const t=T(dm);
+  return <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,gap:12,flexWrap:"wrap"}}>
+    <div>
+      <h2 style={{color:t.text,fontWeight:800,fontSize:22,letterSpacing:"-0.03em",lineHeight:1.1,margin:0}}>{title}</h2>
+      {sub&&<p style={{color:t.sub,fontSize:13,marginTop:4}}>{sub}</p>}
+    </div>
+    {cta&&<div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>{cta}</div>}
+  </div>;
+}
+// TabStatCards: row of stat cards at top of each tab — revamped layout
+// Large soft-colored icon square on left, big bold number, label + subtitle on right
+const STAT_ICON_COLORS=[
+  {bg:"rgba(37,99,235,0.10)",border:"rgba(37,99,235,0.18)",color:"#2563eb"},
+  {bg:"rgba(16,185,129,0.10)",border:"rgba(16,185,129,0.18)",color:"#059669"},
+  {bg:"rgba(245,158,11,0.10)",border:"rgba(245,158,11,0.18)",color:"#d97706"},
+  {bg:"rgba(139,92,246,0.10)",border:"rgba(139,92,246,0.18)",color:"#7c3aed"},
+  {bg:"rgba(239,68,68,0.10)",border:"rgba(239,68,68,0.18)",color:"#dc2626"},
+];
+function TabStatCards({cards,dm}){
+  const t=T(dm);
+  return <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(cards.length,5)},1fr)`,gap:12,marginBottom:20}}>
+    {cards.map((c,i)=>{
+      const ic=STAT_ICON_COLORS[i%STAT_ICON_COLORS.length];
+      return (
+        <div key={i} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",cursor:c.onClick?"pointer":"default",transition:"box-shadow 0.15s,transform 0.15s",display:"flex",alignItems:"center",gap:14,minWidth:0,overflow:"hidden"}}
+          onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.09)";e.currentTarget.style.transform="translateY(-1px)";}}
+          onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="none";}}
+          onClick={c.onClick}>
+          {/* Large soft icon square */}
+          <div style={{width:52,height:52,borderRadius:14,background:ic.bg,border:`1.5px solid ${ic.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+            {c.icon}
+          </div>
+          {/* Right side: number + label + sub */}
+          <div style={{minWidth:0,flex:1}}>
+            <p style={{color:t.text,fontWeight:900,fontSize:22,letterSpacing:"-0.03em",lineHeight:1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.value}</p>
+            <p style={{color:t.sub,fontSize:11,fontWeight:600,marginBottom:c.sub?2:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.label}</p>
+            {c.sub&&<p style={{color:c.subColor||ic.color,fontSize:10,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.sub}</p>}
+          </div>
+          {c.trend!=null&&<span style={{fontSize:10,fontWeight:700,color:c.trendUp===false?"#ef4444":"#10b981",background:c.trendUp===false?"#fee2e220":"#dcfce720",padding:"2px 7px",borderRadius:99,flexShrink:0}}>{c.trend}</span>}
+        </div>
+      );
+    })}
+  </div>;
+}
+// DataTable: consistent white card table
+function DataTable({cols,rows,dm,emptyMsg="No data found",onRowClick}){
+  const t=T(dm);
+  if(!rows||rows.length===0) return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"48px 24px",textAlign:"center"}}>
+    <p style={{fontSize:32,marginBottom:8}}>📭</p>
+    <p style={{color:t.sub,fontSize:14,fontWeight:500}}>{emptyMsg}</p>
+  </div>;
+  return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead>
+          <tr style={{background:t.tableHeader,borderBottom:`1.5px solid ${t.border}`}}>
+            {cols.map((c,i)=><th key={i} style={{padding:"11px 16px",textAlign:c.right?"right":"left",color:t.sub,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{c.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row,ri)=>(
+            <tr key={ri} style={{borderBottom:`1px solid ${t.border}`,cursor:onRowClick?"pointer":"default",transition:"background 0.1s"}}
+              onMouseEnter={e=>{if(onRowClick)e.currentTarget.style.background=t.inp;}}
+              onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+              onClick={()=>onRowClick&&onRowClick(row)}>
+              {cols.map((c,ci)=><td key={ci} style={{padding:"13px 16px",color:t.text,fontSize:13,textAlign:c.right?"right":"left",whiteSpace:c.wrap?"normal":"nowrap",maxWidth:c.maxW||"none",overflow:"hidden",textOverflow:"ellipsis"}}>{c.render?c.render(row):row[c.key]}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+// FilterBar: search + filter pills — search row on top, filters below
+function FilterBar({search,onSearch,placeholder,filters,activeFilter,onFilter,actions,dm}){
+  const t=T(dm);
+  return <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+    {/* Row 1: search + actions */}
+    {(onSearch!==undefined||actions)&&<div style={{display:"flex",alignItems:"center",gap:10}}>
+      {onSearch!==undefined&&<div style={{position:"relative",flex:"1",minWidth:200}}>
+        <svg style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input value={search||""} onChange={e=>onSearch(e.target.value)} placeholder={placeholder||"Search…"}
+          style={{background:t.card,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px 12px 10px 38px",fontSize:13,outline:"none",width:"100%",transition:"border-color 0.15s",boxSizing:"border-box"}}
+          onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.1)";}}
+          onBlur={e=>{e.target.style.borderColor=t.border;e.target.style.boxShadow="none";}}/>
+        {search&&<button onClick={()=>onSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:t.border,color:t.sub,width:18,height:18,borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
+      </div>}
+      {actions&&<div style={{display:"flex",gap:8,flexShrink:0}}>{actions}</div>}
+    </div>}
+    {/* Row 2: filter pills */}
+    {filters&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {filters.map(f=><button key={f.value} onClick={()=>onFilter(f.value)}
+        style={{padding:"7px 16px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.15s",border:`1.5px solid ${activeFilter===f.value?"#2563eb":t.border}`,background:activeFilter===f.value?"#2563eb":t.card,color:activeFilter===f.value?"#fff":t.sub,whiteSpace:"nowrap"}}>
+        {f.label}
+      </button>)}
+    </div>}
+  </div>;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  UI ATOMS
@@ -2058,29 +2246,31 @@ function Pill({c="stone",dm,children}){
 }
 function Hr({dm}){const t=T(dm);return <div style={{height:1,background:t.border}}/>;}
 function Inp({label,dm,className="",...p}){
+  // Phase 4: larger inputs, clear labels above fields
   const t=T(dm);
   return <div className={className}>
-    {label&&<label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
-    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",borderRadius:12,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:48,width:"100%",padding:"12px 14px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}/>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.04em",fontSize:12,fontWeight:600,display:"block",marginBottom:6,marginLeft:1}}>{label}</label>}
+    <input style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",borderRadius:13,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:50,width:"100%",padding:"13px 15px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}/>
   </div>;
 }
 function Sel({label,dm,children,className="",...p}){
+  // Phase 4: larger selects, clear labels
   const t=T(dm);
   return <div className={className} style={{position:"relative"}}>
-    {label&&<label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5 ml-0.5">{label}</label>}
-    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",appearance:"none",borderRadius:12,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:48,width:"100%",padding:"12px 38px 12px 14px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.15)":"0 0 0 3px rgba(30,58,95,0.1)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
-    <span style={{position:"absolute",right:14,top:"50%",transform:`translateY(${label?"-2px":"50%"})`,pointerEvents:"none",color:t.sub,fontSize:11}}>▾</span>
+    {label&&<label style={{color:t.sub,letterSpacing:"0.04em",fontSize:12,fontWeight:600,display:"block",marginBottom:6,marginLeft:1}}>{label}</label>}
+    <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",appearance:"none",borderRadius:13,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:50,width:"100%",padding:"13px 40px 13px 15px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
+    <span style={{position:"absolute",right:14,top:"50%",transform:`translateY(${label?"-2px":"50%"})`,pointerEvents:"none",color:t.sub,fontSize:12}}>▾</span>
   </div>;
 }
 function Btn({children,onClick,v="primary",size="md",className="",disabled=false,dm}){
   const t=T(dm);
   const V={
-    primary:`background:${t.accent};color:${t.accentFg};border:1.5px solid ${t.accent};`,
+    primary:`background:#2563eb;color:#ffffff;border:1.5px solid #2563eb;`,
     ghost:dm?"background:#1c2128;color:#e6edf3;border:1.5px solid #30363d;":"background:#ffffff;color:#1e3a5f;border:1.5px solid #dde1e8;",
     danger:"background:#dc2626;color:#fff;border:1.5px solid #dc2626;",
     success:"background:#059669;color:#fff;border:1.5px solid #059669;",
     amber:"background:#d97706;color:#fff;border:1.5px solid #d97706;",
-    outline:dm?"background:transparent;color:#60a5fa;border:1.5px solid #60a5fa;":"background:transparent;color:#1e3a5f;border:1.5px solid #1e3a5f;",
+    outline:dm?"background:transparent;color:#60a5fa;border:1.5px solid #60a5fa;":"background:transparent;color:#2563eb;border:1.5px solid #2563eb;",
     sky:"background:#0ea5e9;color:#fff;border:1.5px solid #0ea5e9;",
     purple:"background:#7c3aed;color:#fff;border:1.5px solid #7c3aed;",
   };
@@ -2096,21 +2286,30 @@ function Card({children,className="",dm}){
 }
 function StatCard({label,value,sub,accent,dm,animDelay="0.05s",icon,trend,trendUp}){
   const t=T(dm);
+  const ac=accent||"#2563eb";
   return (
-    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:18,padding:"16px 18px",position:"relative",overflow:"hidden",boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)","--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="crm-stat-card crm-list-item">
-      {/* Top accent bar */}
-      <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:accent,borderRadius:"18px 18px 0 0"}}/>
-      {/* Soft glow blob */}
-      <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:`${accent}18`,pointerEvents:"none"}}/>
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
-        <p style={{color:t.sub,letterSpacing:"0.06em",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{label}</p>
-        {icon&&<span style={{fontSize:16,background:`${accent}15`,width:30,height:30,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</span>}
+    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",gap:14,overflow:"hidden",boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)","--delay":animDelay,transition:"transform 0.18s,box-shadow 0.18s",cursor:"default"}} className="crm-stat-card crm-list-item">
+      {/* Large soft icon square */}
+      {icon&&(
+        <div style={{width:52,height:52,borderRadius:14,background:`${ac}15`,border:`1.5px solid ${ac}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+          {icon}
+        </div>
+      )}
+      {/* Right: number + label + sub */}
+      <div style={{minWidth:0,flex:1}}>
+        <p style={{color:t.text,fontSize:24,fontWeight:900,lineHeight:1,letterSpacing:"-0.03em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{value}</p>
+        <p style={{color:t.sub,fontSize:11,fontWeight:600,marginBottom:sub?2:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</p>
+        {(sub||trend!==undefined)&&(
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {sub&&<p style={{color:ac,fontSize:10,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sub}</p>}
+            {trend!==undefined&&(
+              <span style={{fontSize:10,fontWeight:700,color:trendUp?"#10b981":"#ef4444",background:trendUp?"#10b98115":"#ef444415",padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap",flexShrink:0}}>
+                {trendUp?"↑":"↓"} {trend}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-      <p style={{color:t.text,fontSize:22,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}}>{value}</p>
-      {(sub||trend!==undefined)&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6}}>
-        {sub&&<p style={{color:t.sub,fontSize:11,fontWeight:500}}>{sub}</p>}
-        {trend!==undefined&&<span style={{fontSize:10,fontWeight:700,color:trendUp?"#10b981":"#ef4444",background:trendUp?"#10b98115":"#ef444415",padding:"2px 7px",borderRadius:99}}>{trendUp?"↑":"↓"} {trend}</span>}
-      </div>}
     </div>
   );
 }
@@ -2135,9 +2334,10 @@ function Sheet({open,title,onClose,children,dm}){
         <div style={{width:40,height:4,borderRadius:99,background:t.border}}/>
       </div>
       {/* Header */}
+      {/* Phase 4 — larger sheet header */}
       <div style={{borderBottom:`1px solid ${t.border}`,background:dm?"rgba(28,33,40,0.8)":"rgba(248,250,252,0.9)"}} className="flex items-center justify-between px-5 py-4 shrink-0 sm:rounded-t-2xl">
-        <span style={{color:t.text,letterSpacing:"-0.01em",fontSize:16}} className="font-bold">{title}</span>
-        <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.inpB}`,width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>✕</button>
+        <span style={{color:t.text,letterSpacing:"-0.01em",fontSize:17,fontWeight:800,lineHeight:1.2}}>{title}</span>
+        <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.inpB}`,width:40,height:40,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>✕</button>
       </div>
       {/* Content */}
       <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",touchAction:"pan-y",flex:1,minHeight:0,paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
@@ -2147,7 +2347,7 @@ function Sheet({open,title,onClose,children,dm}){
 function Toast({msg,onDone}){
   // Fix: empty dep array so the timer only starts once, not on every re-render
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);},[]);
-  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(72px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
+  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(76px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
@@ -2163,12 +2363,46 @@ function Confirm({msg,onYes,onNo,dm}){
   </div>, document.body);
 }
 function Search({value,onChange,placeholder,dm}){
+  // Phase 4 — large, rounded, prominent search bar
   const t=T(dm);
   return <div className="relative">
-    <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",touchAction:"manipulation",borderRadius:14,transition:"border-color 0.15s,box-shadow 0.15s",width:"100%",padding:"12px 40px 12px 42px",outline:"none",minHeight:48,display:"block"}} onFocus={e=>{e.target.style.borderColor=dm?"#3b82f6":"#1e3a5f";e.target.style.boxShadow=dm?"0 0 0 3px rgba(59,130,246,0.12)":"0 0 0 3px rgba(30,58,95,0.08)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}/>
-    {value&&<button onClick={()=>onChange("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:22,height:22,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>✕</button>}
+    <svg className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Search…"} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:15,WebkitAppearance:"none",touchAction:"manipulation",borderRadius:16,transition:"border-color 0.15s,box-shadow 0.15s",width:"100%",padding:"13px 44px 13px 46px",outline:"none",minHeight:52,display:"block",fontWeight:500}} onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}/>
+    {value&&<button onClick={()=>onChange("")} style={{position:"absolute",right:13,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:24,height:24,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>✕</button>}
   </div>;
+}
+
+// ─── Pagination ─────────────────────────────────────────────────────────────
+function Pagination({page,setPage,total,perPage=20,dm}){
+  const t=T(dm);
+  const pages=Math.ceil(total/perPage);
+  if(pages<=1)return null;
+  const start=Math.max(1,page-2);
+  const end=Math.min(pages,start+4);
+  const nums=Array.from({length:end-start+1},(_,i)=>start+i);
+  return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 0"}}>
+      <button disabled={page===1} onClick={()=>setPage(p=>Math.max(1,p-1))}
+        style={{width:34,height:34,borderRadius:9,background:t.inp,border:`1.5px solid ${t.border}`,color:page===1?t.sub:t.text,fontWeight:700,fontSize:13,cursor:page===1?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:page===1?0.4:1,WebkitTapHighlightColor:"transparent"}}>‹</button>
+      {start>1&&<>
+        <button onClick={()=>setPage(1)} style={{minWidth:34,height:34,borderRadius:9,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,fontWeight:600,fontSize:12,cursor:"pointer",padding:"0 8px",WebkitTapHighlightColor:"transparent"}}>1</button>
+        {start>2&&<span style={{color:t.sub,fontSize:12}}>…</span>}
+      </>}
+      {nums.map(n=>(
+        <button key={n} onClick={()=>setPage(n)}
+          style={{minWidth:34,height:34,borderRadius:9,background:n===page?"#2563eb":t.inp,border:`1.5px solid ${n===page?"#2563eb":t.border}`,color:n===page?"#fff":t.text,fontWeight:n===page?700:500,fontSize:12,cursor:"pointer",padding:"0 8px",WebkitTapHighlightColor:"transparent",boxShadow:n===page?"0 2px 6px rgba(37,99,235,0.35)":"none"}}>
+          {n}
+        </button>
+      ))}
+      {end<pages&&<>
+        {end<pages-1&&<span style={{color:t.sub,fontSize:12}}>…</span>}
+        <button onClick={()=>setPage(pages)} style={{minWidth:34,height:34,borderRadius:9,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,fontWeight:600,fontSize:12,cursor:"pointer",padding:"0 8px",WebkitTapHighlightColor:"transparent"}}>{pages}</button>
+      </>}
+      <button disabled={page===pages} onClick={()=>setPage(p=>Math.min(pages,p+1))}
+        style={{width:34,height:34,borderRadius:9,background:t.inp,border:`1.5px solid ${t.border}`,color:page===pages?t.sub:t.text,fontWeight:700,fontSize:13,cursor:page===pages?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:page===pages?0.4:1,WebkitTapHighlightColor:"transparent"}}>›</button>
+      <span style={{color:t.sub,fontSize:11,marginLeft:4}}>{total} total</span>
+    </div>
+  );
 }
 
 // Toggle switch
@@ -2293,12 +2527,12 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
   const overlayStyle = {
     position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.72)",
     backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",
-    display:"flex",alignItems:"flex-end",justifyContent:"center",overflowY:"auto"
+    display:"flex",alignItems:"flex-end",justifyContent:"center"
   };
   const panelStyle = {
     background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",
-    width:"100%",maxWidth:560,maxHeight:"92svh",display:"flex",flexDirection:"column",
-    boxShadow:"0 -8px 60px rgba(0,0,0,0.5)",paddingBottom:"env(safe-area-inset-bottom,12px)"
+    width:"100%",maxWidth:560,height:"auto",maxHeight:"min(92dvh,92svh,92vh)",display:"flex",flexDirection:"column",
+    boxShadow:"0 -8px 60px rgba(0,0,0,0.5)",paddingBottom:"env(safe-area-inset-bottom,12px)",overflow:"hidden"
   };
   const Header = ({icon,title,sub,accent})=>(
     <div style={{padding:"20px 22px 16px",borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
@@ -2327,7 +2561,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
       <span style={{color:color||t.text,fontWeight:700,fontSize:12}}>{val}</span>
     </div>
   );
-  const scrollStyle = {overflowY:"auto",WebkitOverflowScrolling:"touch",flex:1,padding:"0 22px 20px"};
+  const scrollStyle = {overflowY:"auto",WebkitOverflowScrolling:"touch",flex:1,minHeight:0,padding:"0 22px 20px",overscrollBehavior:"contain"};
 
   // ── EXPENSE DETAIL ──
   if (type === "expense") {
@@ -2814,34 +3048,55 @@ function Login({users,onLogin,dm,settings}){
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const [showAdminForm,setShowAdminForm]=useState(false);
   const [pinMode,setPinMode]=useState(false);
-  const [pinTarget,setPinTarget]=useState(null); // user being PIN-authenticated
+  const [pinTarget,setPinTarget]=useState(null);
   const [pinVal,setPinVal]=useState("");
+  const [showPw,setShowPw]=useState(false);
+  const [rememberMe,setRememberMe]=useState(true);
+
+  const appName=settings?.appName||"TAS Healthy World";
+  const appSub=settings?.appSubtitle||"Paratha Factory \u00b7 Operations";
+  const appEmoji=settings?.appEmoji||"\u{1F9AB}";
+
+  const BG="#0b1120";
+  const CARD="rgba(19,28,46,0.95)";
+  const BORDER="#1e2d45";
+  const MUTED="#4a6080";
+  const TEXT="#e8edf5";
+  const BLUE="#3b6ef6";
+  const BLUE_HOVER="#2d5de0";
+
+  const dotsBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(circle, rgba(59,110,246,0.15) 1px, transparent 1px)",backgroundSize:"36px 36px",opacity:0.45};
+  const glowBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(ellipse 60% 50% at 30% 40%, rgba(59,110,246,0.1) 0%, transparent 70%), radial-gradient(ellipse 40% 60% at 75% 70%, rgba(10,30,80,0.4) 0%, transparent 70%)"};
+
+  const featurePills=[
+    {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>, label:"Real-time Sync", sub:"Live updates across all operations", color:"#f59e0b"},
+    {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>, label:"Secure Access", sub:"Enterprise-grade security protection", color:"#22c55e"},
+    {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>, label:"Cloud Enabled", sub:"Access your data anytime, anywhere", color:"#3b6ef6"},
+  ];
+
   function go(){
+    if(!u.trim()||!p){setErr("Please enter your username and password.");return;}
     setBusy(true);setErr("");
     setTimeout(()=>{
       const found=users.find(x=>x.username.toLowerCase()===u.trim().toLowerCase()&&checkPw(p,x.password)&&x.active);
       if(found){
         onLogin({...found,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo()});
       } else {
-        // Log failed attempt to Firebase audit log (non-blocking)
-        try{
-          const dev=getDeviceInfo();
-          fbWrite("tas_failed_logins/"+uid(),{
-            username:u.trim()||"(empty)",ts:new Date().toLocaleString("en-IN"),
-            browser:dev.browser,os:dev.os,deviceType:dev.deviceType,
-            loginAt:Date.now()
-          }).catch(()=>{});
-        }catch{}
-        setErr("Invalid username or password.");
+        if(settings?.secLogFailedLogins!==false){
+          try{const dev=getDeviceInfo();fbWrite("tas_failed_logins/"+uid(),{username:u.trim()||"(empty)",ts:new Date().toLocaleString("en-IN"),browser:dev.browser,os:dev.os,deviceType:dev.deviceType,loginAt:Date.now()}).catch(()=>{});}catch{}
+        }
+        setErr("Incorrect username or password. Please try again.");
       }
       setBusy(false);
     },400);
   }
+
   function pickStaff(name){
     const shared=users.find(x=>x.active&&x.role!=="admin");
     if(shared)onLogin({...shared,loginAt:Date.now(),displayOverride:name,deviceId:DEVICE_ID,...getDeviceInfo()});
     else setErr("No active staff account found. Create one in Settings.");
   }
+
   function enterPin(digit){
     if(pinVal.length>=4)return;
     const next=pinVal+digit;
@@ -2853,580 +3108,353 @@ function Login({users,onLogin,dm,settings}){
       },200);
     }
   }
-  // PIN login screen
+
+  // ── PASSKEY / BIOMETRIC LOGIN ──────────────────────────────────
+  async function tryPasskey(){
+    if(!window.PublicKeyCredential){setErr("Passkeys not supported on this device.");return;}
+    try{
+      // Check if platform authenticator available (Face ID / fingerprint / Windows Hello)
+      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(()=>false);
+      if(!available){setErr("No biometric authenticator found on this device.");return;}
+      // We store a passkey credential ID in localStorage keyed per device
+      const storedCred = (() => { try { return JSON.parse(localStorage.getItem("__crm_pk__")||"null"); } catch { return null; } })();
+      if(!storedCred){
+        setErr("No passkey registered. Log in with password first, then register a passkey in Settings.");
+        return;
+      }
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const assertion = await navigator.credentials.get({
+        publicKey:{
+          challenge,
+          allowCredentials:[{id:base64ToBuffer(storedCred.credId),type:"public-key"}],
+          userVerification:"required",
+          timeout:60000,
+        }
+      });
+      if(assertion){
+        // Credential verified — look up linked user
+        const linkedUserId = storedCred.userId;
+        const found = users.find(x=>x.id===linkedUserId&&x.active);
+        if(found){
+          onLogin({...found,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo(),passkeyLogin:true});
+        } else {
+          setErr("Passkey user no longer exists or is deactivated.");
+        }
+      }
+    } catch(e){
+      if(e.name==="NotAllowedError") setErr("Biometric authentication was cancelled.");
+      else setErr("Passkey error: "+e.message);
+    }
+  }
+
+  function base64ToBuffer(b64){
+    const bin=atob(b64.replace(/-/g,"+").replace(/_/g,"/"));
+    const buf=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+    return buf.buffer;
+  }
+
+  // Check if passkey registered for quick-login display
+  const hasPasskey = !!(() => { try { return JSON.parse(localStorage.getItem("__crm_pk__")||"null"); } catch { return null; } })();
+  const [passkeyChecking, setPasskeyChecking] = useState(false);
+
+  // Shared form card content — rendered inline (NOT as a nested component) to prevent
+  // React from unmounting the form on every keystroke (nested function = new component type per render)
+  const formCardContent = (
+      <div style={{width:"100%",maxWidth:440}}>
+        <style>{`
+          @keyframes lspin{to{transform:rotate(360deg)}}
+          @keyframes lfadeup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+          .lfa{animation:lfadeup 0.45s ease both}
+          .lfa2{animation:lfadeup 0.45s 0.08s ease both}
+          .lfa3{animation:lfadeup 0.45s 0.16s ease both}
+          .lfa4{animation:lfadeup 0.45s 0.24s ease both}
+          .linp{transition:border-color 0.18s!important}
+          .linp:focus{border-color:${BLUE}!important;outline:none!important;box-shadow:0 0 0 3px rgba(59,110,246,0.15)!important}
+          .lbtn:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 6px 28px rgba(59,110,246,0.5)!important}
+          .lbtn:active:not(:disabled){transform:scale(0.98)}
+          .lpill:hover{border-color:${BLUE}!important;background:rgba(59,110,246,0.06)!important}
+        `}</style>
+        <div className="lfa" style={{display:"flex",alignItems:"center",gap:14,marginBottom:28}}>
+          <div style={{width:48,height:48,borderRadius:14,background:"rgba(59,110,246,0.15)",border:"1.5px solid rgba(59,110,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <h2 style={{color:TEXT,fontSize:24,fontWeight:800,margin:0,lineHeight:1.2,letterSpacing:"-0.01em"}}>Welcome Back!</h2>
+            <p style={{color:MUTED,fontSize:15,margin:"3px 0 0",fontWeight:400}}>Sign in to continue to your account</p>
+          </div>
+        </div>
+
+        <div className="lfa2" style={{marginBottom:16}}>
+          <label style={{display:"block",color:"#7a9cbd",fontSize:12,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Username</label>
+          <div style={{position:"relative"}}>
+            <div style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex"}}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <input className="linp" value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
+              placeholder="Enter your username" autoComplete="username"
+              style={{width:"100%",background:"rgba(15,22,38,0.8)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 16px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+        </div>
+
+        <div className="lfa2" style={{marginBottom:16}}>
+          <label style={{display:"block",color:"#7a9cbd",fontSize:12,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Password</label>
+          <div style={{position:"relative"}}>
+            <div style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex"}}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <input className="linp" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
+              type={showPw?"text":"password"} placeholder="Enter your password" autoComplete="current-password"
+              style={{width:"100%",background:"rgba(15,22,38,0.8)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 52px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
+            <button onClick={()=>setShowPw(v=>!v)} tabIndex={-1}
+              style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",padding:6,color:MUTED,display:"flex",alignItems:"center",WebkitTapHighlightColor:"transparent"}}>
+              {showPw
+                ?<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                :<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+            </button>
+          </div>
+        </div>
+
+        <div className="lfa3" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:err?14:22}}>
+          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}} onClick={()=>setRememberMe(v=>!v)}>
+            <div style={{width:24,height:24,borderRadius:7,background:rememberMe?BLUE:"rgba(15,22,38,0.8)",border:`2px solid ${rememberMe?BLUE:BORDER}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+              {rememberMe&&<svg width="13" height="11" viewBox="0 0 13 11" fill="none"><path d="M1.5 5.5l3.5 3.5 6.5-8" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </div>
+            <span style={{color:"#8ba3c0",fontSize:15,fontWeight:500}}>Remember me</span>
+          </label>
+          <span style={{color:BLUE,fontSize:15,fontWeight:500,cursor:"pointer"}}>Forgot password?</span>
+        </div>
+
+        {err&&<div className="lfa3" style={{background:"rgba(239,68,68,0.1)",border:"1.5px solid rgba(239,68,68,0.3)",borderRadius:12,padding:"13px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <p style={{color:"#f87171",fontSize:15,fontWeight:500,margin:0}}>{err}</p>
+        </div>}
+
+        <button className="lbtn lfa3" onClick={go} disabled={busy}
+          style={{width:"100%",background:`linear-gradient(135deg, ${BLUE} 0%, #2953d4 100%)`,color:"#fff",border:"none",borderRadius:14,padding:"17px 24px",fontSize:18,fontWeight:700,cursor:busy?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all 0.2s",boxShadow:"0 4px 22px rgba(59,110,246,0.4)",letterSpacing:"0.01em",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",marginBottom:22,opacity:busy?0.75:1}}>
+          {busy
+            ?<><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" style={{animation:"lspin 0.8s linear infinite"}}><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>Signing in…</>
+            :<>Sign In<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></>}
+        </button>
+
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{flex:1,height:1,background:BORDER}}/>
+          <span style={{color:MUTED,fontSize:13,fontWeight:500,letterSpacing:"0.05em"}}>OR</span>
+          <div style={{flex:1,height:1,background:BORDER}}/>
+        </div>
+
+        {/* ── PASSKEY / BIOMETRIC BUTTON ── */}
+        {(settings?.secBiometricEnabled!==false)&&hasPasskey&&<button className="lbtn lfa4" onClick={async()=>{setPasskeyChecking(true);setErr("");await tryPasskey();setPasskeyChecking(false);}} disabled={passkeyChecking}
+          style={{width:"100%",background:"rgba(15,22,38,0.85)",border:`1.5px solid ${passkeyChecking?"#3b6ef6":BORDER}`,borderRadius:14,padding:"15px 18px",color:TEXT,fontSize:16,fontWeight:600,cursor:passkeyChecking?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,transition:"all 0.18s",marginBottom:14,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+          {passkeyChecking
+            ?<><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="2.5" strokeLinecap="round" style={{animation:"lspin 0.8s linear infinite"}}><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg><span style={{color:"#3b6ef6"}}>Verifying…</span></>
+            :<><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 10V2"/><path d="M8 6l4-4 4 4"/><rect x="2" y="12" width="20" height="10" rx="2"/><circle cx="12" cy="17" r="1.5" fill="#3b6ef6"/></svg><span>Sign in with Passkey / Face ID / Fingerprint</span></>}
+        </button>}
+
+        {(settings?.secBiometricEnabled!==false)&&!hasPasskey&&<div className="lfa4" style={{background:"rgba(59,110,246,0.06)",border:`1.5px solid rgba(59,110,246,0.18)`,borderRadius:14,padding:"13px 18px",display:"flex",alignItems:"center",gap:12,marginBottom:14,cursor:"pointer"}}
+          onClick={()=>tryPasskey()}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 10V2"/><path d="M8 6l4-4 4 4"/><rect x="2" y="12" width="20" height="10" rx="2"/><circle cx="12" cy="17" r="1.5" fill="#3b6ef6"/></svg>
+          <div style={{flex:1}}>
+            <p style={{color:TEXT,fontSize:14,fontWeight:600,margin:0}}>Use Passkey / Biometrics</p>
+            <p style={{color:MUTED,fontSize:12,margin:"2px 0 0"}}>Face ID, fingerprint, or Windows Hello</p>
+          </div>
+        </div>}
+
+        {mode==="picker"&&<button onClick={()=>setShowAdminForm(false)}
+          style={{width:"100%",background:"rgba(15,22,38,0.6)",border:`1.5px solid ${BORDER}`,borderRadius:14,padding:"14px 18px",color:MUTED,fontSize:15,fontWeight:500,cursor:"pointer",textAlign:"center",WebkitTapHighlightColor:"transparent",marginBottom:14}}>
+          ← Back to staff selection
+        </button>}
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:4}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <p style={{color:MUTED,fontSize:13,margin:0}}>Your data is protected with enterprise-grade security</p>
+        </div>
+      </div>
+  );
+
+  // PIN screen
   if(pinMode&&pinTarget){
     return(
-      <div style={{background:dm?"#0c0c10":"#f2f2ed",minHeight:"100svh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-6">
-        <div style={{width:"100%",maxWidth:320,textAlign:"center"}}>
-          <div style={{background:"rgba(245,158,11,0.12)",border:"2px solid rgba(245,158,11,0.3)",width:64,height:64,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
-          <p style={{color:dm?"#fafafa":"#18181b",fontWeight:800,fontSize:18,marginBottom:4}}>{pinTarget.name}</p>
-          <p style={{color:dm?"#9ca3af":"#6b7280",fontSize:12,marginBottom:28}}>Enter your 4-digit PIN</p>
-          {/* PIN dots */}
-          <div className="flex gap-4 justify-center mb-8">
+      <div style={{background:BG,minHeight:"100svh",position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+        <div style={glowBg}/><div style={dotsBg}/>
+        <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:340,textAlign:"center"}}>
+          <div style={{width:76,height:76,borderRadius:22,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
+          <p style={{color:TEXT,fontWeight:700,fontSize:22,marginBottom:6}}>{pinTarget.name}</p>
+          <p style={{color:MUTED,fontSize:16,marginBottom:32}}>Enter your 4-digit PIN</p>
+          <div style={{display:"flex",gap:18,justifyContent:"center",marginBottom:32}}>
             {[0,1,2,3].map(i=>(
-              <div key={i} style={{width:16,height:16,borderRadius:"50%",background:pinVal.length>i?"#f59e0b":dm?"#333":"#e5e5e0",border:`2px solid ${pinVal.length>i?"#f59e0b":dm?"#444":"#d1d1cd"}`,transition:"all 0.15s"}}/>
+              <div key={i} style={{width:18,height:18,borderRadius:"50%",background:pinVal.length>i?BLUE:BORDER,border:`2px solid ${pinVal.length>i?BLUE:MUTED}`,transition:"all 0.15s"}}/>
             ))}
           </div>
-          {err&&<p style={{color:"#ef4444",fontSize:12,fontWeight:600,marginBottom:16}}>{err}</p>}
-          {/* PIN keypad */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          {err&&<p style={{color:"#f87171",fontSize:15,fontWeight:500,marginBottom:16}}>{err}</p>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
             {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i)=>(
               <button key={i} onClick={()=>{if(k==="⌫"){setPinVal(v=>v.slice(0,-1));setErr("");}else if(k!=="")enterPin(String(k));}}
                 disabled={k===""}
-                style={{height:64,borderRadius:16,fontSize:k==="⌫"?20:22,fontWeight:700,background:k===""?"transparent":dm?"#1e1e24":"#fff",color:dm?"#fafafa":"#18181b",border:k===""?"none":`1px solid ${dm?"#2e2e36":"#e5e5e0"}`,boxShadow:k===""?"none":dm?"none":"0 1px 4px rgba(0,0,0,0.08)",cursor:k===""?"default":"pointer",transition:"background 0.1s",opacity:k===""?0:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}
-              >{k}</button>
+                style={{height:72,borderRadius:16,fontSize:k==="⌫"?22:26,fontWeight:700,background:k===""?"transparent":"rgba(19,28,46,0.9)",color:TEXT,border:k===""?"none":`1.5px solid ${BORDER}`,cursor:k===""?"default":"pointer",transition:"background 0.1s",opacity:k===""?0:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                {k}
+              </button>
             ))}
           </div>
-          <button onClick={()=>{setPinMode(false);setPinTarget(null);setPinVal("");setErr("");}} style={{color:dm?"#6b7280":"#9ca3af",fontSize:11,fontWeight:600,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:44,padding:"8px 0"}}>← Use password instead</button>
+          <button onClick={()=>{setPinMode(false);setPinTarget(null);setPinVal("");setErr("");}}
+            style={{color:MUTED,fontSize:15,fontWeight:500,background:"none",border:"none",cursor:"pointer",padding:"12px 0",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+            ← Use password instead
+          </button>
         </div>
       </div>
     );
   }
-  // ── STAFF PICKER MODE ──────────────────────────────────────────
+
+  // Staff picker mode
   if(mode==="picker"&&!showAdminForm){
     return(
-      <div style={{background:dm?"#0d1117":"#f0f2f5",minHeight:"100svh",fontFamily:"system-ui,sans-serif"}} className="flex flex-col items-center justify-center px-4 py-10">
-        {/* Brand */}
-        <div className="text-center mb-8">
-          <div style={{background:dm?"rgba(59,130,246,0.1)":"rgba(30,58,95,0.08)",border:`1px solid ${dm?"rgba(59,130,246,0.25)":"rgba(30,58,95,0.2)"}`,borderRadius:10,width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 14px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
-          <h1 style={{color:dm?"#e6edf3":"#0f1923",fontWeight:700,fontSize:22,letterSpacing:"-0.02em",marginBottom:3}}>{settings?.appName||"TAS Healthy World"}</h1>
-          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:12,fontWeight:500}}>{settings?.appSubtitle||"Operations"}</p>
-        </div>
-        {/* Picker */}
-        <div style={{width:"100%",maxWidth:400}}>
-          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",textAlign:"center",marginBottom:12}}>Select your profile</p>
+      <div style={{background:BG,minHeight:"100svh",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px"}}>
+        <div style={glowBg}/><div style={dotsBg}/>
+        <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:420}}>
+          <div style={{textAlign:"center",marginBottom:32}}>
+            <div style={{width:80,height:80,borderRadius:22,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:38,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
+            <h1 style={{color:TEXT,fontWeight:800,fontSize:28,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
+            <p style={{color:MUTED,fontSize:16,margin:0}}>{appSub}</p>
+          </div>
+          <p style={{color:MUTED,fontSize:12,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",textAlign:"center",marginBottom:14}}>Select your profile</p>
           {staffNames.length===0&&(
-            <div style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:6,padding:"20px",textAlign:"center"}}>
-              <p style={{color:dm?"#8b949e":"#5a6478",fontSize:13}}>No staff profiles configured.</p>
-              <p style={{color:dm?"#6b7280":"#8b949e",fontSize:11,marginTop:4}}>Admin → Settings → Staff Login Mode</p>
+            <div style={{background:"rgba(19,28,46,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"22px",textAlign:"center"}}>
+              <p style={{color:TEXT,fontSize:16,marginBottom:8}}>No staff profiles configured.</p>
+              <p style={{color:MUTED,fontSize:14}}>Admin → Settings → Staff Login Mode</p>
             </div>
           )}
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
             {staffNames.map((name,i)=>{
               const initials=name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-              const colors=["#1e3a5f","#7c3aed","#0369a1","#059669","#dc2626","#9333ea"];
+              const colors=[BLUE,"#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ec4899"];
               const color=colors[i%colors.length];
               return(
                 <button key={name} onClick={()=>pickStaff(name)}
-                  style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:6,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,textAlign:"left",width:"100%",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
-                  <div style={{width:36,height:36,background:`${color}18`,border:`1px solid ${color}35`,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",color,fontWeight:700,fontSize:13,flexShrink:0}}>{initials}</div>
+                  style={{background:"rgba(19,28,46,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,textAlign:"left",width:"100%",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"border-color 0.15s,background 0.15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=`${color}08`;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER;e.currentTarget.style.background="rgba(19,28,46,0.9)";}}>
+                  <div style={{width:46,height:46,background:`${color}18`,border:`1.5px solid ${color}35`,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",color,fontWeight:800,fontSize:17,flexShrink:0}}>{initials}</div>
                   <div style={{flex:1}}>
-                    <p style={{color:dm?"#e6edf3":"#0f1923",fontWeight:600,fontSize:14,lineHeight:1.2}}>{name}</p>
-                    <p style={{color:dm?"#8b949e":"#5a6478",fontSize:11,marginTop:1}}>Tap to continue</p>
+                    <p style={{color:TEXT,fontWeight:600,fontSize:17,lineHeight:1.2,margin:0}}>{name}</p>
+                    <p style={{color:MUTED,fontSize:13,marginTop:3}}>Tap to continue</p>
                   </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={dm?"#8b949e":"#94a3b8"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               );
             })}
           </div>
-          {err&&<div style={{background:"rgba(220,38,38,0.08)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:6,padding:"10px 12px",marginTop:12,textAlign:"center"}}>
-            <p style={{color:"#dc2626",fontSize:12,fontWeight:600}}>{err}</p>
+          {err&&<div style={{background:"rgba(239,68,68,0.1)",border:"1.5px solid rgba(239,68,68,0.28)",borderRadius:12,padding:"13px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p style={{color:"#f87171",fontSize:15,fontWeight:500,margin:0}}>{err}</p>
           </div>}
-          <button onClick={()=>{setErr("");setShowAdminForm(true);}} style={{color:dm?"#8b949e":"#5a6478",fontSize:11,fontWeight:500,display:"block",width:"100%",textAlign:"center",marginTop:24,background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:40,letterSpacing:"0.02em"}}>Administrator Login →</button>
+          <button onClick={()=>{setErr("");setShowAdminForm(true);}}
+            style={{color:MUTED,fontSize:16,fontWeight:500,display:"block",width:"100%",textAlign:"center",background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:48,padding:"12px 0"}}>
+            Administrator Login →
+          </button>
         </div>
       </div>
     );
   }
-  // ── INDIVIDUAL / ADMIN LOGIN FORM ─────────────────────────────
-  return (
-    <div style={{background:dm?"#0d1117":"#f0f2f5",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
-      {/* Left panel on desktop — deep navy corporate brand panel */}
-      <div style={{background:"#0f1923",position:"relative",overflow:"hidden"}} className="hidden lg:flex flex-col justify-center items-center flex-1 p-12">
-        <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 20% 30%, rgba(30,58,95,0.8) 0%, transparent 55%), radial-gradient(circle at 80% 75%, rgba(15,25,35,0.9) 0%, transparent 50%)"}}/>
-        {/* Subtle grid lines */}
-        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)",backgroundSize:"48px 48px"}}/>
-        <div className="text-center relative z-10" style={{maxWidth:340}}>
-          <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,width:52,height:52,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 20px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
-          <h1 style={{color:"#e6edf3",fontWeight:700,fontSize:28,letterSpacing:"-0.02em",lineHeight:1.15,marginBottom:8}}>{settings?.appName||"TAS Healthy World"}</h1>
-          <p style={{color:"rgba(255,255,255,0.35)",fontSize:13,fontWeight:400,lineHeight:1.6}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
-          <div style={{height:1,background:"rgba(255,255,255,0.06)",margin:"28px 0"}}/>
-          <div style={{display:"flex",flexDirection:"column",gap:12,textAlign:"left"}}>
-            {[{label:"Real-time synchronisation",icon:"⚡",sub:"Live updates across all devices"},{label:"Role-based access control",icon:"🔐",sub:"Granular permissions per user"},{label:"Firebase cloud backend",icon:"🔥",sub:"Secure, scalable infrastructure"}].map(f=>(
-              <div key={f.label} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                <span style={{fontSize:15,marginTop:1,opacity:0.7}}>{f.icon}</span>
-                <div>
-                  <p style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:600,marginBottom:1}}>{f.label}</p>
-                  <p style={{color:"rgba(255,255,255,0.25)",fontSize:11}}>{f.sub}</p>
-                </div>
+
+  // Main login — responsive: mobile stacked, tablet/desktop split
+  return(
+    <div style={{background:BG,minHeight:"100svh",fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif",position:"relative",overflow:"hidden"}}>
+      <style>{`
+        @keyframes lspin{to{transform:rotate(360deg)}}
+        @keyframes lfadeup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        .lfa{animation:lfadeup 0.45s ease both}
+        .lfa2{animation:lfadeup 0.45s 0.08s ease both}
+        .lfa3{animation:lfadeup 0.45s 0.16s ease both}
+        .lfa4{animation:lfadeup 0.45s 0.24s ease both}
+        .linp{transition:border-color 0.18s,box-shadow 0.18s!important}
+        .linp:focus{border-color:${BLUE}!important;outline:none!important;box-shadow:0 0 0 3px rgba(59,110,246,0.15)!important}
+        .lbtn{transition:all 0.18s!important}
+        .lbtn:hover:not(:disabled){filter:brightness(1.1);box-shadow:0 8px 30px rgba(59,110,246,0.55)!important}
+        .lbtn:active:not(:disabled){transform:scale(0.985)!important}
+        .lpill{transition:border-color 0.18s,background 0.18s!important}
+        .lpill:hover{border-color:rgba(59,110,246,0.4)!important;background:rgba(59,110,246,0.05)!important}
+      `}</style>
+      <div style={glowBg}/><div style={dotsBg}/>
+
+      <div style={{minHeight:"100svh",display:"flex",position:"relative",zIndex:1}}>
+        <style>{`
+          @media(min-width:860px){
+            .lsplit-left{display:flex!important}
+            .lmobile-hdr{display:none!important}
+            .lright-pad{padding:48px!important;justify-content:center!important}
+          }
+          @media(max-width:859px){
+            .lsplit-left{display:none!important}
+          }
+        `}</style>
+
+        {/* LEFT BRANDING PANEL — desktop/tablet landscape */}
+        <div className="lsplit-left" style={{display:"none",flex:"0 0 50%",maxWidth:580,flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 52px",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 80% 60% at 45% 50%, rgba(59,110,246,0.07) 0%, transparent 70%)"}}/>
+          <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:400}}>
+            <div className="lfa" style={{marginBottom:36}}>
+              <div style={{width:96,height:96,borderRadius:26,background:"rgba(59,110,246,0.1)",border:"2px solid rgba(59,110,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,userSelect:"none",marginBottom:26,backdropFilter:"blur(8px)"}}>{appEmoji}</div>
+              <h1 style={{color:TEXT,fontWeight:800,fontSize:38,lineHeight:1.15,margin:"0 0 12px",letterSpacing:"-0.02em"}}>{appName}</h1>
+              <p style={{color:MUTED,fontSize:18,margin:0,fontWeight:400,lineHeight:1.6}}>{appSub}</p>
+            </div>
+            <div className="lfa2" style={{background:"rgba(19,28,46,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr"}}>
+                {featurePills.map((f,i)=>(
+                  <>
+                    <div key={f.label} style={{textAlign:"center",padding:"8px 10px"}}>
+                      <div style={{width:46,height:46,borderRadius:13,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px"}}>{f.svg}</div>
+                      <p style={{color:TEXT,fontSize:14,fontWeight:700,margin:"0 0 5px",lineHeight:1.2}}>{f.label}</p>
+                      <p style={{color:MUTED,fontSize:12,margin:0,lineHeight:1.4}}>{f.sub}</p>
+                    </div>
+                    {i<2&&<div key={"d"+i} style={{background:BORDER,width:1,margin:"6px 0"}}/>}
+                  </>
+                ))}
               </div>
+            </div>
+            <div className="lfa3" style={{display:"flex",alignItems:"center",gap:10}}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <p style={{color:MUTED,fontSize:14,margin:0}}>Your data is protected with enterprise-grade security</p>
+            </div>
+          </div>
+        </div>
+
+        {/* MOBILE HEADER — hidden on desktop */}
+        <div className="lmobile-hdr" style={{position:"absolute",top:0,left:0,right:0,padding:"44px 24px 28px",textAlign:"center",zIndex:2}}>
+          <div style={{width:84,height:84,borderRadius:24,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
+          <h1 style={{color:TEXT,fontWeight:800,fontSize:30,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
+          <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
+          <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
+            {featurePills.map((f,i)=>(
+              <>
+                <div key={f.label} style={{textAlign:"center",padding:"0 6px"}}>
+                  <div style={{width:38,height:38,borderRadius:11,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}>{f.svg}</div>
+                  <p style={{color:TEXT,fontSize:13,fontWeight:700,margin:0,lineHeight:1.3}}>{f.label}</p>
+                </div>
+                {i<2&&<div key={"md"+i} style={{background:BORDER,width:1,margin:"4px 0"}}/>}
+              </>
             ))}
           </div>
         </div>
-        <div style={{position:"absolute",bottom:24,left:0,right:0,textAlign:"center"}}>
-          <p style={{color:"rgba(255,255,255,0.18)",fontSize:10,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase"}}>TAS Healthy World · Confidential</p>
-        </div>
-      </div>
-      {/* Right panel */}
-      <div className="flex flex-col items-center justify-center flex-1 px-6 py-12">
-        {/* Mobile header banner */}
-        <div className="lg:hidden w-full mb-8" style={{borderRadius:8,overflow:"hidden",position:"relative",background:"#0f1923"}}>
-          <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)",backgroundSize:"32px 32px"}}/>
-          <div style={{position:"relative",zIndex:1,padding:"24px 20px",textAlign:"center"}}>
-            <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",width:48,height:48,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 12px",userSelect:"none"}}>{settings?.appEmoji||"🫓"}</div>
-            <h1 style={{color:"#e6edf3",fontWeight:700,fontSize:20,letterSpacing:"-0.015em",lineHeight:1.2,marginBottom:4}}>{settings?.appName||"TAS Healthy World"}</h1>
-            <p style={{color:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:400,marginBottom:16}}>{settings?.appSubtitle||"Paratha Factory · Operations"}</p>
-            <div style={{height:1,background:"rgba(255,255,255,0.08)",marginBottom:18}}/>
-            <div style={{display:"flex",gap:0,justifyContent:"center"}}>
-              {[{label:"Real-time sync",icon:"⚡"},{label:"Multi-role",icon:"🔐"},{label:"Firebase",icon:"🔥"}].map((f,i,a)=>(
-                <div key={f.label} style={{flex:1,textAlign:"center",borderRight:i<a.length-1?"1px solid rgba(255,255,255,0.08)":"none",padding:"0 8px"}}>
-                  <div style={{fontSize:18,marginBottom:4}}>{f.icon}</div>
-                  <p style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",lineHeight:1.3}}>{f.label}</p>
-                </div>
-              ))}
-            </div>
+
+        {/* RIGHT — form panel */}
+        <div className="lright-pad" style={{flex:1,display:"flex",alignItems:"flex-end",justifyContent:"flex-start",padding:"16px 20px 36px",overflowY:"auto",flexDirection:"column",paddingTop:0}}>
+          <style>{`
+            @media(max-width:859px){
+              .lright-pad{padding-top:340px!important;align-items:center!important}
+            }
+            @media(max-width:440px){
+              .lright-pad{padding-top:360px!important}
+            }
+          `}</style>
+          <div style={{width:"100%",maxWidth:450}}>
+            {formCardContent}
           </div>
-        </div>
-        <div style={{width:"100%",maxWidth:360}}>
-          <p style={{color:dm?"#8b949e":"#5a6478",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:16}}>Sign in to your account</p>
-          <div style={{background:dm?"#161b22":"#fff",border:`1px solid ${dm?"#21262d":"#dde1e8"}`,borderRadius:8,padding:24,boxShadow:dm?"0 4px 24px rgba(0,0,0,0.4)":"0 2px 8px rgba(0,0,0,0.07)"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:14}}>
-              <Inp dm={dm} label="Username" value={u} onChange={e=>setU(e.target.value)} placeholder="Enter username" autoComplete="username"/>
-              <Inp dm={dm} label="Password" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••••" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&go()}/>
-              {err&&<div style={{background:"rgba(220,38,38,0.08)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:4,padding:"8px 12px"}}>
-                <p style={{color:"#dc2626",fontSize:12,fontWeight:500}}>{err}</p>
-              </div>}
-              <button onClick={go} disabled={busy} style={{background:dm?"#3b82f6":"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"10px 20px",fontSize:14,fontWeight:600,cursor:busy?"not-allowed":"pointer",opacity:busy?0.6:1,transition:"background 0.15s",letterSpacing:"0.01em",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:44,width:"100%"}}>
-                {busy?"Authenticating…":"Sign In"}
-              </button>
-            </div>
-          </div>
-          {mode==="picker"
-            ?<button onClick={()=>setShowAdminForm(false)} style={{color:dm?"#8b949e":"#5a6478",fontSize:11,fontWeight:500,display:"block",width:"100%",textAlign:"center",marginTop:16,background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:36}}>← Return to staff selection</button>
-            :<p style={{color:dm?"#8b949e":"#5a6478",textAlign:"center",fontSize:11,marginTop:16,fontWeight:400}}>User accounts are managed by your administrator.</p>}
         </div>
       </div>
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  ROOT
-// ═══════════════════════════════════════════════════════════════
-// goldPulse keyframe — injected once at module load, not on every render
-if(typeof document!=="undefined"&&!document.getElementById("goldPulseStyle")){
-  const _s=document.createElement("style");
-  _s.id="goldPulseStyle";
-  _s.textContent="@keyframes goldPulse{0%,100%{box-shadow:0 0 0 3px rgba(59,130,246,0.2),0 4px 24px rgba(30,58,95,0.15)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0.3),0 8px 32px rgba(30,58,95,0.25)}}";
-  document.head.appendChild(_s);
-}
-// ── Viewport meta safety — ensure correct scaling on ALL devices including old Android ──
-if(typeof document!=="undefined"){
-  let vp=document.querySelector("meta[name=viewport]");
-  if(!vp){vp=document.createElement("meta");vp.name="viewport";document.head.appendChild(vp);}
-  // width=device-width + initial-scale=1 + interactive-widget prevents keyboard resize jank
-  vp.content="width=device-width,initial-scale=1,maximum-scale=5,minimum-scale=1,viewport-fit=cover,interactive-widget=resizes-content";
-  // Theme color for Android Chrome address bar
-  let tc=document.querySelector("meta[name=theme-color]");
-  if(!tc){tc=document.createElement("meta");tc.name="theme-color";document.head.appendChild(tc);}
-  // Set dynamically based on dark mode preference
-  const _isDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches;
-  tc.content=_isDark?"#0c0c10":"#f2f2ed";
-}
-
-if(typeof document!=="undefined"&&!document.getElementById("mobileOptStyle")){
-  const _ms=document.createElement("style");
-  _ms.id="mobileOptStyle";
-  _ms.textContent=`
-    /* ── Reset & Base ── */
-    *{-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;box-sizing:border-box;}
-    button,a,[role=button]{touch-action:manipulation;cursor:pointer;}
-    /* 16px on ALL inputs prevents iOS & old Android auto-zoom */
-    input,select,textarea{touch-action:manipulation;font-size:16px!important;-webkit-text-size-adjust:100%;}
-    html{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;text-size-adjust:100%;scroll-behavior:smooth;}
-    body{overscroll-behavior:none;-webkit-overflow-scrolling:touch;margin:0;padding:0;}
-
-    /* Font rendering — crisp on all screens */
-    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;}
-
-    /* Hide scrollbars everywhere */
-    ::-webkit-scrollbar{width:0!important;height:0!important;background:transparent!important;display:none!important;}
-    *{scrollbar-width:none!important;-ms-overflow-style:none!important;}
-
-    /* ── Safe area (iPhone notch / Dynamic Island / home bar / Android cutout) ── */
-    .pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}
-    .pt-safe{padding-top:env(safe-area-inset-top,0px);}
-    .pl-safe{padding-left:env(safe-area-inset-left,0px);}
-    .pr-safe{padding-right:env(safe-area-inset-right,0px);}
-
-    /* ── Touch targets — Apple HIG 44pt, Google MD 48dp ── */
-    .touch-target{min-height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;}
-    button,[role=button]{min-height:44px;}
-
-    /* ── Bottom nav safe padding ── */
-    .mobile-content-pad{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px));}
-
-    /* ── Prevent text selection on tappable UI ── */
-    button,[role=button],.crm-pill-mobile,.crm-bottom-nav *{
-      -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
-    }
-
-    /* ── GPU compositing for animated panels ── */
-    .crm-sheet-mobile,.crm-bottom-nav,.crm-sheet-panel-mobile{
-      -webkit-transform:translateZ(0);transform:translateZ(0);
-      will-change:transform;
-      -webkit-backface-visibility:hidden;backface-visibility:hidden;
-    }
-
-    /* ── iOS & Android momentum scrolling ── */
-    .crm-sheet-scroll,[style*="overflow-y: auto"],[style*="overflow-y:auto"]{
-      -webkit-overflow-scrolling:touch;
-      overscroll-behavior:contain;
-    }
-
-    /* ── Focus styles ── */
-    :focus-visible{outline:2px solid #3b82f6;outline-offset:2px;border-radius:6px;}
-    :focus:not(:focus-visible){outline:none;}
-
-    /* ── Image rendering on all devices ── */
-    img{-webkit-user-drag:none;user-drag:none;image-rendering:-webkit-optimize-contrast;}
-
-    /* ═══════════════════════════════
-       MOBILE (< 640px)
-    ═══════════════════════════════ */
-    @media(max-width:639px){
-      input,select,textarea{
-        min-height:48px!important;
-        padding:12px 14px!important;
-        border-radius:12px!important;
-        font-size:16px!important;
-        -webkit-appearance:none;
-        appearance:none;
-      }
-      input[type="date"],input[type="time"],input[type="number"]{
-        min-height:48px!important;
-        -webkit-appearance:none;
-        appearance:none;
-      }
-      select{padding-right:36px!important;}
-
-      /* Cards */
-      .crm-card-mobile{border-radius:16px!important;padding:16px!important;}
-      .crm-row-card{border-radius:16px!important;padding:14px 16px!important;margin-bottom:8px!important;}
-
-      /* Bottom nav */
-      .crm-bottom-nav{
-        height:calc(56px + env(safe-area-inset-bottom,0px))!important;
-        padding-bottom:env(safe-area-inset-bottom,0px)!important;
-      }
-
-      /* Sheets: full-width bottom sheet */
-      .crm-sheet-mobile{
-        border-radius:24px 24px 0 0!important;
-        max-height:94svh!important;
-        max-height:94dvh!important;
-        max-height:94vh!important;
-        width:100%!important;
-        padding-left:max(16px,env(safe-area-inset-left,0px))!important;
-        padding-right:max(16px,env(safe-area-inset-right,0px))!important;
-        padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
-      }
-
-      /* Tab content bottom spacing */
-      .crm-tab-content{
-        padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))!important;
-      }
-
-      /* Stats grid: 2-col */
-      .crm-stats-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important;}
-
-      /* Table wrapping */
-      .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
-      .crm-table-wrap table{min-width:480px;}
-
-      /* Typography */
-      .crm-row-text{font-size:14px!important;}
-      .crm-row-sub{font-size:12px!important;}
-      .crm-form-label{font-size:12px!important;letter-spacing:0.04em!important;margin-bottom:6px!important;}
-
-      /* Pill / badge */
-      .crm-pill-mobile{padding:3px 8px!important;font-size:11px!important;}
-
-      /* Sheet save button */
-      .crm-sheet-btn{width:100%!important;min-height:52px!important;font-size:15px!important;border-radius:14px!important;}
-
-      /* Quick actions: 4-col default, 2-col very narrow */
-      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
-
-      /* Header */
-      .crm-header{min-height:54px;}
-
-      /* Desktop-only items hidden on mobile */
-      .desktop-only{display:none!important;}
-
-      /* Larger tap zone for list action buttons */
-      .crm-list-action{min-height:44px!important;min-width:44px!important;padding:8px 14px!important;}
-
-      /* Prevent rubber-band scroll on fixed panels */
-      .crm-panel-fixed{position:fixed;overflow:hidden;touch-action:none;}
-
-      /* Active press feedback */
-      button:active,[role=button]:active{opacity:0.75;transform:scale(0.97);}
-    }
-
-    /* Very narrow phones (< 380px): 2-col quick grid */
-    @media(max-width:379px){
-      .crm-quick-grid{grid-template-columns:repeat(2,1fr)!important;}
-    }
-
-    /* ═══════════════════════════════
-       TABLET (640px – 1023px)
-    ═══════════════════════════════ */
-    @media(min-width:640px) and (max-width:1023px){
-      input,select,textarea{font-size:15px!important;min-height:46px!important;}
-      input[type="date"],input[type="time"]{min-height:46px!important;}
-      .crm-stats-grid{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-quick-grid{grid-template-columns:repeat(4,1fr)!important;}
-      .crm-sheet-mobile{
-        border-radius:20px 20px 0 0!important;
-        max-height:92svh!important;
-        max-height:92dvh!important;
-        max-height:92vh!important;
-        padding-bottom:max(16px,env(safe-area-inset-bottom,0px))!important;
-      }
-      .crm-tab-content{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;}
-      .crm-bottom-nav{
-        height:calc(60px + env(safe-area-inset-bottom,0px))!important;
-        padding-bottom:env(safe-area-inset-bottom,0px)!important;
-      }
-      .crm-table-wrap table{min-width:400px;}
-    }
-
-    /* ═══════════════════════════════
-       DESKTOP (≥ 1024px)
-    ═══════════════════════════════ */
-    @media(min-width:1024px){
-      input,select,textarea{font-size:14px!important;min-height:40px!important;}
-      .crm-stats-grid{grid-template-columns:repeat(4,1fr)!important;}
-    }
-
-    /* ═══════════════════════════════
-       COARSE POINTER (any touchscreen)
-       Covers Android, iOS, tablets
-    ═══════════════════════════════ */
-    @media(pointer:coarse){
-      button,[role=button]{
-        min-height:44px;
-      }
-      input[type=checkbox],input[type=radio]{
-        min-width:22px!important;min-height:22px!important;
-        accent-color:#3b82f6;
-      }
-      /* Momentum scrolling on all scrollable elements */
-      *{-webkit-overflow-scrolling:touch;}
-    }
-
-    /* ═══════════════════════════════
-       RESPONSIVE GRID UTILITIES
-    ═══════════════════════════════ */
-    .crm-grid-2{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
-    .crm-grid-3{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
-    .crm-grid-4{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);}
-    .crm-grid-4-tight{display:grid;gap:6px;grid-template-columns:repeat(2,1fr);}
-
-    @media(max-width:359px){
-      .crm-grid-3{grid-template-columns:1fr!important;}
-      .crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}
-    }
-    @media(min-width:560px) and (max-width:767px){
-      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
-    }
-    @media(min-width:640px){
-      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-grid-4{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-grid-4-tight{grid-template-columns:repeat(2,1fr)!important;}
-    }
-    @media(min-width:768px) and (max-width:1023px){
-      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
-    }
-    @media(min-width:1024px){
-      .crm-grid-3{grid-template-columns:repeat(3,1fr)!important;}
-      .crm-grid-4{grid-template-columns:repeat(4,1fr)!important;}
-      .crm-grid-4-tight{grid-template-columns:repeat(4,1fr)!important;}
-    }
-
-    /* Tab segment controls */
-    .crm-tab-seg{display:grid;border-radius:14px;overflow:hidden;}
-    .crm-tab-seg-3{grid-template-columns:repeat(3,1fr);}
-    .crm-tab-seg-4{grid-template-columns:repeat(4,1fr);}
-    @media(max-width:399px){
-      .crm-tab-seg-4{grid-template-columns:repeat(2,1fr)!important;border-radius:12px!important;}
-    }
-
-    /* ═══════════════════════════════
-       EXTRA SMALL PHONES (< 360px)
-       Galaxy A series, iPhone SE 1st gen
-    ═══════════════════════════════ */
-    @media(max-width:359px){
-      .crm-header-title{font-size:13px!important;}
-      .crm-pill-mobile{padding:2px 6px!important;font-size:10px!important;}
-      .crm-card-mobile{padding:12px!important;}
-      .crm-sheet-btn{font-size:14px!important;min-height:48px!important;}
-    }
-
-    /* ═══════════════════════════════
-       HIGH-DPI / RETINA
-    ═══════════════════════════════ */
-    @media(-webkit-min-device-pixel-ratio:2),(min-resolution:192dpi){
-      .crm-divider{height:0.5px!important;}
-      /* Sharper borders on retina */
-      input,select,textarea,.crm-card-mobile{
-        border-width:0.5px!important;
-      }
-    }
-
-    /* ═══════════════════════════════
-       LANDSCAPE PHONE
-    ═══════════════════════════════ */
-    @media(max-height:500px) and (orientation:landscape){
-      .crm-sheet-mobile{max-height:90dvh!important;max-height:90svh!important;max-height:90vh!important;}
-      .crm-bottom-nav{height:calc(48px + env(safe-area-inset-bottom,0px))!important;}
-      .crm-tab-content{padding-bottom:calc(56px + env(safe-area-inset-bottom,0px))!important;}
-    }
-
-    /* ═══════════════════════════════
-       REDUCED MOTION
-    ═══════════════════════════════ */
-    @media(prefers-reduced-motion:reduce){
-      *{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;}
-    }
-
-    /* ═══════════════════════════════
-       OLD ANDROID WEBVIEW FIXES
-       (Android 4.x / 5.x Chrome 30-44)
-    ═══════════════════════════════ */
-    input[type="text"],input[type="number"],input[type="password"],input[type="email"],input[type="tel"]{
-      -webkit-appearance:none;
-      appearance:none;
-      border-radius:12px;
-    }
-    select{
-      -webkit-appearance:none;
-      appearance:none;
-    }
-  `;
-  document.head.appendChild(_ms);
-}
-if(typeof document!=="undefined"&&!document.getElementById("crmAnimStyle")){
-  const _as=document.createElement("style");
-  _as.id="crmAnimStyle";
-  _as.textContent=`
-    /* ── Entrance animations ── */
-    @keyframes fadeSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes fadeSlideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    @keyframes scaleIn{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}
-    @keyframes slideInRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes slideInLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes sheetUp{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
-    @keyframes sheetCenter{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
-    @keyframes popIn{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
-    @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-    @keyframes toastOut{from{opacity:1;transform:translateX(-50%) translateY(0)}to{opacity:0;transform:translateX(-50%) translateY(8px)}}
-    @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
-    @keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:0.7}}
-    @keyframes badge-bounce{0%,100%{transform:scale(1)}30%{transform:scale(1.25)}60%{transform:scale(0.9)}}
-    @keyframes number-pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
-    @keyframes sidebar-item-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
-    @keyframes progress-grow{from{width:0}to{width:var(--target-width)}}
-    @keyframes spin-slow{to{transform:rotate(360deg)}}
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-    @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.3)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}
-
-    /* ── Animated components ── */
-    .crm-tab-content{animation:fadeSlideUp 0.22s cubic-bezier(.25,.46,.45,.94) both;position:relative;z-index:0;}
-    .crm-card-enter{animation:scaleIn 0.18s cubic-bezier(.25,.46,.45,.94) both}
-    .crm-sheet-backdrop{animation:fadeIn 0.18s ease both}
-    .crm-sheet-panel-mobile{animation:sheetUp 0.28s cubic-bezier(.32,1,.6,1) both}
-    .crm-sheet-panel-desktop{animation:sheetCenter 0.22s cubic-bezier(.32,1,.6,1) both}
-    .crm-toast{animation:toastIn 0.22s cubic-bezier(.32,1,.6,1) both}
-    .crm-toast-exit{animation:toastOut 0.18s ease both}
-    .crm-stat-card{animation:fadeSlideUp var(--delay,0.1s) cubic-bezier(.25,.46,.45,.94) both}
-    .crm-notif-badge{animation:badge-bounce 0.35s cubic-bezier(.32,1,.6,1) both}
-    .crm-sidebar-item{animation:sidebar-item-in var(--si-delay,0.05s) cubic-bezier(.25,.46,.45,.94) both}
-    .crm-row-enter{animation:fadeSlideUp var(--row-delay,0.05s) cubic-bezier(.25,.46,.45,.94) both}
-    .crm-fab{animation:scaleIn 0.2s cubic-bezier(.32,1,.6,1) both;transition:transform 0.15s,box-shadow 0.15s,opacity 0.15s}
-    .crm-fab:hover{transform:scale(1.06) translateY(-1px)!important;box-shadow:0 8px 24px rgba(0,0,0,0.25)!important}
-    .crm-fab:active{transform:scale(0.95)!important}
-    .crm-btn-press{transition:transform 0.1s,box-shadow 0.1s}
-    .crm-btn-press:active{transform:scale(0.96)!important}
-    .crm-sync-dot{animation:pulse-dot 1.8s ease infinite}
-    .crm-quick-action{transition:transform 0.15s cubic-bezier(.32,1,.6,1),background 0.15s,box-shadow 0.15s}
-    .crm-quick-action:hover{transform:translateY(-3px) scale(1.04)}
-    .crm-quick-action:active{transform:scale(0.95)}
-    .crm-confirm-modal{animation:popIn 0.2s cubic-bezier(.32,1,.6,1) both}
-    .crm-header-enter{animation:fadeSlideDown 0.2s ease both}
-    .crm-list-item{transition:background 0.12s,transform 0.12s,box-shadow 0.12s}
-    .crm-list-item:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.08)}
-    .crm-list-item:active{transform:scale(0.99)}
-    .crm-progress-bar{transition:width 0.9s cubic-bezier(.25,.46,.45,.94)}
-    .crm-number-update{animation:number-pop 0.3s cubic-bezier(.32,1,.6,1)}
-    .crm-pill-enter{animation:popIn 0.18s cubic-bezier(.32,1,.6,1) both}
-    .crm-glow{animation:glow-pulse 2.5s ease infinite}
-    @media(prefers-reduced-motion:reduce){
-      *{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
-    }
-
-    /* ── Cross-browser & cross-device compatibility ── */
-    /* Firefox: hide scrollbar utility */
-    .scrollbar-hide{scrollbar-width:none}
-    .scrollbar-hide::-webkit-scrollbar{display:none}
-    /* Safari iOS: prevent tap callout and selection flicker */
-    button,a{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
-    /* Input zoom prevention on iOS (font-size<16 causes zoom) */
-    input,select,textarea{font-size:max(16px, 1em)!important}
-    /* Safe area for notch devices (iPhone X+, Android notch) */
-    .crm-safe-bottom{padding-bottom:max(0.75rem,env(safe-area-inset-bottom,0px))}
-    /* Edge: fix flexbox gap fallback */
-    @supports not (gap:1rem){.flex{margin:-4px}.flex>*{margin:4px}}
-    /* Firefox: select appearance */
-    select{-moz-appearance:none}
-    /* Brave/Opera: ensure backdrop-filter fallback */
-    @supports not (backdrop-filter:blur(1px)){
-      .crm-sheet-backdrop{background:rgba(0,0,0,0.85)!important}
-    }
-    /* Chrome/Edge: fix overscroll bounce on app shell */
-    html,body{overscroll-behavior:none}
-    /* Firefox: input number spinner removal */
-    input[type=number]{-moz-appearance:textfield}
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-    /* Safari: fix date input styling */
-    input[type=date]{-webkit-appearance:none;appearance:none}
-    /* All browsers: smooth font rendering */
-    *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-    /* iOS Safari: momentum scrolling for scroll containers */
-    .crm-sheet-scroll,[data-scroll]{-webkit-overflow-scrolling:touch}
-    /* Tablet: better touch targets */
-    @media(pointer:coarse){button,a,select{min-height:44px}}
-  `;
-  document.head.appendChild(_as);
-}
-// This lets multiple devices have independent sessions in Firebase
-const DEVICE_ID=getDeviceId();
-
-// Clean up stale session nodes — runs once on app load.
-// Firebase accumulates a tas9_sess_* node per device tab indefinitely.
-// This scans all sess nodes and deletes those older than 2× SESSION_TTL (16 hours).
-async function cleanStaleSessions(){
-  try{
-    const r=ref(db);
-    const snap=await fbGet(r);
-    if(!snap.exists())return;
-    const allKeys=Object.keys(snap.val()||{});
-    const sessKeys=allKeys.filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
-    const cutoff=Date.now()-(SESSION_TTL*2);
-    for(const k of sessKeys){
-      const s=snap.val()[k];
-      const loginAt=s?.v?.loginAt||s?.loginAt||0;
-      if(!loginAt||loginAt<cutoff){
-        await fbRemove(ref(db,k)).catch(()=>{});
-      }
-    }
-  }catch(e){/* non-critical — ignore */}
-}
-// Run cleanup after a short delay so it doesn't race with initial data load
-setTimeout(cleanStaleSessions, 8000);
 
 export default function Root(){
   const [dm,setDm]=useStore("tas_pref_dm",false);
@@ -3463,7 +3491,7 @@ export default function Root(){
   </div>;
   if(!fbReady) return spinner;
   if(!sess) return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
-  return <CRM sess={sess} onLogout={()=>setSess(null)} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
+  return <CRM sess={sess} onLogout={()=>setSess(null)} onSessUpdate={setSess} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3601,14 +3629,70 @@ function WeatherWidget({dm,settings}){
 //  CRM
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  PASSKEY MANAGER — extracted from inline IIFE to fix hooks-in-callback error
+// ─────────────────────────────────────────────────────────────────────────────
+function PasskeyManager({dm,t,sess,notify,ask,addLog}){
+  const storedPk=(()=>{try{return JSON.parse(localStorage.getItem("__crm_pk__")||"null");}catch{return null;}})();
+  const [pkStatus,setPkStatus]=useState(storedPk?"registered":"none");
+  async function registerPasskey(){
+    if(!window.PublicKeyCredential){notify("Passkeys not supported on this browser/device");return;}
+    try{
+      const available=await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(()=>false);
+      if(!available){notify("No biometric authenticator found on this device");return;}
+      const challenge=new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const cred=await navigator.credentials.create({publicKey:{challenge,rp:{name:"TAS Healthy World CRM",id:window.location.hostname},user:{id:new TextEncoder().encode(sess.id||"user"),name:sess.username||"user",displayName:sess.name||"User"},pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",requireResidentKey:false},timeout:60000}});
+      if(cred){
+        const credId=btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+        localStorage.setItem("__crm_pk__",JSON.stringify({credId,userId:sess.id,registeredAt:Date.now()}));
+        setPkStatus("registered");
+        addLog("Passkey registered","Biometric login enabled for this device");
+        notify("✓ Passkey registered! You can now use Face ID / fingerprint to sign in.");
+      }
+    }catch(e){
+      if(e.name==="NotAllowedError")notify("Biometric setup was cancelled.");
+      else notify("Error: "+e.message);
+    }
+  }
+  function removePasskey(){
+    ask("Remove passkey from this device? You will need to use password login.",()=>{
+      localStorage.removeItem("__crm_pk__");
+      setPkStatus("none");
+      addLog("Passkey removed","Biometric login disabled for this device");
+      notify("Passkey removed");
+    });
+  }
+  return <div>
+    <div style={{background:pkStatus==="registered"?"#10b98110":"#3b82f610",border:`1.5px solid ${pkStatus==="registered"?"#10b98130":"#3b82f630"}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+      <span style={{fontSize:24}}>{pkStatus==="registered"?"✅":"🔑"}</span>
+      <div style={{flex:1}}>
+        <p style={{color:pkStatus==="registered"?"#10b981":"#3b82f6",fontWeight:700,fontSize:13}}>{pkStatus==="registered"?"Passkey registered on this device":"No passkey on this device"}</p>
+        <p style={{color:t.sub,fontSize:11,marginTop:2}}>{pkStatus==="registered"?"You can sign in with Face ID, fingerprint, or Windows Hello":"Register a passkey to enable biometric login"}</p>
+      </div>
+    </div>
+    {pkStatus==="registered"
+      ?<div style={{display:"flex",gap:8}}>
+        <button onClick={registerPasskey} style={{flex:1,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px",fontSize:13,fontWeight:600,cursor:"pointer"}}>🔄 Re-register</button>
+        <button onClick={removePasskey} style={{flex:1,background:"#ef444415",border:"1.5px solid #ef444430",color:"#ef4444",borderRadius:10,padding:"10px",fontSize:13,fontWeight:600,cursor:"pointer"}}>🗑 Remove</button>
+      </div>
+      :<button onClick={registerPasskey} style={{width:"100%",background:"#3b82f6",color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 10V2"/><path d="M8 6l4-4 4 4"/><rect x="2" y="12" width="20" height="10" rx="2"/></svg>
+        Register Passkey for This Device
+      </button>}
+  </div>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  EXPORTS — consumed by CRM_top.js and CRM_bottom.js
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
+function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
   const isFactory=sess.role==="factory";
   const userPerms=sess.permissions||ROLE_DEF[sess.role]||ROLE_DEF.agent;
   const t=T(dm);
+  // Apply language setting on every render (settings may change)
+  if(settings?.language) setAppLang(settings.language);
 
   // Fine-grained permission helper — use this everywhere instead of isAdmin/isAgent/isFactory checks
   const can = (key) => hasPerm(sess, key);
@@ -3711,6 +3795,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     return `RCP-${(deliveryId||"").slice(-8).toUpperCase()}`;
   }
   const [notifOpen, setNotifOpen]=useState(false);
+  const [avatarOpen, setAvatarOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
   function addNotif(title,body,type="info",notifType="newentry"){
     const n={id:uid(),title,body,type,ts:ts(),read:false};
@@ -3951,6 +4036,9 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
     : (settings?.dashWidgets||["stats","chart","pendingDeliveries","outstanding"]);
   const q=srch.toLowerCase();
   const [delivStatusFilter,setDelivStatusFilter]=useState("all");
+  const [delivPage,setDelivPage]=useState(1);
+  const [custPage,setCustPage]=useState(1);
+  const PAGE_SIZE=20;
   const [delivDateFilter,setDelivDateFilter]=useState("all"); // "all"|"today"|"yesterday"|"week"|"custom"
   const [delivDateFrom,setDelivDateFrom]=useState("");
   const [delivDateTo,setDelivDateTo]=useState("");
@@ -3992,7 +4080,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [eSh,setEsh]=useState(null); const [eF,setEf]=useState(blkE());
   const [expSearch,setExpSearch]=useState("");
   const [expCatFilter,setExpCatFilter]=useState("all");
-  const [expDateFilter,setExpDateFilter]=useState("all");
+  const [expDateFilter,setExpDateFilter]=useState("month");
   const [expCustomFrom,setExpCustomFrom]=useState("");
   const [expCustomTo,setExpCustomTo]=useState(today());
   const [expShowFilters,setExpShowFilters]=useState(false);
@@ -4009,6 +4097,7 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [paySh,setPaySh]=useState(null); const [payAmt,setPayAmt]=useState("");
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
   const [delivCalendar,setDelivCalendar]=useState(false);
+  const [delivView,setDelivView]=useState("expanded"); // "expanded" | "compact"
   const [calOffset,setCalOffset]=useState(0);
   const [calExpandedDay,setCalExpandedDay]=useState(null);
   const [lastSync,setLastSync]=useState(null);
@@ -4044,7 +4133,16 @@ function CRM({sess,onLogout,dm,setDm,users,setUsers,settings,setSettings}){
   const [expandedCustCard,setExpandedCustCard]=useState(null);
   const [custSortField,setCustSortField]=useState("name");
   const [custStatusFilter,setCustStatusFilter]=useState("all");
+  const [custView,setCustView]=useState("expanded"); // "expanded" | "compact"
+  const [selectedCustomer,setSelectedCustomer]=useState(null); // for inline split-panel
+  const [custDetailDelivFilter,setCustDetailDelivFilter]=useState("all"); // "all"|"today"|"yesterday"|"week"
+  const [custDetailPartialAmt,setCustDetailPartialAmt]=useState("");
   const [auditUserFilter,setAuditUserFilter]=useState("all");
+  // Reset pagination when search or filters change — placed here so all deps are defined
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{setDelivPage(1);},[q,delivStatusFilter,delivDateFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{setCustPage(1);},[q,custSortField,custStatusFilter]);
   const [auditRoleFilter,setAuditRoleFilter]=useState("all");
   const [auditActionFilter,setAuditActionFilter]=useState("");
   const [qcSh,setQcSh]=useState(null);
@@ -4827,90 +4925,114 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
-    <div style={{background:t.bg,fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif"}} className="flex flex-col h-[100svh] overflow-hidden lg:flex-row lg:h-screen lg:overflow-hidden">
+    <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
 
-      {/* ── DESKTOP SIDEBAR (lg+) ─────────────────────────────── */}
-      <aside style={{background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,width:224,minHeight:"100vh"}} className="hidden lg:flex flex-col shrink-0 sticky top-0 h-screen overflow-y-auto">
+      {/* ── DESKTOP SIDEBAR (lg+) — Phase 5: dark navy #0d1b2a, blue filled pill active ─── */}
+      <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh"}} className="hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
         {/* Logo */}
-        <div style={{borderBottom:`1px solid ${t.sidebarBorder}`,padding:"16px 16px"}} className="flex items-center gap-3">
-          <div style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:6,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
+        <div style={{borderBottom:"1px solid #1e2d3d",padding:"22px 18px 20px"}} className="flex items-center gap-3">
+          <div style={{background:"rgba(37,99,235,0.18)",border:"1.5px solid rgba(37,99,235,0.3)",borderRadius:12,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,userSelect:"none",flexShrink:0,boxShadow:"0 2px 8px rgba(37,99,235,0.25)"}}>{settings?.appEmoji||"🫓"}</div>
           <div className="min-w-0">
-            <p style={{color:t.sidebarText,fontWeight:700,fontSize:13,letterSpacing:"-0.01em",lineHeight:1.2}} className="truncate">{settings?.appName||"TAS Healthy World"}</p>
-            <p style={{color:t.sidebarSub,fontSize:10,letterSpacing:"0.02em"}} className="truncate mt-0.5">{settings?.appSubtitle||""}</p>
+            <p style={{color:"#f0f4f8",fontWeight:800,fontSize:14,letterSpacing:"-0.02em",lineHeight:1.2}} className="truncate">{settings?.appName||"TAS Healthy World"}</p>
+            <p style={{color:"#7ea0be",fontSize:11,letterSpacing:"0.01em",marginTop:2}} className="truncate">{settings?.appSubtitle||"Business CRM"}</p>
           </div>
         </div>
         {/* Nav items */}
-        <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5">
-          {TABS.map((tb,idx)=>(
+        <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
+          {TABS.map((tb,idx)=>{
+            const isActive=tab===tb;
+            return(
             <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
-              style={tab===tb
-                ?{background:t.sidebarActiveBg,color:t.sidebarActive,borderLeft:`2px solid ${t.sidebarActive}`,paddingLeft:14,borderRadius:"0 4px 4px 0","--si-delay":`${0.04+idx*0.03}s`}
-                :{color:"rgba(232,237,245,0.65)",borderLeft:"2px solid transparent",paddingLeft:14,borderRadius:"0 4px 4px 0","--si-delay":`${0.04+idx*0.03}s`}}
-              className="flex items-center gap-2.5 py-2 text-left w-full transition-all rounded-r text-sm crm-sidebar-item crm-list-item">
-              <span style={{fontSize:13,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-              <span style={{fontSize:12,fontWeight:tab===tb?600:500,letterSpacing:"0.005em"}} className="truncate">{TAB_LABELS[tb]||tb}</span>
-              {tb==="Dashboard"&&pendingD.length>0&&tab!=="Dashboard"&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:700,background:"#3b82f6",color:"#fff",borderRadius:99,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} className="crm-notif-badge">{pendingD.length}</span>}
+              style={{
+                background:isActive?"#2563eb":"transparent",
+                color:isActive?"#ffffff":"rgba(240,244,248,0.6)",
+                borderRadius:10,
+                padding:"10px 12px",
+                boxShadow:isActive?"0 2px 8px rgba(37,99,235,0.35)":"none",
+                transition:"all 0.12s",
+                minHeight:44,
+              }}
+              onMouseEnter={e=>{if(!isActive){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="rgba(240,244,248,0.9)";}}}
+              onMouseLeave={e=>{if(!isActive){e.currentTarget.style.background="transparent";e.currentTarget.style.color="rgba(240,244,248,0.6)";}}}
+              className="flex items-center gap-3 text-left w-full">
+              <span style={{fontSize:17,width:24,textAlign:"center",flexShrink:0,lineHeight:1,opacity:isActive?1:0.8}}>{TAB_ICONS[tb]||"•"}</span>
+              <span style={{fontSize:13,fontWeight:isActive?700:500,letterSpacing:"0.005em"}} className="truncate">{TAB_LABELS[tb]||tb}</span>
+              {tb==="Dashboard"&&pendingD.length>0&&!isActive&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:800,background:"#2563eb",color:"#fff",borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 4px",flexShrink:0}}>{pendingD.length}</span>}
             </button>
-          ))}
+          );})}
         </nav>
         {/* Sidebar footer */}
-        <div style={{borderTop:`1px solid ${t.sidebarBorder}`,padding:"12px 12px"}} className="flex flex-col gap-2.5">
+        <div style={{borderTop:"1px solid #1e2d3d",padding:"14px 14px"}} className="flex flex-col gap-3">
           {/* Staff picker dropdown in sidebar */}
           {subStaff.length>0&&(
             <select value={activeStaff} onChange={e=>setActiveStaff(e.target.value)}
-              style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${t.sidebarBorder}`,color:t.sidebarText,fontSize:11,width:"100%",borderRadius:4,padding:"6px 8px",outline:"none",WebkitAppearance:"none",appearance:"none"}}>
+              style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${t.sidebarBorder}`,color:t.sidebarText,fontSize:12,width:"100%",borderRadius:8,padding:"9px 10px",outline:"none",WebkitAppearance:"none",appearance:"none"}}>
               {subStaff.map(n=><option key={n} value={n}>{n}</option>)}
             </select>
           )}
-          <div style={{background:"rgba(255,255,255,0.03)",borderRadius:4,padding:"8px 10px",border:`1px solid ${t.sidebarBorder}`}} className="flex items-center gap-2">
-            <div style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",color:"#60a5fa"}} className="w-7 h-7 rounded flex items-center justify-center font-bold text-xs shrink-0">{displayName[0]?.toUpperCase()}</div>
+          {/* User info */}
+          <div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"11px 12px",border:`1px solid ${t.sidebarBorder}`}} className="flex items-center gap-3">
+            <div style={{background:"#2563eb",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0,letterSpacing:"-0.01em",userSelect:"none"}}>{displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>
             <div className="flex-1 min-w-0">
-              <p style={{color:t.sidebarText,fontSize:11,fontWeight:600,letterSpacing:"0.005em"}} className="truncate">{displayName}</p>
-              <p style={{color:t.sidebarSub,fontSize:10,textTransform:"capitalize"}} className="truncate">{sess.role}</p>
+              <p style={{color:t.sidebarText,fontSize:13,fontWeight:700,lineHeight:1.2}} className="truncate">{displayName}</p>
+              <p style={{color:t.sidebarSub,fontSize:11,textTransform:"capitalize",marginTop:1}} className="truncate">{sess.role}</p>
             </div>
+            <button onClick={onLogout} title="Sign out" style={{background:"rgba(239,68,68,0.12)",color:"#f87171",border:"1px solid rgba(239,68,68,0.25)",borderRadius:9,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,cursor:"pointer",flexShrink:0}}>↩</button>
           </div>
-          <div className="flex gap-1.5">
-            <button onClick={()=>setDm(d=>!d)} style={{background:"rgba(255,255,255,0.06)",color:"rgba(232,237,245,0.7)",border:`1px solid ${t.sidebarBorder}`,flex:1,borderRadius:4,padding:"5px 8px",fontSize:10,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>{dm?"☀ Light":"⬡ Dark"}</button>
-            <button onClick={onLogout} style={{background:"rgba(255,255,255,0.06)",color:"rgba(232,237,245,0.7)",border:`1px solid ${t.sidebarBorder}`,flex:1,borderRadius:4,padding:"5px 8px",fontSize:10,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>Sign Out</button>
-          </div>
-          <div className="flex items-center gap-1.5 px-0.5">
-            <div style={{width:5,height:5,borderRadius:"50%",background:lastSync?"#10b981":"#3b82f6",flexShrink:0}} className={lastSync?"":"crm-sync-dot"}/>
-            <p style={{color:"rgba(232,237,245,0.45)",fontSize:9,letterSpacing:"0.02em"}}>{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting…"}</p>
+          <button onClick={()=>setDm(d=>!d)} style={{background:"rgba(255,255,255,0.07)",color:"rgba(232,237,245,0.75)",border:`1px solid ${t.sidebarBorder}`,width:"100%",borderRadius:10,padding:"10px",fontSize:12,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",minHeight:42}}>{dm?"☀ Light":"⬡ Dark"}</button>
+          <div className="flex items-center gap-2 px-0.5">
+            <div style={{width:6,height:6,borderRadius:"50%",background:lastSync?"#10b981":"#3b82f6",flexShrink:0}} className={lastSync?"":"crm-sync-dot"}/>
+            <p style={{color:"rgba(232,237,245,0.4)",fontSize:10,letterSpacing:"0.02em"}}>{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting…"}</p>
           </div>
         </div>
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto min-h-0 lg:h-screen" style={{paddingBottom:"calc(72px + env(safe-area-inset-bottom,0px))",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
+      <div style={{flex:1,minWidth:0,paddingBottom:"calc(68px + env(safe-area-inset-bottom,0px))"}}>
 
-      {/* HEADER — shown on mobile/tablet only (hidden on lg desktop where sidebar takes over) */}
-      <header style={{background:t.card,borderBottom:`1px solid ${t.border}`,boxShadow:"0 1px 8px rgba(0,0,0,0.06)"}} className="sticky top-0 z-30 crm-header-enter crm-header">
-        <div style={{paddingTop:"env(safe-area-inset-top,0px)"}} className="px-4 py-3 flex items-center justify-between gap-2 lg:px-6">
-          {/* Left: brand logo (mobile only) */}
-          <div className="flex items-center gap-2.5 lg:hidden min-w-0">
-            <div style={{background:"rgba(217,119,6,0.1)",border:"1px solid rgba(217,119,6,0.2)",width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
-            <div className="min-w-0">
-              <p style={{color:t.text,fontSize:15}} className="font-bold leading-tight truncate max-w-[120px] sm:max-w-[160px]">{settings?.appName||"TAS Healthy World"}</p>
-              <p style={{color:t.sub,fontSize:11}} className="font-medium capitalize">{sess.role}{subStaff.length>0?` · ${activeStaff}`:""}</p>
+      {/* HEADER — full topbar, sticky, white/card bg */}
+      <header style={{background:t.topbar,borderBottom:`1px solid ${t.topbarBorder}`,boxShadow:dm?"0 1px 0 rgba(255,255,255,0.03)":"0 1px 3px rgba(0,0,0,0.05)"}} className="sticky top-0 z-30">
+        <div className="px-4 lg:px-6 flex items-center gap-3" style={{height:60,paddingTop:"env(safe-area-inset-top,0px)"}}>
+
+          {/* LEFT — brand (mobile) / page title (desktop) — Phase 3 */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Mobile: app logo + name */}
+            <div className="flex lg:hidden items-center gap-2.5 min-w-0">
+              <div style={{background:"rgba(37,99,235,0.1)",border:"1.5px solid rgba(37,99,235,0.2)",width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
+              <p style={{color:t.text,fontSize:15,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}} className="truncate max-w-[140px]">{settings?.appName||"TAS"}</p>
+            </div>
+            {/* Desktop: current tab title */}
+            <div className="hidden lg:flex items-center gap-3">
+              <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tab]||"•"}</span>
+              <h1 style={{color:t.text,fontWeight:800,fontSize:20,letterSpacing:"-0.02em",lineHeight:1}}>{TAB_LABELS[tab]||tab}</h1>
             </div>
           </div>
-          {/* Center: current tab (shown on all mobile/tablet) */}
-          <div className="flex lg:hidden items-center gap-2 ml-auto mr-auto" style={{position:"absolute",left:"50%",transform:"translateX(-50%)"}}>
-            <span style={{fontSize:18}}>{TAB_ICONS[tab]||"•"}</span>
-            <h1 style={{color:t.text,fontSize:16}} className="font-black tracking-tight hidden sm:block">{tab}</h1>
+
+          {/* CENTER — search bar (desktop: flex-1, mobile: hidden — uses per-tab search) */}
+          <div className="hidden lg:flex flex-1 max-w-sm relative" style={{marginLeft:8}}>
+            <svg style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              value={srch}
+              onChange={e=>setSrch(e.target.value)}
+              placeholder={tab==="Customers"?"Search name, phone, address…":tab==="Deliveries"?"Search customer, date, status, invoice…":tab==="Supplies"?"Search item, supplier, date…":tab==="Expenses"?"Search expense, vendor, category…":tab==="Payments"?"Search customer, invoice, reference…":`Search ${TAB_LABELS[tab]||tab}…`}
+              style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"9px 36px 9px 38px",fontSize:14,outline:"none",width:"100%",transition:"border-color 0.15s,box-shadow 0.15s"}}
+              onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}}
+              onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}
+            />
+            {srch&&<button onClick={()=>setSrch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,border:"none",cursor:"pointer"}}>✕</button>}
           </div>
-          {/* Desktop: page title */}
-          <div className="hidden lg:flex items-center gap-2.5">
-            <span className="text-xl">{TAB_ICONS[tab]||"•"}</span>
-            <h1 style={{color:t.text}} className="font-black text-xl tracking-tight">{tab}</h1>
-          </div>
-          {/* Right: actions */}
+
+          {/* RIGHT — notifications + avatar + dark mode */}
           <div className="flex items-center gap-2 ml-auto shrink-0">
+
+            {/* Mobile dark mode */}
+            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",flexShrink:0}} className="lg:hidden">{dm?"☀️":"🌙"}</button>
+
             {/* Bell */}
             <div className="relative">
-              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}} className="relative">
-                🔔
-                {unreadNotifs>0&&<span key={unreadNotifs} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 crm-notif-badge" style={{borderColor:t.card}}>{unreadNotifs>9?"9+":unreadNotifs}</span>}
+              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative"}}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                {unreadNotifs>0&&<span key={unreadNotifs} style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",fontSize:9,fontWeight:800,borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}} className="crm-notif-badge">{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
               {notifOpen&&<div style={{background:t.card,border:`1.5px solid ${t.border}`,zIndex:200,boxShadow:"0 20px 40px rgba(0,0,0,0.2)",borderRadius:20,overflow:"hidden"}} className="absolute right-0 top-12 w-[calc(100vw-2rem)] max-w-xs sm:w-80">
                 <div className="flex items-center justify-between px-4 py-3.5" style={{borderBottom:`1px solid ${t.border}`}}>
@@ -4937,11 +5059,40 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 </div>
               </div>}
             </div>
-            {/* Dark mode toggle - mobile */}
-            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",flexShrink:0}} className="lg:hidden">{dm?"☀️":"🌙"}</button>
-            {/* Desktop sign out + dark mode */}
-            <button onClick={onLogout} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`}} className="text-[11px] px-3 py-1.5 rounded-xl font-semibold hidden lg:inline-flex hover:opacity-80">↩ Sign out</button>
-            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`}} className="w-9 h-9 rounded-xl items-center justify-center text-[15px] select-none hidden lg:flex hover:opacity-80">{dm?"☀️":"🌙"}</button>
+
+            {/* Desktop: dark mode toggle */}
+            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}} className="select-none hidden lg:flex">{dm?"☀️":"🌙"}</button>
+
+            {/* Avatar pill — click = dropdown with sign out */}
+            <div className="hidden lg:flex items-center gap-2 pl-1 relative">
+              <button onClick={()=>setAvatarOpen(o=>!o)}
+                style={{display:"flex",alignItems:"center",gap:8,background:t.inp,border:`1px solid ${t.border}`,borderRadius:11,padding:"5px 12px 5px 5px",cursor:"pointer",userSelect:"none"}}>
+                <div style={{width:28,height:28,borderRadius:8,background:"#2563eb",color:"#fff",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
+                </div>
+                <div className="text-left" style={{maxWidth:110}}>
+                  <p style={{color:t.text,fontWeight:700,fontSize:12,lineHeight:1.2}} className="truncate">{displayName}</p>
+                  <p style={{color:t.sub,fontSize:10,textTransform:"capitalize"}}>{sess.role}</p>
+                </div>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {avatarOpen&&<>
+                <div onClick={()=>setAvatarOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
+                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:8,minWidth:160,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",zIndex:200}}>
+                  <div style={{padding:"8px 10px 10px",borderBottom:`1px solid ${t.border}`,marginBottom:6}}>
+                    <p style={{color:t.text,fontWeight:700,fontSize:13}}>{displayName}</p>
+                    <p style={{color:t.sub,fontSize:11,textTransform:"capitalize",marginTop:2}}>{sess.role}</p>
+                  </div>
+                  <button onClick={()=>{setDm(d=>!d);setAvatarOpen(false);}} style={{width:"100%",textAlign:"left",background:"transparent",border:"none",padding:"8px 10px",borderRadius:8,color:t.text,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                    {dm?"☀️ Light mode":"🌙 Dark mode"}
+                  </button>
+                  <button onClick={onLogout} style={{width:"100%",textAlign:"left",background:"rgba(239,68,68,0.07)",border:"none",padding:"8px 10px",borderRadius:8,color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+                    ↩ Sign out
+                  </button>
+                </div>
+              </>}
+            </div>
+
           </div>
         </div>
       </header>
@@ -4962,7 +5113,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-8 xl:px-10 py-3 sm:py-5 flex flex-col gap-3 crm-tab-content" key={tab}>
+      <div className="w-full max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-5 lg:px-8 xl:px-10 py-5 sm:py-6 flex flex-col gap-0 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -4987,25 +5138,21 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
             return <>
 
-            {/* ── GREETING HEADER ── */}
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:2,flexWrap:"wrap",gap:10}}>
+            {/* ── DASHBOARD HEADER ── */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
               <div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:20}}>{greetEmoji}</span>
-                  <div>
-                    <p style={{color:t.text,fontWeight:800,fontSize:20,lineHeight:1.15,letterSpacing:"-0.02em"}}>
-                      {greeting}, {sess.name.split(" ")[0]}
-                    </p>
-                    <p style={{color:t.sub,fontSize:12,marginTop:2}}>{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
-                  </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontSize:18,lineHeight:1}}>{greetEmoji}</span>
+                  <h1 style={{color:t.text,fontWeight:800,fontSize:24,letterSpacing:"-0.03em",lineHeight:1,margin:0}}>
+                    {greeting}, {sess.name.split(" ")[0]}
+                  </h1>
                 </div>
+                <p style={{color:t.sub,fontSize:13,marginLeft:26}}>{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
               </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                {isAdmin&&<button onClick={()=>{setDsh("add");setDf(blkD());}}
-                  style={{background:t.accent,color:t.accentFg,border:"none",borderRadius:14,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:`0 2px 8px ${t.accent}55`}}>
-                  <span style={{fontSize:15}}>＋</span> New Order
-                </button>}
-              </div>
+              {isAdmin&&<button onClick={()=>{setDsh("add");setDf(blkD());}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)",flexShrink:0}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Order
+              </button>}
             </div>
 
             {/* ── MORNING BRIEFING ── */}
@@ -5015,7 +5162,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             })()}
 
             {/* ── TODAY AT A GLANCE — delivery status card ── */}
-            <div style={card({padding:"18px 20px"})}>
+            <div style={{...card(),overflow:"hidden"}}>
+              <div style={{padding:"18px 20px 14px",background:dm?"linear-gradient(135deg,rgba(37,99,235,0.18) 0%,rgba(99,102,241,0.10) 100%)":"linear-gradient(135deg,rgba(37,99,235,0.08) 0%,rgba(99,102,241,0.04) 100%)",borderBottom:`1px solid ${t.border}`}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                 <div>
                   <p style={sectionLabel}>📦 Today's Deliveries</p>
@@ -5029,7 +5177,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   View all →
                 </button>
               </div>
-
+              </div>
+              <div style={{padding:"14px 20px"}}>
               {todayDelivs.length > 0 ? (()=>{
                 const total = todayDelivs.length;
                 const segments = [
@@ -5061,10 +5210,12 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   <p style={{color:t.sub,fontSize:13}}>No deliveries scheduled for today</p>
                 </div>
               )}
+              </div>
             </div>
 
             {/* ── REVENUE STATS — Today / Week / Month ── */}
-            {canSeeFinancials&&<div style={card({padding:"18px 20px"})}>
+            {canSeeFinancials&&<div style={{...card(),overflow:"hidden"}}>
+              <div style={{padding:"16px 20px 14px",background:dm?"linear-gradient(135deg,rgba(16,185,129,0.15) 0%,rgba(5,150,105,0.08) 100%)":"linear-gradient(135deg,rgba(16,185,129,0.08) 0%,rgba(5,150,105,0.03) 100%)",borderBottom:`1px solid ${t.border}`}}>
               <p style={sectionLabel}>💰 Revenue</p>
               <div className="crm-grid-3" style={{gap:0,marginBottom:16}}>
                 {[
@@ -5095,6 +5246,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>{l}
                   </span>
                 ))}
+              </div>
               </div>
             </div>}
 
@@ -5412,6 +5564,20 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
         {/* CUSTOMERS */}
         {tab==="Customers"&&(<>
+          {/* ── CUSTOMERS TAB HEADER ── */}
+          <SectionHeader dm={dm} title="Customers" sub="Manage all your customers in one place"
+            cta={can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
+              style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Customer
+            </button>}/>
+          {canSeeFinancials&&<TabStatCards dm={dm} cards={[
+            {icon:"👥",label:"Active Customers",value:activeC.length,sub:`${customers.length} total`,iconBg:t.statIcon1},
+            {icon:"💰",label:"Total Collected",value:inr(dashTotalCollected),sub:"All time",iconBg:t.statIcon2},
+            {icon:"⚠️",label:"Outstanding",value:inr(totalDue),sub:`${dashStats.allDue.length} unpaid`,iconBg:t.statIcon5},
+            {icon:"🔄",label:"Replacements",value:dashReplacementCount,sub:inr(totalReplDeductions)+" deducted",iconBg:t.statIcon3},
+            {icon:"⚡",label:"Partial Payments",value:dashPartialCount,sub:inr(dashPartialTotal)+" collected",iconBg:t.statIcon4},
+          ]}/>}
+
           {/* OVERDUE PAYMENT ALERT BANNER */}
           {canSeeFinancials&&(()=>{
             const overdueC=customers.filter(c=>c.pending>0&&c.active);
@@ -5619,20 +5785,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             </Card>;
           })()}
 
-          {/* Summary bar — enhanced 6-up grid */}
-          {canSeeFinancials&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
-            <StatCard dm={dm} label="Active Customers" value={activeC.length} sub={`${customers.length - activeC.length} inactive`} accent="#d97706" icon="👥"/>
-            <StatCard dm={dm} label="Total Collected" value={inr(dashTotalCollected)} sub="All time" accent="#10b981" icon="💰"/>
-            <StatCard dm={dm} label="Outstanding" value={inr(totalDue)} sub={`${dashStats.allDue.length} unpaid`} accent="#ef4444" icon="⚠️"/>
-            <StatCard dm={dm} label="Total Customers" value={customers.length} sub={`${activeC.length} active`} accent="#8b5cf6" icon="🏷️"/>
-            <StatCard dm={dm} label="Replacements" value={dashReplacementCount} sub={`${inr(totalReplDeductions)} deducted`} accent="#f97316" icon="🔄"/>
-            <StatCard dm={dm} label="Partial Payments" value={dashPartialCount} sub={`${inr(dashPartialTotal)} collected`} accent="#f59e0b" icon="⚡"/>
-          </div>}
           {/* ── UNIFIED TOOLBAR ── */}
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <div style={{flex:"1 1 220px",minWidth:0}}>
-              <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search name, phone, address…" style={{width:"100%"}}/>
-            </div>
             <select value={custSortField} onChange={e=>setCustSortField(e.target.value)}
               style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer",flexShrink:0,minWidth:130}}>
               <option value="name">Name A–Z</option>
@@ -5641,8 +5795,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               <option value="orders">Most Orders</option>
               <option value="revenue">Revenue ↓</option>
             </select>
-            <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap"}}>
-            <div className="flex gap-2 flex-wrap">
+            <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",alignItems:"center"}}>
+            <div className="flex gap-3 flex-wrap">
               {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
                 const enriched=customers.map(c=>{
                   const cDelivs=deliveries.filter(d=>d.customerId===c.id);
@@ -5810,24 +5964,311 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>
             </div>
           </div>
-          {/* ── STATUS FILTER PILLS ── */}
-          <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
-            {[
-              {key:"all",    label:`All (${fCust.length})`,         accent:"#6b7280"},
-              {key:"active", label:`Active (${fCust.filter(c=>c.active).length})`,   accent:"#10b981"},
-              {key:"inactive",label:`Inactive (${fCust.filter(c=>!c.active).length})`,accent:"#6b7280"},
-              {key:"owing",  label:`Owing (${fCust.filter(c=>(c.pending||0)>0).length})`, accent:"#ef4444"},
-              {key:"clear",  label:`Paid Up (${fCust.filter(c=>!(c.pending||0)).length})`, accent:"#10b981"},
-            ].map(({key,label,accent})=>{
-              const active=custStatusFilter===key;
-              return <button key={key} onClick={()=>setCustStatusFilter(key)}
-                style={{flexShrink:0,background:active?`${accent}18`:t.inp,color:active?accent:t.sub,border:`1.5px solid ${active?accent:t.border}`,borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
-                {label}
-              </button>;
-            })}
+          {/* ── STATUS FILTER PILLS + VIEW TOGGLE ── */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div className="flex gap-3 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flex:1}}>
+              {[
+                {key:"all",    label:`All (${fCust.length})`,         accent:"#6b7280"},
+                {key:"active", label:`Active (${fCust.filter(c=>c.active).length})`,   accent:"#10b981"},
+                {key:"inactive",label:`Inactive (${fCust.filter(c=>!c.active).length})`,accent:"#6b7280"},
+                {key:"owing",  label:`Owing (${fCust.filter(c=>(c.pending||0)>0).length})`, accent:"#ef4444"},
+                {key:"clear",  label:`Paid Up (${fCust.filter(c=>!(c.pending||0)).length})`, accent:"#10b981"},
+              ].map(({key,label,accent})=>{
+                const active=custStatusFilter===key;
+                return <button key={key} onClick={()=>setCustStatusFilter(key)}
+                  style={{flexShrink:0,background:active?`${accent}18`:t.inp,color:active?accent:t.sub,border:`1.5px solid ${active?accent:t.border}`,borderRadius:99,padding:"6px 16px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                  {label}
+                </button>;
+              })}
+            </div>
+            {/* View mode toggle */}
+            <div style={{display:"flex",gap:4,flexShrink:0,background:t.inp,borderRadius:99,padding:3,border:`1px solid ${t.border}`}}>
+              {[["expanded","📋","Table"],["compact","⚡","Compact"]].map(([v,icon,lbl])=>(
+                <button key={v} onClick={()=>{setCustView(v);setSelectedCustomer(null);}}
+                  style={{background:custView===v?"#2563eb":"transparent",color:custView===v?"#fff":t.sub,border:"none",borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:4}}>
+                  <span>{icon}</span><span style={{display:"none"}}>{lbl}</span><span style={{fontSize:10}}>{lbl}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {clvFilter==="og"&&(()=>{
+          {clvFilter==="og"&&custView==="compact"&&(()=>{
+            // ── COMPACT CUSTOMER CARDS VIEW ──
+            let displayCust=[...fCust];
+            if(custStatusFilter==="active") displayCust=displayCust.filter(c=>c.active);
+            else if(custStatusFilter==="inactive") displayCust=displayCust.filter(c=>!c.active);
+            else if(custStatusFilter==="owing") displayCust=displayCust.filter(c=>(c.pending||0)>0);
+            else if(custStatusFilter==="clear") displayCust=displayCust.filter(c=>(c.pending||0)===0);
+            displayCust=displayCust.map(c=>{
+              const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+              const cDone=cDelivs.filter(d=>d.status==="Delivered");
+              const cTransit=cDelivs.filter(d=>d.status==="In Transit");
+              const cPend=cDelivs.filter(d=>d.status==="Pending");
+              const cCancelled=cDelivs.filter(d=>d.status==="Cancelled");
+              const cRepl=cDelivs.filter(d=>d.replacement?.done);
+              const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
+              const collPct=(c.paid||0)+(c.pending||0)>0?Math.round((c.paid||0)/((c.paid||0)+(c.pending||0))*100):100;
+              return {...c,_cDelivs:cDelivs,_cDone:cDone,_cTransit:cTransit,_cPend:cPend,_cCancelled:cCancelled,_cRepl:cRepl,_cReplAmt:cReplAmt,_lastDeliv:lastDeliv,_cRev:cRev,_delivRate:delivRate,_collPct:collPct};
+            });
+            if(custSortField==="name") displayCust.sort((a,b)=>a.name.localeCompare(b.name));
+            else if(custSortField==="lastOrder") displayCust.sort((a,b)=>(b._lastDeliv?.date||"").localeCompare(a._lastDeliv?.date||""));
+            else if(custSortField==="pending") displayCust.sort((a,b)=>(b.pending||0)-(a.pending||0));
+            else if(custSortField==="orders") displayCust.sort((a,b)=>b._cDelivs.length-a._cDelivs.length);
+            else if(custSortField==="revenue") displayCust.sort((a,b)=>b._cRev-a._cRev);
+            const CPAGE=15;
+            const totalCustRows=displayCust.length;
+            const pagedCust=displayCust.slice((custPage-1)*CPAGE,custPage*CPAGE);
+            const totalPages=Math.ceil(totalCustRows/CPAGE);
+            if(displayCust.length===0) return <p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>No customers found.</p>;
+            return <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {pagedCust.map((c)=>{
+                const isExpanded=selectedCustomer?.id===c.id;
+                const lastDiffDays=c._lastDeliv?Math.floor((new Date()-new Date(c._lastDeliv.date))/(1000*60*60*24)):null;
+                const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
+                const lastCol=lastDiffDays===null?"#94a3b8":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
+                const accentColor=c._cDelivs.length===0?"#6b7280":c.active?"#f59e0b":"#94a3b8";
+                // Get recent deliveries for expanded view
+                const recentDelivs=[...c._cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+                return <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?"#2563eb40":t.border}`,borderRadius:18,overflow:"hidden",boxShadow:isExpanded?"0 4px 20px rgba(37,99,235,0.12)":"0 1px 4px rgba(0,0,0,0.05)",transition:"all 0.2s"}}>
+                  {/* ── COMPACT ROW (always visible) ── */}
+                  <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",background:isExpanded?(dm?"rgba(37,99,235,0.1)":"rgba(37,99,235,0.04)"):"transparent"}}
+                    onClick={()=>{setSelectedCustomer(isExpanded?null:c);setCustDetailDelivFilter("all");setCustDetailPartialAmt("");}}>
+                    {/* Avatar */}
+                    <div style={{width:42,height:42,borderRadius:13,background:`${accentColor}20`,color:accentColor,fontWeight:900,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
+                      {c.name.charAt(0).toUpperCase()}
+                      <span style={{position:"absolute",bottom:-2,right:-2,width:10,height:10,borderRadius:"50%",background:c.active?"#10b981":"#94a3b8",border:`2px solid ${t.card}`}}/>
+                    </div>
+                    {/* Name + sub info */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <p style={{color:t.text,fontWeight:800,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{c.name}</p>
+                        <span style={{background:c.active?"#10b98115":"#6b728015",color:c.active?"#059669":"#6b7280",border:`1px solid ${c.active?"#10b98125":"#6b728025"}`,borderRadius:99,padding:"2px 8px",fontSize:9,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+                          {c.active?"ACTIVE":"INACTIVE"}
+                        </span>
+                        {(c.pending||0)>0&&<span style={{background:"#ef444415",color:"#dc2626",border:"1px solid #ef444425",borderRadius:99,padding:"2px 8px",fontSize:9,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>DUE</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap",alignItems:"center"}}>
+                        {c.phone&&<span style={{color:t.sub,fontSize:11}}>📞 {c.phone}</span>}
+                        {c.address&&<span style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>📍 {c.address}</span>}
+                      </div>
+                    </div>
+                    {/* Stats strip */}
+                    <div style={{display:"flex",gap:16,alignItems:"center",flexShrink:0}}>
+                      <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
+                        <span style={{color:"#3b82f6",fontWeight:800,fontSize:15,lineHeight:1}}>{c._cDelivs.length}</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Orders</span>
+                      </div>
+                      <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
+                        <span style={{color:lastCol,fontWeight:700,fontSize:12,lineHeight:1}}>{lastLabel}</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Last</span>
+                      </div>
+                      {canSeePrices&&<div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
+                        <span style={{color:"#10b981",fontWeight:800,fontSize:13,lineHeight:1}}>{inr(c.paid||0)}</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Paid</span>
+                      </div>}
+                      {canSeeFinancials&&<div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
+                        <span style={{color:(c.pending||0)>0?"#ef4444":"#10b981",fontWeight:800,fontSize:13,lineHeight:1}}>{(c.pending||0)>0?inr(c.pending):"✓"}</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Due</span>
+                      </div>}
+                      {/* Expand chevron */}
+                      <div style={{width:28,height:28,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:t.sub,fontSize:13,fontWeight:700,transform:isExpanded?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
+                        ∨
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── PROGRESS BAR (always visible under row) ── */}
+                  {c._cDelivs.length>0&&<div style={{height:3,background:t.border,display:"flex",gap:1,overflow:"hidden"}}>
+                    {[{v:c._cDone.length,col:"#10b981"},{v:c._cTransit.length,col:"#3b82f6"},{v:c._cPend.length,col:"#f59e0b"},{v:c._cCancelled.length,col:"#ef4444"}].map(({v,col},i)=>
+                      v>0&&<div key={i} style={{width:`${Math.round(v/c._cDelivs.length*100)}%`,background:col,transition:"width 0.5s"}}/>
+                    )}
+                  </div>}
+
+                  {/* ── EXPANDED DETAIL PANEL ── */}
+                  {isExpanded&&(()=>{
+                    const cFull=customers.find(x=>x.id===c.id)||c;
+                    const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>b.date.localeCompare(a.date));
+                    const cDue=cFull.pending||0;
+                    const cPaid=cFull.paid||0;
+                    const tStr=today();
+                    const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+                    const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+                    const filtDelivs=allCDelivs.filter(d=>{
+                      if(custDetailDelivFilter==="today") return d.date===tStr;
+                      if(custDetailDelivFilter==="yesterday") return d.date===yStr;
+                      if(custDetailDelivFilter==="week") return d.date>=wStr;
+                      return true;
+                    });
+                    return <div style={{borderTop:`1px solid ${t.border}`,background:dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.008)"}}>
+                      {/* ── TOP: full info grid ── */}
+                      <div style={{padding:"16px 18px",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,borderBottom:`1px solid ${t.border}`}}>
+                        {/* Profile block */}
+                        <div style={{background:t.inp,borderRadius:14,padding:"14px",display:"flex",flexDirection:"column",gap:8}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>Profile</p>
+                          {[
+                            {icon:"👤",val:cFull.name,bold:true},
+                            {icon:"📞",val:cFull.phone||"—"},
+                            {icon:"📍",val:cFull.address||"—"},
+                            {icon:"📅",val:cFull.joinDate?`Since ${cFull.joinDate}`:"—"},
+                            {icon:"🆔",val:cFull.id?`ID: ${cFull.id.slice(-8).toUpperCase()}`:"—"},
+                          ].map(({icon,val,bold})=>
+                            <div key={icon} style={{display:"flex",gap:7,alignItems:"flex-start"}}>
+                              <span style={{fontSize:12,flexShrink:0,lineHeight:1.5}}>{icon}</span>
+                              <span style={{color:bold?t.text:t.sub,fontSize:12,fontWeight:bold?700:400,lineHeight:1.4,wordBreak:"break-word"}}>{val}</span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Financial block */}
+                        {canSeePrices&&<div style={{background:t.inp,borderRadius:14,padding:"14px"}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Financials</p>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                            {[
+                              {label:"TOTAL PAID",val:inr(cPaid),color:"#10b981"},
+                              {label:"PENDING DUE",val:cDue>0?inr(cDue):"✓ Clear",color:cDue>0?"#ef4444":"#10b981"},
+                              {label:"TOTAL BILLED",val:inr(c._cRev),color:"#3b82f6"},
+                              {label:"REPLACEMENTS",val:c._cReplAmt>0?inr(c._cReplAmt):"None",color:"#f97316"},
+                            ].map(({label,val,color})=>(
+                              <div key={label} style={{textAlign:"center",background:t.card,borderRadius:10,padding:"10px 6px"}}>
+                                <p style={{color,fontWeight:900,fontSize:15,lineHeight:1}}>{val}</p>
+                                <p style={{color:t.sub,fontSize:8,fontWeight:700,textTransform:"uppercase",marginTop:3}}>{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Payment bar */}
+                          <div style={{marginTop:10}}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                              <span style={{color:t.sub,fontSize:9,fontWeight:700}}>Collection</span>
+                              <span style={{color:c._collPct>=80?"#10b981":c._collPct>=50?"#f59e0b":"#ef4444",fontWeight:700,fontSize:9}}>{c._collPct}%</span>
+                            </div>
+                            <div style={{height:6,borderRadius:6,background:t.border,overflow:"hidden"}}>
+                              <div style={{width:`${c._collPct}%`,height:"100%",background:c._collPct>=80?"#10b981":c._collPct>=50?"#f59e0b":"#ef4444",borderRadius:6,transition:"width 0.5s"}}/>
+                            </div>
+                          </div>
+                        </div>}
+                        {/* Delivery stats block */}
+                        <div style={{background:t.inp,borderRadius:14,padding:"14px"}}>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Order Stats</p>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:10}}>
+                            {[
+                              {label:"TOTAL",val:c._cDelivs.length,color:"#6366f1"},
+                              {label:"DELIVERED",val:c._cDone.length,color:"#10b981"},
+                              {label:"IN TRANSIT",val:c._cTransit.length,color:"#3b82f6"},
+                              {label:"PENDING",val:c._cPend.length,color:"#f59e0b"},
+                              {label:"CANCELLED",val:c._cCancelled.length,color:"#ef4444"},
+                              {label:"REPLACED",val:c._cRepl.length,color:"#f97316"},
+                            ].map(({label,val,color})=>(
+                              <div key={label} style={{textAlign:"center",background:t.card,borderRadius:10,padding:"8px 4px"}}>
+                                <p style={{color,fontWeight:900,fontSize:16,lineHeight:1}}>{val}</p>
+                                <p style={{color:t.sub,fontSize:8,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Delivery rate bar */}
+                          <div>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                              <span style={{color:t.sub,fontSize:9,fontWeight:700}}>Delivery Rate</span>
+                              <span style={{color:c._delivRate>=90?"#10b981":c._delivRate>=70?"#f59e0b":"#ef4444",fontWeight:700,fontSize:9}}>{c._delivRate}%</span>
+                            </div>
+                            <div style={{height:6,borderRadius:6,background:t.border,overflow:"hidden"}}>
+                              <div style={{width:`${c._delivRate}%`,height:"100%",background:c._delivRate>=90?"#10b981":c._delivRate>=70?"#f59e0b":"#ef4444",borderRadius:6,transition:"width 0.5s"}}/>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── ACTIONS ROW ── */}
+                      <div style={{padding:"12px 18px",borderBottom:`1px solid ${t.border}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginRight:4,flexShrink:0}}>Actions:</p>
+                        {can("cust_edit")&&<button onClick={()=>{setCsh(cFull);setCf(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
+                        {can("cust_export")&&<button onClick={()=>exportPDF(cFull,products,"customer",settings,deliveries)} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>}
+                        {can("cust_export")&&<button onClick={()=>{const rows=[{...cFull}];exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📊 Excel</button>}
+                        {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(cFull);setPayAmt(String(cDue));setSelectedCustomer(null);}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
+                        {can("cust_deactivate")&&<button onClick={()=>{togActive(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{cFull.active?"⏸ Pause":"▶ Activate"}</button>}
+                        {cFull.phone&&<a href={`https://wa.me/${cFull.phone.replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" style={{background:"#25D366",color:"#fff",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",textDecoration:"none"}}>💬 WhatsApp</a>}
+                        <button onClick={()=>setDetailModal({type:"customer",data:cFull})} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",marginLeft:"auto"}}>🔍 Full Profile</button>
+                        {can("cust_delete")&&<button onClick={()=>delC(cFull)} style={{background:"#ef444415",border:"1px solid #ef444430",color:"#ef4444",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🗑 Delete</button>}
+                      </div>
+
+                      {/* ── PARTIAL PAYMENT INLINE ── */}
+                      {isAdmin&&cDue>0&&<div style={{padding:"12px 18px",borderBottom:`1px solid ${t.border}`,background:"#f59e0b08"}}>
+                        <p style={{color:"#f59e0b",fontWeight:700,fontSize:11,marginBottom:8}}>💰 LOG PARTIAL PAYMENT</p>
+                        <div style={{display:"flex",gap:8}}>
+                          <input type="number" placeholder="₹ Amount" value={custDetailPartialAmt} onChange={e=>setCustDetailPartialAmt(e.target.value)}
+                            style={{flex:1,maxWidth:200,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:9,padding:"9px 12px",fontSize:13,outline:"none"}}
+                            onFocus={e=>{e.target.style.borderColor="#f59e0b";}} onBlur={e=>{e.target.style.borderColor=t.inpB;}}/>
+                          <button onClick={()=>{
+                            const amt=+custDetailPartialAmt;
+                            if(!amt||amt<=0){notify("Enter a valid amount");return;}
+                            setCust(p=>p.map(x=>x.id===cFull.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
+                            addLog("Partial payment logged",`${cFull.name} — ${inr(amt)}`);
+                            notify(`${inr(amt)} recorded ✓`);
+                            setCustDetailPartialAmt("");setSelectedCustomer(null);
+                          }} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Apply</button>
+                        </div>
+                      </div>}
+
+                      {/* ── DELIVERIES LIST ── */}
+                      <div style={{padding:"14px 18px"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
+                          <p style={{color:t.text,fontWeight:700,fontSize:12}}>DELIVERIES ({allCDelivs.length})</p>
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            {[["all","All"],["today","Today"],["yesterday","Yesterday"],["week","This Week"]].map(([k,l])=>(
+                              <button key={k} onClick={()=>setCustDetailDelivFilter(k)}
+                                style={{background:custDetailDelivFilter===k?"#2563eb":t.inp,color:custDetailDelivFilter===k?"#fff":t.sub,border:`1px solid ${custDetailDelivFilter===k?"#2563eb":t.border}`,borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                                {l}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"16px 0"}}>No deliveries match this filter.</p>}
+                        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
+                          {filtDelivs.map((d,di)=>{
+                            const tot=lineTotal(d.orderLines);
+                            const dRepl=+d.replacement?.amount||0;
+                            const dNet=Math.max(0,tot-dRepl);
+                            const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                            const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||`TAS-${(d.date||"").replace(/-/g,"").slice(2)}-${(d.id||"").slice(-4).toUpperCase()}`;
+                            const rows=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0);
+                            return <div key={d.id||di} style={{background:t.inp,borderRadius:12,padding:"10px 12px",border:`1px solid ${t.border}`,cursor:"pointer"}}
+                              onClick={()=>setDetailModal({type:"delivery",data:d})}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                                <span style={{color:t.text,fontWeight:700,fontSize:12}}>{d.date}</span>
+                                <span style={{display:"inline-flex",alignItems:"center",gap:3,background:`${sc}18`,color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:700}}>{d.status}</span>
+                                {canSeePrices&&<span style={{color:"#10b981",fontWeight:800,fontSize:12,marginLeft:"auto"}}>{inr(tot)}</span>}
+                                {dRepl>0&&<span style={{color:"#f97316",fontSize:10,fontWeight:700}}>-{inr(dRepl)} repl</span>}
+                                <span style={{color:"#6366f1",fontSize:9,fontFamily:"monospace"}}>{invNo}</span>
+                              </div>
+                              {rows.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                                {rows.map(([prod,l])=><span key={prod} style={{background:t.card,borderRadius:6,padding:"2px 8px",fontSize:10,color:t.sub,border:`1px solid ${t.border}`}}>
+                                  {prod}: {l.qty} {canSeePrices&&l.price?`× ${inr(l.price)}`:""}
+                                </span>)}
+                              </div>}
+                              {d.notes&&<p style={{color:t.sub,fontSize:10,marginTop:4}}>📝 {d.notes}</p>}
+                            </div>;
+                          })}
+                        </div>
+                        {filtDelivs.length>0&&<p style={{color:t.sub,fontSize:10,textAlign:"right",marginTop:8}}>Click any delivery to open full detail</p>}
+                      </div>
+                    </div>;
+                  })()}
+                </div>;
+              })}
+              {/* Pagination */}
+              {totalPages>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 4px"}}>
+                <span style={{color:t.sub,fontSize:11}}>Showing {Math.min((custPage-1)*CPAGE+1,totalCustRows)}–{Math.min(custPage*CPAGE,totalCustRows)} of {totalCustRows}</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>{if(custPage>1){setCustPage(custPage-1);window.scrollTo({top:0,behavior:"smooth"});setSelectedCustomer(null);}}} disabled={custPage===1}
+                    style={{background:t.inp,border:`1px solid ${t.border}`,color:custPage===1?t.sub:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:custPage===1?"default":"pointer",opacity:custPage===1?0.5:1}}>← Prev</button>
+                  <button onClick={()=>{if(custPage<totalPages){setCustPage(custPage+1);window.scrollTo({top:0,behavior:"smooth"});setSelectedCustomer(null);}}} disabled={custPage>=totalPages}
+                    style={{background:t.inp,border:`1px solid ${t.border}`,color:custPage>=totalPages?t.sub:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:custPage>=totalPages?"default":"pointer",opacity:custPage>=totalPages?0.5:1}}>Next →</button>
+                </div>
+              </div>}
+            </div>;
+          })()}
+          {clvFilter==="og"&&custView==="expanded"&&(()=>{
             // Apply sort + filter on top of existing fCust search filter
             let displayCust=[...fCust];
             if(custStatusFilter==="active") displayCust=displayCust.filter(c=>c.active);
@@ -5848,301 +6289,425 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             else if(custSortField==="revenue") displayCust.sort((a,b)=>b._cRev-a._cRev);
 
             return <>
-            {displayCust.length>0&&<p style={{color:t.sub,fontSize:11,fontWeight:600,paddingLeft:2}}>{displayCust.length} customer{displayCust.length!==1?"s":""}</p>}
             {displayCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,520px),1fr))",gap:14,alignItems:"start"}}>
-            {displayCust.map(c=>{
-              const cDelivs=c._cDelivs;
-              const cDone=c._cDone;
-              const lastDeliv=c._lastDeliv;
-              const rows=lineRows(c.orderLines,products);
-              const tot=lineTotal(c.orderLines);
-              const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
-              const cReplacements=cDelivs.filter(d=>d.replacement?.done).length;
-              const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
-              const partialPaid=c.partialPay||0;
-              const netTot=Math.max(0,tot-cReplAmt);
-              const totalBilled=(c.paid||0)+(c.pending||0);
-              const payPct=totalBilled>0?Math.round((c.paid||0)/totalBilled*100):100;
-              const lastDiffDays=lastDeliv?Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24)):null;
-              const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
-              const lastCol=lastDiffDays===null?"#6b7280":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
-              const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
-              const isExpanded=expandedCustCard===c.id;
+            {/* ── CUSTOMERS DATA TABLE ── */}
+            {displayCust.length>0&&(()=>{
+              const CUST_PAGE_SIZE=15;
+              const totalCustRows=displayCust.length;
+              const pagedCust=displayCust.slice((custPage-1)*CUST_PAGE_SIZE,custPage*CUST_PAGE_SIZE);
+              return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",minWidth:750}}>
+                    <thead>
+                      <tr style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.025)",borderBottom:`1.5px solid ${t.border}`}}>
+                        <th style={{padding:"11px 8px 11px 16px",width:28}}></th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Customer</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Contact</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Orders</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Last Order</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Status</th>
+                        {canSeePrices&&<th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Paid</th>}
+                        {canSeeFinancials&&<th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Pending</th>}
+                        <th style={{padding:"11px 16px 11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedCust.map((c,ci)=>{
+                        const cDelivs=c._cDelivs||[];
+                        const lastDeliv=c._lastDeliv||null;
+                        const lastDiffDays=lastDeliv?Math.floor((new Date()-new Date(lastDeliv.date))/(1000*60*60*24)):null;
+                        const lastLabel=lastDiffDays===null?"Never":lastDiffDays===0?"Today":lastDiffDays===1?"Yesterday":`${lastDiffDays}d ago`;
+                        const lastCol=lastDiffDays===null?"#94a3b8":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
+                        const isEven=ci%2===0;
+                        return <tr key={c.id}
+                          style={{borderBottom:`1px solid ${t.border}`,background:selectedCustomer?.id===c.id?(dm?"rgba(37,99,235,0.15)":"rgba(37,99,235,0.06)"):isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",transition:"background 0.12s",cursor:"pointer"}}
+                          onClick={()=>{setSelectedCustomer(selectedCustomer?.id===c.id?null:c);setCustDetailDelivFilter("all");setCustDetailPartialAmt("");}}
+                          onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(37,99,235,0.04)";}}
+                          onMouseLeave={e=>{e.currentTarget.style.background=selectedCustomer?.id===c.id?(dm?"rgba(37,99,235,0.15)":"rgba(37,99,235,0.06)"):isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
+                          {/* Active dot */}
+                          <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}}>
+                            <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:c.active?"#10b981":"#94a3b8"}}/>
+                          </td>
+                          {/* Customer name + join date stacked */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:160}}>
+                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                              <div style={{width:34,height:34,borderRadius:10,background:c.active?"rgba(245,158,11,0.12)":"rgba(107,114,128,0.1)",color:c.active?"#f59e0b":"#9ca3af",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:14,flexShrink:0}}>
+                                {c.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div style={{minWidth:0}}>
+                                <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{c.name}</p>
+                                {c.joinDate&&<p style={{color:t.sub,fontSize:10}}>Since {c.joinDate}</p>}
+                              </div>
+                            </div>
+                          </td>
+                          {/* Contact */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:140}}>
+                            {c.phone?<p style={{color:t.text,fontSize:13,marginBottom:2}}>📞 {c.phone}</p>:<p style={{color:t.sub,fontSize:12}}>—</p>}
+                            {c.address&&<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>📍 {c.address}</p>}
+                          </td>
+                          {/* Orders count */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{cDelivs.length}</p>
+                            <p style={{color:t.sub,fontSize:10}}>{(c._cDone||[]).length} delivered</p>
+                          </td>
+                          {/* Last Order */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
+                            <p style={{color:lastCol,fontWeight:700,fontSize:13,marginBottom:2}}>{lastLabel}</p>
+                            {lastDeliv&&<p style={{color:t.sub,fontSize:10}}>{lastDeliv.date}</p>}
+                          </td>
+                          {/* Status pill */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:5,background:c.active?"#10b98115":"#6b728015",color:c.active?"#059669":"#6b7280",border:`1px solid ${c.active?"#10b98125":"#6b728025"}`,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                              <span style={{width:6,height:6,borderRadius:"50%",background:c.active?"#10b981":"#6b7280",display:"inline-block"}}/>
+                              {c.active?"Active":"Inactive"}
+                            </span>
+                          </td>
+                          {/* Paid */}
+                          {canSeePrices&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                            <span style={{color:"#059669",fontWeight:800,fontSize:13}}>{inr(c.paid||0)}</span>
+                          </td>}
+                          {/* Pending */}
+                          {canSeeFinancials&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                            <span style={{color:(c.pending||0)>0?"#dc2626":"#10b981",fontWeight:800,fontSize:13}}>{(c.pending||0)>0?inr(c.pending):"✓ Clear"}</span>
+                          </td>}
+                          {/* Actions */}
+                          <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                            <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                              <button onClick={e=>{e.stopPropagation();setDetailModal({type:"customer",data:c});}}
+                                title="View customer profile"
+                                style={{width:32,height:32,borderRadius:8,background:dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s"}}
+                                onMouseEnter={e=>{e.currentTarget.style.background="#2563eb";e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor="#2563eb";}}
+                                onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)";e.currentTarget.style.color=t.sub;e.currentTarget.style.borderColor=t.border;}}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              </button>
+                              <div style={{position:"relative"}}>
+                                <button onClick={e=>{e.stopPropagation();const el=document.getElementById(`c3dot_${c.id}`);if(el){el.style.display=el.style.display==="block"?"none":"block";}}}
+                                  style={{width:32,height:32,borderRadius:8,background:dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s"}}
+                                  onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.09)";}}
+                                  onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)";}}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                                </button>
+                                <div id={`c3dot_${c.id}`} style={{display:"none",position:"absolute",right:0,top:"calc(100% + 6px)",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:100,minWidth:180,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+                                  {[
+                                    can("cust_edit")&&{label:"✏️  Edit",action:()=>{setCsh(c);setCf(c);document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                    can("cust_seePrices")&&{label:"🚚  View Deliveries",action:()=>{setTab("Deliveries");setDelivStatusFilter("all");document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                    can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(true);setPayAmt(String(c.pending||0));document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                    can("cust_deactivate")&&{label:c.active?"🔒  Deactivate":"🔓  Activate",action:()=>{setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(c.active?"Deactivated":"Activated",c.name);document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                    can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{if(window.confirm(`Delete ${c.name}?`)){setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);}document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                  ].filter(Boolean).map((item,ii)=>(
+                                    <button key={ii} onClick={item.action}
+                                      style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"10px 16px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
+                                      onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)";}}
+                                      onMouseLeave={e=>{e.currentTarget.style.background="none";}}>
+                                      {item.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Table Pagination Footer */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
+                  <p style={{color:t.sub,fontSize:12,fontWeight:500,flexShrink:0}}>
+                    Showing <b style={{color:t.text}}>{Math.min((custPage-1)*CUST_PAGE_SIZE+1,totalCustRows)}</b> to <b style={{color:t.text}}>{Math.min(custPage*CUST_PAGE_SIZE,totalCustRows)}</b> of <b style={{color:t.text}}>{totalCustRows}</b> customers
+                  </p>
+                  {totalCustRows>CUST_PAGE_SIZE&&(()=>{
+                    const totalPages=Math.ceil(totalCustRows/CUST_PAGE_SIZE);
+                    const pages=[];
+                    for(let p=1;p<=totalPages;p++){if(p===1||p===totalPages||Math.abs(p-custPage)<=1)pages.push(p);else if(pages[pages.length-1]!=="…")pages.push("…");}
+                    return <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button onClick={()=>{if(custPage>1){setCustPage(custPage-1);window.scrollTo({top:0,behavior:"smooth"});}}} disabled={custPage===1}
+                        style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:custPage===1?t.sub:t.text,cursor:custPage===1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:custPage===1?0.4:1}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                      </button>
+                      {pages.map((p,pi)=>p==="…"?<span key={`e${pi}`} style={{color:t.sub,fontSize:12,padding:"0 4px"}}>…</span>:
+                        <button key={p} onClick={()=>{setCustPage(p);window.scrollTo({top:0,behavior:"smooth"});}}
+                          style={{width:32,height:32,borderRadius:8,background:custPage===p?"#2563eb":t.inp,border:`1px solid ${custPage===p?"#2563eb":t.border}`,color:custPage===p?"#fff":t.text,fontWeight:custPage===p?800:500,fontSize:12,cursor:"pointer",transition:"all 0.12s"}}>{p}</button>
+                      )}
+                      <button onClick={()=>{const tp=Math.ceil(totalCustRows/CUST_PAGE_SIZE);if(custPage<tp){setCustPage(custPage+1);window.scrollTo({top:0,behavior:"smooth"});}}} disabled={custPage===Math.ceil(totalCustRows/CUST_PAGE_SIZE)}
+                        style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:custPage===Math.ceil(totalCustRows/CUST_PAGE_SIZE)?t.sub:t.text,cursor:custPage===Math.ceil(totalCustRows/CUST_PAGE_SIZE)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:custPage===Math.ceil(totalCustRows/CUST_PAGE_SIZE)?0.4:1}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                      </button>
+                    </div>;
+                  })()}
+                  <span style={{color:t.sub,fontSize:11,flexShrink:0}}>{totalCustRows} total</span>
+                </div>
+              </div>;
+            })()}
 
-              return (
-                <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?"#f59e0b":t.border}`,borderRadius:18,overflow:"hidden",boxShadow:dm?"none":isExpanded?"0 8px 32px rgba(245,158,11,0.12)":"0 1px 8px rgba(0,0,0,0.05)",transition:"border-color 0.15s,box-shadow 0.2s"}}>
-
-                  {/* ── STATUS STRIPE ── */}
-                  <div style={{height:3,background:c.active?(c.pending>0?"linear-gradient(90deg,#ef4444 0%,#f59e0b 60%,#10b981 100%)":"#10b981"):t.border}}/>
-
-                  {/* ── COLLAPSED HEADER ── */}
-                  <div onClick={()=>setExpandedCustCard(isExpanded?null:c.id)}
-                    style={{padding:"14px 18px",cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",gap:14,WebkitTapHighlightColor:"transparent"}}>
-                    {/* Avatar with recency dot */}
-                    <div style={{position:"relative",flexShrink:0}}>
-                      <div style={{width:46,height:46,borderRadius:14,background:c.active?"#f59e0b22":"#6b728018",color:c.active?"#f59e0b":t.sub,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,letterSpacing:-1,border:isExpanded?"2px solid #f59e0b60":"2px solid transparent",transition:"border-color 0.15s"}}>
-                        {c.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:lastCol,border:`2px solid ${t.card}`}}/>
+            {/* ── INLINE CUSTOMER DETAIL PANEL (opens below table on row click) ── */}
+            {selectedCustomer&&(()=>{
+              const c=customers.find(x=>x.id===selectedCustomer.id)||selectedCustomer;
+              const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>b.date.localeCompare(a.date));
+              const cDone=allCDelivs.filter(d=>d.status==="Delivered");
+              const cPend=allCDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+              const cReturns=allCDelivs.filter(d=>d.status==="Cancelled");
+              const cRepl=allCDelivs.filter(d=>d.replacement?.done);
+              const cReplAmt=allCDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+              const cPartialPaid=c.partialPay||0;
+              const cPaid=c.paid||0;
+              const cDue=c.pending||0;
+              const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+              const cNetRev=Math.max(0,cRev-cReplAmt);
+              const delivRate=allCDelivs.length>0?Math.round(cDone.length/allCDelivs.length*100):100;
+              const collPct=(cPaid+cDue)>0?Math.round(cPaid/(cPaid+cDue)*100):100;
+              const lastD=allCDelivs[0]||null;
+              // Delivery filter
+              const tStr=today();
+              const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+              const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
+              const filtDelivs=allCDelivs.filter(d=>{
+                if(custDetailDelivFilter==="today") return d.date===tStr;
+                if(custDetailDelivFilter==="yesterday") return d.date===yStr;
+                if(custDetailDelivFilter==="week") return d.date>=wStr;
+                return true;
+              });
+              // Merge deliveries to customer account
+              const mergeEnabled=settings?.featureMergeDelivToCustomer!==false;
+              return <div style={{background:t.card,border:`1.5px solid #2563eb40`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 8px 40px rgba(0,0,0,0.4)":"0 8px 32px rgba(37,99,235,0.1)",marginTop:8}}>
+                {/* Header */}
+                <div style={{padding:"16px 20px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dm?"rgba(37,99,235,0.08)":"rgba(37,99,235,0.04)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:46,height:46,borderRadius:14,background:c.active?"#f59e0b20":"#6b728015",color:c.active?"#f59e0b":"#9ca3af",fontWeight:900,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
+                      {c.name.charAt(0).toUpperCase()}
+                      <span style={{position:"absolute",bottom:-2,right:-2,width:10,height:10,borderRadius:"50%",background:c.active?"#10b981":"#94a3b8",border:`2px solid ${t.card}`}}/>
                     </div>
-                    {/* Name + meta */}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:4}}>
-                        <p style={{color:t.text,fontWeight:800,fontSize:14,lineHeight:1.2}}>{c.name}</p>
-                        <span style={{background:c.active?(dm?"#10b98122":"#dcfce7"):(dm?"#ffffff10":"#f3f4f6"),color:c.active?"#15803d":"#6b7280",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,letterSpacing:"0.04em"}}>{c.active?"● ACTIVE":"○ INACTIVE"}</span>
-                        {c.pending>0&&<span style={{background:dm?"#ef444420":"#fef2f2",color:"#dc2626",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>Due {inr(c.pending)}</span>}
-                        {!c.pending&&totalBilled>0&&<span style={{background:dm?"#10b98120":"#f0fdf4",color:"#16a34a",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>✓ Clear</span>}
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <p style={{color:t.text,fontWeight:800,fontSize:16,lineHeight:1.2}}>{c.name}</p>
+                        <span style={{background:c.active?"#10b98115":"#6b728015",color:c.active?"#059669":"#6b7280",border:`1px solid ${c.active?"#10b98125":"#6b728025"}`,borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>● {c.active?"ACTIVE":"INACTIVE"}</span>
+                        <span style={{background:cDue>0?"#ef444415":"#10b98115",color:cDue>0?"#dc2626":"#059669",border:`1px solid ${cDue>0?"#ef444425":"#10b98125"}`,borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:700}}>{cDue>0?"DUE":"✓ Clear"}</span>
                       </div>
-                      <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12,marginTop:4,flexWrap:"wrap"}}>
                         {c.phone&&<span style={{color:t.sub,fontSize:11}}>📞 {c.phone}</span>}
-                        <span style={{color:lastCol,fontSize:11,fontWeight:600}}>🕐 {lastLabel}</span>
-                        <span style={{color:t.sub,fontSize:11}}>{cDelivs.length} order{cDelivs.length!==1?"s":""}</span>
-                        {c.address&&<span style={{color:t.sub,fontSize:11,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {c.address}</span>}
+                        {lastD&&<span style={{color:t.sub,fontSize:11}}>🕒 {lastD.date}</span>}
+                        {c.address&&<span style={{color:t.sub,fontSize:11}}>📍 {c.address}</span>}
                       </div>
-                    </div>
-                    {/* Right: financials + chevron */}
-                    <div style={{display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
-                      {canSeePrices&&<div style={{textAlign:"right"}}>
-                        <p style={{color:"#10b981",fontWeight:900,fontSize:14,lineHeight:1}}>{inr(c.paid||0)}</p>
-                        <p style={{color:t.sub,fontSize:9,marginTop:2}}>collected</p>
-                      </div>}
-                      {canSeeFinancials&&c.pending>0&&<div style={{textAlign:"right"}}>
-                        <p style={{color:"#ef4444",fontWeight:900,fontSize:14,lineHeight:1}}>{inr(c.pending)}</p>
-                        <p style={{color:t.sub,fontSize:9,marginTop:2}}>pending</p>
-                      </div>}
-                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{color:t.sub,transition:"transform 0.2s",transform:isExpanded?"rotate(180deg)":"none",flexShrink:0}}><path d="M4.5 6.75L9 11.25L13.5 6.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </div>
                   </div>
-
-                  {/* ── EXPANDED BODY — two-column on desktop ── */}
-                  {isExpanded&&<div style={{borderTop:`1px solid ${t.border}`,padding:"18px 18px 20px",animation:"custCardExpand 0.18s ease-out"}} ref={el=>{if(el&&!document.getElementById("cust-card-anim-style")){const s=document.createElement("style");s.id="cust-card-anim-style";s.textContent="@keyframes custCardExpand{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}";document.head.appendChild(s);}}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,alignItems:"start"}}>
-
-                      {/* ── LEFT COLUMN ── */}
-                      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-
-                        {/* Stats row */}
-                        <div className="crm-grid-4" style={{gap:8}}>
-                          {[
-                            {label:"Orders",val:cDelivs.length,color:t.text},
-                            {label:"Delivered",val:cDone.length,color:"#10b981"},
-                            {label:"Returns",val:cReturns,color:cReturns>0?"#ef4444":t.sub},
-                            {label:"Replaced",val:cReplacements,color:cReplacements>0?"#f97316":t.sub},
-                          ].map(({label,val,color})=>(
-                            <div key={label} style={{background:t.inp,borderRadius:10,padding:"10px 6px",textAlign:"center"}}>
-                              <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{val}</p>
-                              <p style={{color:t.sub,fontSize:9,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
-                            </div>
-                          ))}
-                        </div>
-                        {/* Second stats row for financial details */}
-                        {canSeeFinancials&&<div className="crm-grid-3" style={{gap:8}}>
-                          {[
-                            {label:"Repl. Deducted",val:inr(cReplAmt),color:cReplAmt>0?"#f97316":t.sub},
-                            {label:"Partial Paid",val:inr(partialPaid),color:partialPaid>0?"#f59e0b":t.sub},
-                            {label:"Pending",val:inr(c.pending||0),color:(c.pending||0)>0?"#ef4444":"#10b981"},
-                          ].map(({label,val,color})=>(
-                            <div key={label} style={{background:t.inp,borderRadius:10,padding:"8px 6px",textAlign:"center"}}>
-                              <p style={{color,fontWeight:800,fontSize:13,lineHeight:1}}>{val}</p>
-                              <p style={{color:t.sub,fontSize:9,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</p>
-                            </div>
-                          ))}
-                        </div>}
-
-                        {/* Delivery rate bar */}
-                        {cDelivs.length>0&&<div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:5}}>
-                            <span style={{fontWeight:600}}>Delivery rate</span>
-                            <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
-                          </div>
-                          <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
-                            <div style={{width:`${delivRate}%`,height:"100%",borderRadius:5,background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",transition:"width 0.4s"}}/>
-                          </div>
-                        </div>}
-
-                        {/* Payment status */}
-                        {canSeeFinancials&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                            <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Payment Status</span>
-                            <span style={{fontSize:12,fontWeight:800,color:c.pending>0?"#ef4444":"#10b981",background:c.pending>0?"#ef444415":"#10b98115",borderRadius:8,padding:"2px 9px"}}>{c.pending>0?`Due ${inr(c.pending)}`:"✓ Fully Paid"}</span>
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:8}}>
-                            <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(c.paid||0)}</span>
-                            {totalBilled>0&&<span style={{color:t.sub}}>{payPct}% settled</span>}
-                          </div>
-                          <div style={{background:t.border,height:6,borderRadius:6,overflow:"hidden",marginBottom:8}}>
-                            <div style={{width:`${payPct}%`,background:c.pending>0?"#f59e0b":"#10b981",height:"100%",borderRadius:6,transition:"width 0.4s"}}/>
-                          </div>
-                          {partialPaid>0&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:600}}>💛 Partial on hold: {inr(partialPaid)}</p>}
-                          {cReplAmt>0&&<p style={{color:"#f97316",fontSize:11,marginTop:4,fontWeight:600}}>🔄 Replacement deductions: −{inr(cReplAmt)}</p>}
-                        </div>}
-
-                        {/* Regular order template */}
-                        {rows.length>0&&<div style={{border:`1px solid ${t.border}`,borderRadius:12,padding:"12px 14px"}}>
-                          <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Regular Order Template</p>
-                          {rows.map(r=>(
-                            <div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${t.border}`}}>
-                              <span style={{color:t.sub}}>{r.qty} × {r.name}{canSeePrices?<span style={{color:t.sub,fontSize:11}}> @ {inr(r.priceAmount)}</span>:""}</span>
-                              {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(r.qty*r.priceAmount)}</span>}
-                            </div>
-                          ))}
-                          {canSeePrices&&tot>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,marginTop:6,paddingTop:6,borderTop:`2px solid ${t.border}`}}>
-                            <span style={{color:t.sub}}>Net Total</span>
-                            <span style={{color:"#f59e0b"}}>{inr(cReplAmt>0?netTot:tot)}</span>
-                          </div>}
-                        </div>}
-
-                        {/* Notes + info */}
-                        {(c.notes||c.address||c.joinDate)&&<div style={{background:t.inp,borderRadius:10,padding:"10px 14px",display:"flex",flexDirection:"column",gap:4}}>
-                          {c.address&&<p style={{color:t.sub,fontSize:11}}>📍 {c.address}</p>}
-                          {c.notes&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic"}}>"{c.notes}"</p>}
-                          {c.joinDate&&<p style={{color:t.sub,fontSize:11}}>📅 Customer since {c.joinDate}</p>}
-                        </div>}
-
-                        {/* Partial payment widget */}
-                        {canSeeFinancials&&can("cust_markPaid")&&<div style={{background:dm?"rgba(245,158,11,0.07)":"#fffbeb",border:`1px solid ${dm?"rgba(245,158,11,0.25)":"#fde68a"}`,borderRadius:12,padding:"12px 14px"}}>
-                          <p style={{color:"#d97706",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>💰 Log Partial Payment</p>
-                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <input type="number" inputMode="numeric" placeholder="₹ Amount"
-                              defaultValue={c.partialPay||""}
-                              onBlur={e=>{const v=+e.target.value;if(v>=0){setCust(p=>p.map(x=>x.id===c.id?{...x,partialPay:v}:x));addLog("Partial payment set",`${c.name} — ${inr(v)}`);} }}
-                              style={{flex:1,background:t.card,border:`1.5px solid ${dm?"rgba(245,158,11,0.3)":"#fde68a"}`,color:t.text,borderRadius:8,padding:"8px 10px",fontSize:13,outline:"none"}}/>
-                            <button onClick={()=>{const v=c.partialPay||0;if(v>0){setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+v,pending:Math.max(0,(x.pending||0)-v),partialPay:0}:x));addLog("Partial payment applied",`${c.name} — ${inr(v)}`);notify(`${inr(v)} applied to ${c.name} ✓`);}}}
-                              style={{background:"#059669",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>Apply</button>
-                          </div>
-                        </div>}
-
-                        {/* Action buttons — single row on desktop */}
-                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                          {can("cust_edit")&&<button onClick={()=>{setCf({...c,orderLines:{...safeO(c.orderLines)}});setCsh(c);}}
-                            style={{flex:"1 1 80px",background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,height:38,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>✏️ Edit</button>}
-                          <button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)}
-                            style={{flex:"1 1 80px",background:"#7c3aed",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>📄 PDF</button>
-                          {can("cust_export")&&<button onClick={()=>{
-                              const cD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date));
-                              const enrichedRows=cD.map(d=>{const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};});
-                              exportTabExcel(c.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enrichedRows,[{label:"Invoice No",val:r=>r.invNo||""},{label:"Receipt No",val:r=>{const inv=r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:""}},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},{label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}],settings);
-                            }}
-                            style={{flex:"1 1 80px",background:"#059669",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>📊 XLS</button>}
-                          {can("cust_markPaid")&&<button onClick={()=>{setPaySh(c);setPayAmt("");}}
-                            style={{flex:"1 1 90px",background:"#f59e0b",color:"#000",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>💰 Collect</button>}
-                          {can("cust_deactivate")&&<button onClick={()=>togActive(c)}
-                            style={{flex:"1 1 80px",background:"#0ea5e915",color:"#38bdf8",border:"1.5px solid #38bdf830",height:38,borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>{c.active?"⏸ Pause":"▶ Activate"}</button>}
-                          {c.address&&<a href={mapU(c.address,c.lat,c.lng)} target="_blank" rel="noopener noreferrer"
-                            style={{flex:"1 1 80px",background:"#0ea5e9",color:"#fff",height:38,borderRadius:10,fontSize:12,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",textDecoration:"none",gap:4}}>📍 Map</a>}
-                          {can("cust_delete")&&<button onClick={()=>delC(c)}
-                            style={{flex:"1 1 80px",background:"#dc2626",color:"#fff",border:"none",height:38,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>🗑 Delete</button>}
-                        </div>
-
-                      </div>{/* end left column */}
-
-                      {/* ── RIGHT COLUMN — Recent Deliveries ── */}
-                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-                          <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Deliveries {cDelivs.length>0&&<span style={{color:t.sub,fontWeight:500,fontSize:10,textTransform:"none",letterSpacing:0}}>({cDelivs.length} total)</span>}</p>
-                          {canSeeFinancials&&<div style={{display:"flex",gap:8,fontSize:10,fontWeight:700}}>
-                            <span style={{color:"#10b981"}}>Paid: {inr(c.paid||0)}</span>
-                            {(c.pending||0)>0&&<span style={{color:"#ef4444"}}>Due: {inr(c.pending)}</span>}
-                            {!(c.pending||0)&&(c.paid||0)>0&&<span style={{color:"#10b981"}}>✓ Settled</span>}
-                          </div>}
-                        </div>
-                        {/* Date quick-filter for this customer's deliveries */}
-                        {cDelivs.length>0&&<div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{scrollbarWidth:"none"}}>
-                          {[{k:"all",l:"All"},{k:"today",l:"Today"},{k:"yesterday",l:"Yesterday"},{k:"week",l:"This Week"}].map(({k,l})=>(
-                            <button key={k} onClick={()=>setDelivDateFilter(k)} style={{flexShrink:0,background:delivDateFilter===k?"#3b82f618":t.inp,color:delivDateFilter===k?"#3b82f6":t.sub,border:`1px solid ${delivDateFilter===k?"#3b82f6":t.border}`,borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",whiteSpace:"nowrap"}}>{l}</button>
-                          ))}
-                        </div>}
-                        {cDelivs.length===0&&<p style={{color:t.sub,fontSize:12}}>No deliveries yet.</p>}
-                        {(()=>{
-                          const tStr=today();
-                          const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
-                          const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
-                          let filteredCustDelivs=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date));
-                          if(delivDateFilter==="today") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date===tStr);
-                          else if(delivDateFilter==="yesterday") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date===yStr);
-                          else if(delivDateFilter==="week") filteredCustDelivs=filteredCustDelivs.filter(d=>d.date>=wStr&&d.date<=tStr);
-                          const shown=filteredCustDelivs.slice(0,8);
-                          if(shown.length===0) return <p style={{color:t.sub,fontSize:11}}>No deliveries for this period.</p>;
-                          return shown.map((d)=>{
-                          const dTot=lineTotal(d.orderLines);
-                          const dRepl=+d.replacement?.amount||0;
-                          const dNet=Math.max(0,dTot-dRepl);
-                          const dCollected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-                          // If customer's overall pending is 0, treat all deliveries as settled
-                          const dBal=(c.pending||0)===0&&(c.paid||0)>0?0:Math.max(0,dNet-dCollected);
-                          const dSc=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#0ea5e9":d.status==="Cancelled"?"#ef4444":"#f59e0b";
-                          const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
-                          const custRcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
-                          const dItems=Object.entries(d.orderLines||{}).filter(([,l])=>l.qty>0);
-                          const hasDeductions=dRepl>0||dCollected>0;
-                          return <div key={d.id} style={{background:t.inp,borderRadius:12,overflow:"hidden",border:`1px solid ${t.border}`}}>
-                            {/* Header */}
-                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",gap:8}}>
-                              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                                <span style={{color:t.text,fontSize:12,fontWeight:700}}>{d.date}</span>
-                                <span style={{background:`${dSc}20`,color:dSc,borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800}}>{d.status}</span>
-                                {invNo&&<span style={{color:"#8b5cf6",fontSize:9,fontFamily:"monospace",fontWeight:700,background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",borderRadius:4,padding:"1px 6px"}}>📄 {invNo}</span>}
-                                {invNo&&<span style={{color:"#0ea5e9",fontSize:9,fontFamily:"monospace",fontWeight:700,background:dm?"rgba(14,165,233,0.15)":"rgba(14,165,233,0.08)",borderRadius:4,padding:"1px 6px"}}>🧾 {custRcptNo}</span>}
-                              </div>
-                              {canSeePrices&&<span style={{fontSize:11,fontWeight:800,color:dBal===0?"#10b981":"#ef4444",background:dBal===0?"#10b98115":"#ef444415",borderRadius:8,padding:"3px 9px",flexShrink:0}}>
-                                {dBal===0?"✓ Settled":`Due ${inr(dBal)}`}
-                              </span>}
-                            </div>
-                            {/* Items */}
-                            {dItems.length>0&&<div style={{padding:"0 12px 8px",borderTop:`1px solid ${t.border}`}}>
-                              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",margin:"7px 0 5px"}}>Items</p>
-                              {dItems.map(([pid,l])=>{
-                                const prod=products.find(p=>p.id===pid)||{name:l.name||pid};
-                                return <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,paddingBottom:3}}>
-                                  <span style={{color:t.sub}}>{l.qty} × {prod.name}</span>
-                                  {canSeePrices&&l.priceAmount>0&&<span style={{color:t.text,fontWeight:600}}>{inr(l.qty*l.priceAmount)}</span>}
-                                </div>;
-                              })}
-                            </div>}
-                            {/* Bill breakdown */}
-                            {canSeePrices&&dTot>0&&<div style={{borderTop:`1px solid ${t.border}`,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                              <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
-                                <span style={{color:t.sub}}>Order total</span>
-                                <span style={{color:t.text,fontWeight:600}}>{inr(dTot)}</span>
-                              </div>
-                              {dRepl>0&&<>
-                                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
-                                  <span style={{color:"#f97316"}}>🔄 Replacement{d.replacement?.item?` (${d.replacement.item}${d.replacement.qty?" ×"+d.replacement.qty:""})`:""}</span>
-                                  <span style={{color:"#f97316",fontWeight:700}}>−{inr(dRepl)}</span>
-                                </div>
-                                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
-                                  <span style={{color:t.sub,fontWeight:600}}>Net payable</span>
-                                  <span style={{color:t.text,fontWeight:700}}>{inr(dNet)}</span>
-                                </div>
-                              </>}
-                              {dCollected>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
-                                <span style={{color:"#10b981"}}>💰 Collected</span>
-                                <span style={{color:"#10b981",fontWeight:700}}>−{inr(dCollected)}</span>
-                              </div>}
-                              {(hasDeductions||dBal>0)&&<div style={{borderTop:`1.5px solid ${t.border}`,marginTop:2,paddingTop:5,display:"flex",justifyContent:"space-between",fontSize:12}}>
-                                <span style={{fontWeight:700,color:dBal===0?"#10b981":"#ef4444"}}>{dBal===0?"✓ Fully settled":"Balance due"}</span>
-                                <span style={{fontWeight:800,color:dBal===0?"#10b981":"#ef4444"}}>{dBal===0?"—":inr(dBal)}</span>
-                              </div>}
-                            </div>}
-                          </div>;
-                        });
-                        })()}
-                        {cDelivs.length>8&&<p style={{color:t.sub,fontSize:10,textAlign:"center"}}>+{cDelivs.length-8} more · <button onClick={()=>{setTab("Deliveries");setExpandedDeliveryCust(c.id);}} style={{color:"#f59e0b",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:10}}>View all in Deliveries →</button></p>}
-                      </div>{/* end right column */}
-
-                    </div>{/* end two-col grid */}
-                  </div>}{/* end expanded body */}
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    {canSeePrices&&<div style={{textAlign:"right"}}>
+                      <p style={{color:"#10b981",fontWeight:900,fontSize:20,lineHeight:1}}>{inr(cPaid)}</p>
+                      <p style={{color:t.sub,fontSize:10}}>collected</p>
+                    </div>}
+                    <button onClick={()=>setSelectedCustomer(null)} style={{width:32,height:32,borderRadius:9,background:t.inp,border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700}}>∧</button>
+                  </div>
                 </div>
-              );
-            })}
-            </div>
+
+                {/* Body: two-col on desktop */}
+                <div style={{display:"flex",flexDirection:"row",gap:0,flexWrap:"wrap"}}>
+
+                  {/* LEFT COLUMN — stats + actions */}
+                  <div style={{flex:"0 0 auto",width:"min(320px,100%)",borderRight:`1px solid ${t.border}`,padding:"16px 18px",display:"flex",flexDirection:"column",gap:12}}>
+                    {/* Stat boxes */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                      {[
+                        {label:"ORDERS",val:allCDelivs.length,color:"#3b82f6"},
+                        {label:"DELIVERED",val:cDone.length,color:"#10b981"},
+                        {label:"RETURNS",val:cReturns.length,color:"#ef4444"},
+                      ].map(({label,val,color})=>(
+                        <div key={label} style={{background:t.inp,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+                          <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{val}</p>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:4,letterSpacing:"0.05em"}}>{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                      {[
+                        {label:"REPLACED",val:cRepl.length,color:"#f97316"},
+                        {label:"REPL. DEDUCTED",val:inr(cReplAmt),color:"#f97316"},
+                        {label:"PARTIAL PAID",val:inr(cPartialPaid),color:"#d97706"},
+                      ].map(({label,val,color})=>(
+                        <div key={label} style={{background:t.inp,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+                          <p style={{color,fontWeight:800,fontSize:13,lineHeight:1}}>{val}</p>
+                          <p style={{color:t.sub,fontSize:8,fontWeight:700,textTransform:"uppercase",marginTop:4,letterSpacing:"0.04em"}}>{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+                      <div style={{background:t.inp,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+                        <p style={{color:cDue>0?"#ef4444":"#10b981",fontWeight:800,fontSize:13,lineHeight:1}}>{inr(cDue)}</p>
+                        <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:4}}>PENDING</p>
+                      </div>
+                    </div>
+
+                    {/* Delivery rate bar */}
+                    <div>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Delivery Rate</span>
+                        <span style={{color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",fontWeight:700,fontSize:10}}>{delivRate}%</span>
+                      </div>
+                      <div style={{height:7,borderRadius:7,background:t.border,overflow:"hidden"}}>
+                        <div style={{width:`${delivRate}%`,height:"100%",background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",borderRadius:7,transition:"width 0.5s"}}/>
+                      </div>
+                    </div>
+
+                    {/* Payment status box */}
+                    {canSeePrices&&<div style={{background:t.inp,borderRadius:12,padding:"12px 14px",border:`1px solid ${t.border}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Payment Status</span>
+                        <span style={{color:cDue>0?"#f59e0b":"#10b981",fontWeight:700,fontSize:10}}>{cDue>0?"Partial":"✓ Fully Paid"}</span>
+                      </div>
+                      <div style={{height:6,borderRadius:6,background:t.border,overflow:"hidden",marginBottom:6}}>
+                        <div style={{width:`${collPct}%`,height:"100%",background:"#10b981",borderRadius:6}}/>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between"}}>
+                        <span style={{color:"#10b981",fontSize:11,fontWeight:700}}>Paid: {inr(cPaid)}</span>
+                        <span style={{color:cDue>0?"#ef4444":"#10b981",fontSize:11,fontWeight:700}}>Due: {inr(cDue)}</span>
+                      </div>
+                    </div>}
+
+                    {/* Location + join date */}
+                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                      {c.address&&<p style={{color:t.sub,fontSize:11}}>📍 {c.address}</p>}
+                      {c.joinDate&&<p style={{color:t.sub,fontSize:11}}>📅 Customer since {c.joinDate}</p>}
+                    </div>
+
+                    {/* Log Partial Payment */}
+                    {isAdmin&&cDue>0&&<div style={{background:"#f59e0b10",border:"1px solid #f59e0b30",borderRadius:12,padding:"12px 14px"}}>
+                      <p style={{color:"#f59e0b",fontWeight:700,fontSize:12,marginBottom:8}}>💰 LOG PARTIAL PAYMENT</p>
+                      <div style={{display:"flex",gap:8}}>
+                        <input type="number" placeholder="₹ Amount" value={custDetailPartialAmt} onChange={e=>setCustDetailPartialAmt(e.target.value)}
+                          style={{flex:1,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"10px 12px",fontSize:14,outline:"none"}}
+                          onFocus={e=>{e.target.style.borderColor="#f59e0b";}} onBlur={e=>{e.target.style.borderColor=t.inpB;}}/>
+                        <button onClick={()=>{
+                          const amt=+custDetailPartialAmt;
+                          if(!amt||amt<=0){notify("Enter a valid amount");return;}
+                          setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
+                          addLog("Partial payment logged",`${c.name} — ${inr(amt)}`);
+                          notify(`${inr(amt)} recorded ✓`);
+                          setCustDetailPartialAmt("");
+                          setSelectedCustomer(null);
+                        }} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Apply</button>
+                      </div>
+                    </div>}
+
+                    {/* Action buttons */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                      {can("cust_edit")&&<button onClick={()=>{setCsh(c);setCf(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>✏️ Edit</button>}
+                      {can("cust_export")&&<button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📄 PDF</button>}
+                      {can("cust_export")&&<button onClick={()=>{const rows=[{...c}];exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📊 XLS</button>}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                      {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(c);setPayAmt(String(cDue));setSelectedCustomer(null);}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>💰 Collect</button>}
+                      {can("cust_deactivate")&&<button onClick={()=>{togActive(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>{c.active?"⏸ Pause":"▶ Activate"}</button>}
+                      {c.phone&&<a href={`https://wa.me/${c.phone.replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" style={{background:"#25D366",color:"#fff",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center",textDecoration:"none",display:"block"}}>📍 Map</a>}
+                    </div>
+                    {can("cust_delete")&&<button onClick={()=>delC(c)} style={{background:"#ef444415",border:"1px solid #ef444430",color:"#ef4444",borderRadius:10,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%"}}>🗑 Delete</button>}
+                  </div>
+
+                  {/* RIGHT COLUMN — deliveries list */}
+                  <div style={{flex:1,minWidth:280,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>DELIVERIES ({allCDelivs.length} total)</p>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {[["all","All"],["today","Today"],["yesterday","Yesterday"],["week","This Week"]].map(([k,l])=>(
+                          <button key={k} onClick={()=>setCustDetailDelivFilter(k)}
+                            style={{background:custDetailDelivFilter===k?"#2563eb":t.inp,color:custDetailDelivFilter===k?"#fff":t.sub,border:`1px solid ${custDetailDelivFilter===k?"#2563eb":t.border}`,borderRadius:99,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"24px 0"}}>No deliveries in this period.</p>}
+                    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:520,overflowY:"auto"}}>
+                      {filtDelivs.map(d=>{
+                        const dInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||`TAS-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+                        const dRcptNo=`RCP-${dInvNo.replace(/^[A-Z]+-/,"")}`;
+                        const dTot=lineTotal(d.orderLines);
+                        const dRepl=+d.replacement?.amount||0;
+                        const dNet=Math.max(0,dTot-dRepl);
+                        const dCollected=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
+                        const dBal=Math.max(0,dNet-dCollected);
+                        const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                        const settled=dBal===0&&dTot>0;
+                        const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0);
+                        // Auto-merge: if setting on, computed balance contributes to customer paid/pending
+                        return <div key={d.id} style={{background:t.inp,borderRadius:14,padding:"12px 14px",border:`1px solid ${settled?"#10b98130":t.border}`}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                              <span style={{color:t.sub,fontSize:11,fontWeight:700}}>{d.date}</span>
+                              <span style={{background:sc+"20",color:sc,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{d.status}</span>
+                            </div>
+                            <div style={{textAlign:"right",flexShrink:0}}>
+                              {settled?<span style={{background:"#10b98115",color:"#10b981",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>✓ Settled</span>
+                               :<span style={{background:"#f59e0b15",color:"#d97706",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>Due {inr(dBal)}</span>}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                            <span style={{fontFamily:"monospace",fontSize:9,color:"#7c3aed",background:"#7c3aed10",borderRadius:5,padding:"2px 7px",fontWeight:700}}>{dInvNo}</span>
+                            <span style={{fontFamily:"monospace",fontSize:9,color:"#0ea5e9",background:"#0ea5e910",borderRadius:5,padding:"2px 7px",fontWeight:700}}>{dRcptNo}</span>
+                          </div>
+                          {/* Items */}
+                          {items.length>0&&<div style={{marginBottom:6}}>
+                            {items.map(([pid,l],ii)=>{
+                              const prod=products.find(p=>p.id===pid);
+                              return <div key={pid} style={{display:"flex",justifyContent:"space-between",padding:"2px 0",fontSize:12}}>
+                                <span style={{color:t.sub}}>{l.qty} × {prod?.name||l.name||pid}</span>
+                                {canSeePrices&&<span style={{color:t.text,fontWeight:600}}>{inr(l.qty*(l.priceAmount||0))}</span>}
+                              </div>;
+                            })}
+                          </div>}
+                          {canSeePrices&&<div style={{borderTop:`1px solid ${t.border}`,paddingTop:6,display:"flex",flexDirection:"column",gap:2}}>
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                              <span style={{color:t.sub}}>Order total</span>
+                              <span style={{color:t.text,fontWeight:700}}>{inr(dTot)}</span>
+                            </div>
+                            {dRepl>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                              <span style={{color:"#f97316"}}>🔄 Replacement</span>
+                              <span style={{color:"#f97316",fontWeight:600}}>−{inr(dRepl)}</span>
+                            </div>}
+                            {dCollected>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                              <span style={{color:"#10b981"}}>💰 Collected</span>
+                              <span style={{color:"#10b981",fontWeight:600}}>−{inr(dCollected)}</span>
+                            </div>}
+                          </div>}
+                          {/* Merge button if setting enabled and delivery not yet merged */}
+                          {mergeEnabled&&isAdmin&&d.status==="Delivered"&&!d._mergedToCustomer&&dTot>0&&(
+                            <button onClick={e=>{
+                              e.stopPropagation();
+                              const net=Math.max(0,dTot-dRepl);
+                              setDeliv(p=>p.map(x=>x.id===d.id?{...x,_mergedToCustomer:true}:x));
+                              setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+net,pending:Math.max(0,(x.pending||0)-net)}:x));
+                              addLog("Delivery merged to account",`${c.name} — ${inr(net)}`);
+                              notify(`${inr(net)} merged to ${c.name}'s account ✓`);
+                            }} style={{marginTop:8,width:"100%",background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"7px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              ↕ Merge to Account
+                            </button>
+                          )}
+                          {d._mergedToCustomer&&<p style={{marginTop:6,color:"#10b981",fontSize:10,fontWeight:700,textAlign:"center"}}>✓ Merged to account</p>}
+                        </div>;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>;
+            })()}
             </>;
           })()}
         </>)}
 
         {/* DELIVERIES */}
         {tab==="Deliveries"&&(<>
+          {/* ── DELIVERIES TAB HEADER ── */}
+          <SectionHeader dm={dm} title="Deliveries" sub="Track and manage all your deliveries"
+            cta={can("deliv_add")&&<button onClick={()=>{setDf(blkD());setDsh("add");}}
+              style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Delivery
+            </button>}/>
+          <TabStatCards dm={dm} cards={[
+            {icon:"🚚",label:"Total Deliveries",value:deliveries.length,sub:`${delivStatusCounts.Delivered} delivered`,iconBg:t.statIcon1},
+            {icon:"✅",label:"Delivered",value:delivStatusCounts.Delivered,sub:`${Math.round(delivStatusCounts.Delivered/Math.max(1,deliveries.length)*100)}% rate`,iconBg:t.statIcon2},
+            {icon:"🔄",label:"In Transit",value:delivStatusCounts["In Transit"],sub:"Active now",iconBg:t.statIcon3},
+            {icon:"⏳",label:"Pending",value:delivStatusCounts.Pending,sub:"Awaiting dispatch",iconBg:t.statIcon4},
+            {icon:"❌",label:"Cancelled",value:delivStatusCounts.Cancelled,sub:"This period",iconBg:t.statIcon5},
+          ]}/>
           {/* Top summary pills — now tappable as filters */}
           <div className="flex items-center gap-2 flex-wrap">
             {[
@@ -6156,9 +6721,6 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <Pill dm={dm} c={delivStatusFilter===key?c:"stone"}>{label}</Pill>
               </button>
             ))}
-            <div className="ml-auto flex gap-2">
-              <Btn dm={dm} size="sm" onClick={()=>{setDf(blkD());setDsh("add");}}>+ Delivery</Btn>
-            </div>
           </div>
           {/* ── DATE FILTER ROW ── */}
           <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
@@ -6213,7 +6775,16 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">🚚 Set In Transit</button>
             </div>
           </div>}
-          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search customer, date, status, invoice, receipt, batch…"/>
+          {/* View toggle */}
+          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+            <span style={{color:t.sub,fontSize:11,fontWeight:600}}>View:</span>
+            {[["expanded","📋 Expanded"],["compact","⚡ Compact"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setDelivView(v)}
+                style={{background:delivView===v?"#2563eb":t.inp,color:delivView===v?"#fff":t.sub,border:`1.5px solid ${delivView===v?"#2563eb":t.border}`,borderRadius:99,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                {l}
+              </button>
+            ))}
+          </div>
 
           {/* CALENDAR VIEW */}
           {delivCalendar&&(()=>{
@@ -6448,20 +7019,331 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </Card>;
           })()}
 
-          {fDeliv.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No deliveries found.{delivStatusFilter!=="all"?` (filter: ${delivStatusFilter})`:""}</p>}
-
-          {/* ── CUSTOMER-GROUPED DELIVERY VIEW ── */}
+          {/* ── DELIVERIES DATA TABLE ── */}
           {!delivCalendar&&(()=>{
-            // Group filtered deliveries by customer
-            const custMap={};
-            [...fDeliv].sort((a,b)=>b.date.localeCompare(a.date)).forEach(d=>{
-              const key=d.customerId||d.customer;
-              if(!custMap[key]) custMap[key]={name:d.customer,customerId:d.customerId,delivs:[]};
-              custMap[key].delivs.push(d);
-            });
-            const custGroups=Object.values(custMap).sort((a,b)=>a.name.localeCompare(b.name));
-            return <div className="flex flex-col gap-3">
-              {custGroups.map(group=>{
+            const sortedDelivs=[...fDeliv].sort((a,b)=>b.date.localeCompare(a.date));
+            const totalDelivRows=sortedDelivs.length;
+            const DELIV_PAGE_SIZE=15;
+            const pagedDelivs=sortedDelivs.slice((delivPage-1)*DELIV_PAGE_SIZE,delivPage*DELIV_PAGE_SIZE);
+            const statusDot=(status)=>{
+              const m={"Delivered":"#10b981","In Transit":"#3b82f6","Pending":"#f59e0b","Cancelled":"#ef4444"};
+              return <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:m[status]||"#94a3b8",flexShrink:0}}/>;
+            };
+            const statusPill=(status,dm)=>{
+              const cfg={"Delivered":{bg:"#10b98118",color:"#059669",border:"#10b98130"},"In Transit":{bg:"#3b82f618",color:"#2563eb",border:"#3b82f630"},"Pending":{bg:"#f59e0b18",color:"#d97706",border:"#f59e0b30"},"Cancelled":{bg:"#ef444418",color:"#dc2626",border:"#ef444430"}};
+              const c=cfg[status]||{bg:t.inp,color:t.sub,border:t.border};
+              return <span style={{display:"inline-flex",alignItems:"center",gap:5,background:c.bg,color:c.color,border:`1px solid ${c.border}`,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block",flexShrink:0}}/>
+                {status}
+              </span>;
+            };
+            if(totalDelivRows===0) return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"48px 24px",textAlign:"center"}}>
+              <p style={{fontSize:32,marginBottom:8}}>📭</p>
+              <p style={{color:t.sub,fontSize:14,fontWeight:500}}>No deliveries found.{delivStatusFilter!=="all"?` (filter: ${delivStatusFilter})`:""}</p>
+            </div>;
+
+            // ── COMPACT CARD VIEW (grouped by customer, like image 2) ──
+            if(delivView==="compact"){
+              const groups=[];
+              const custMap={};
+              pagedDelivs.forEach(d=>{
+                const key=d.customerId||d.customer;
+                if(!custMap[key]){custMap[key]={customerId:d.customerId,name:d.customer,delivs:[]};groups.push(custMap[key]);}
+                custMap[key].delivs.push(d);
+              });
+              return <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {groups.map(group=>{
+                  const groupCust=customers.find(c=>c.id===group.customerId);
+                  const totalAmt=group.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                  const totalPaid=groupCust?(groupCust.paid||0):0;
+                  const totalDue=groupCust?(groupCust.pending||0):0;
+                  const totalRepl=group.delivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                  const allDone=group.delivs.every(d=>d.status==="Delivered");
+                  return <div key={group.customerId||group.name} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                    {/* Customer header */}
+                    <div style={{padding:"14px 16px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.01)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{width:38,height:38,borderRadius:11,background:"#f59e0b20",color:"#f59e0b",fontWeight:900,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
+                          {group.name.charAt(0).toUpperCase()}
+                          <span style={{position:"absolute",bottom:-2,right:-2,width:9,height:9,borderRadius:"50%",background:allDone?"#10b981":"#f59e0b",border:`2px solid ${t.card}`}}/>
+                        </div>
+                        <div>
+                          <p style={{color:t.text,fontWeight:800,fontSize:14}}>{group.name}</p>
+                          <p style={{color:t.sub,fontSize:11}}>{group.delivs.length} order{group.delivs.length!==1?"s":""} · {group.delivs.filter(d=>d.status==="Delivered").length} delivered</p>
+                        </div>
+                      </div>
+                      {canSeePrices&&<div style={{textAlign:"right"}}>
+                        <p style={{color:totalDue>0?"#ef4444":"#10b981",fontWeight:900,fontSize:16}}>{inr(totalAmt)}</p>
+                        <p style={{color:totalDue>0?"#ef4444":"#10b981",fontSize:11,fontWeight:600}}>{totalDue>0?`${inr(totalDue)} due`:"✓ All clear"}</p>
+                      </div>}
+                    </div>
+                    {/* Stats row */}
+                    {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",borderBottom:`1px solid ${t.border}`}}>
+                      {[["TOTAL BILLED",inr(totalAmt),"#f59e0b"],["REPLACEMENTS",totalRepl>0?inr(totalRepl):"None","#f97316"],["TOTAL PAID",inr(totalPaid),"#10b981"],["ALL CLEAR",totalDue===0?"✓ ALL CLEAR":inr(totalDue),totalDue===0?"#10b981":"#ef4444"]].map(([label,val,color])=>(
+                        <div key={label} style={{padding:"10px 14px",borderRight:`1px solid ${t.border}`,textAlign:"center"}}>
+                          <p style={{color,fontWeight:800,fontSize:13}}>{val}</p>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{label}</p>
+                        </div>
+                      ))}
+                    </div>}
+                    {/* Delivery rows */}
+                    <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                      {group.delivs.map((d,di)=>{
+                        const tot=lineTotal(d.orderLines);
+                        const dRepl=+d.replacement?.amount||0;
+                        const dNet=Math.max(0,tot-dRepl);
+                        const dBal=Math.max(0,dNet-(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0));
+                        const settled=dBal===0&&tot>0;
+                        const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||`TAS-${(d.date||"").replace(/-/g,"").slice(2)}-${(d.id||"").slice(-4).toUpperCase()}`;
+                        const rcptNo=`RCP-${invNo.replace(/^[A-Z]+-/,"")}`;
+                        const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
+                        const rows=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0);
+                        const batchLabel=d.batches?.map(b=>b.name||b).join(", ")||d.batch||"";
+                        return <div key={d.id||di} style={{borderTop:di>0?`1px solid ${t.border}`:"none",padding:"14px 16px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
+                            <span style={{color:t.text,fontWeight:700,fontSize:13}}>{d.date}</span>
+                            {d.deliveryDate&&d.deliveryDate!==d.date&&<><span style={{color:t.sub,fontSize:11}}>→ deliver by {d.deliveryDate}</span></>}
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4,background:d.status==="Delivered"?"#10b98118":d.status==="Cancelled"?"#ef444418":"#f59e0b18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 10px",fontSize:11,fontWeight:700}}>{d.status}</span>
+                            {settled&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ Settled</span>}
+                          </div>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                            {d.createdBy&&<span style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</span>}
+                            <span style={{color:"#2563eb",fontSize:10,fontFamily:"monospace",cursor:"pointer"}} onClick={()=>setDetailModal({type:"delivery",data:d})}>{invNo}</span>
+                            <span style={{color:"#7c3aed",fontSize:10,fontFamily:"monospace"}}>{rcptNo}</span>
+                            {batchLabel&&<span style={{color:"#f59e0b",fontSize:10}}>⚡ {batchLabel}</span>}
+                          </div>
+                          <div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Items Ordered</p>
+                            {rows.map(([pid,l])=>(
+                              <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                                <span style={{color:t.text,fontSize:12}}>{l.qty} × <b>{l.name||pid}</b> @ ₹{l.priceAmount||0}</span>
+                                {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:12}}>{inr((l.qty||0)*(l.priceAmount||0))}</span>}
+                              </div>
+                            ))}
+                            {canSeePrices&&<div style={{borderTop:`1px solid ${t.border}`,marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
+                              <span style={{color:t.sub,fontSize:12}}>Order Total</span>
+                              <span style={{color:"#f59e0b",fontWeight:800,fontSize:13}}>{inr(tot)}</span>
+                            </div>}
+                          </div>
+                          {canSeePrices&&<div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Payment Summary</p>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                              <span style={{color:t.sub,fontSize:12}}>Order total</span>
+                              <span style={{color:t.text,fontSize:12,fontWeight:600}}>{inr(tot)}</span>
+                            </div>
+                            {dRepl>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                              <span style={{color:"#f97316",fontSize:12}}>Replacement deducted</span>
+                              <span style={{color:"#f97316",fontSize:12,fontWeight:700}}>−{inr(dRepl)}</span>
+                            </div>}
+                            {d.partialPayment?.enabled&&(+d.partialPayment.amount||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                              <span style={{color:"#10b981",fontSize:12}}>💰 Collected</span>
+                              <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>−{inr(+d.partialPayment.amount)}</span>
+                            </div>}
+                            <div style={{borderTop:`1px solid ${t.border}`,marginTop:4,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
+                              <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"✓ Fully settled":"Balance due"}</span>
+                              <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"—":inr(dBal)}</span>
+                            </div>
+                          </div>}
+                          {/* Action buttons */}
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {(d.address||groupCust?.address)&&<button onClick={()=>window.open(mapU(d.address||groupCust?.address,d.lat||groupCust?.lat,d.lng||groupCust?.lng),"_blank")} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📍 Nav</button>}
+                            {can("deliv_edit")&&<button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Edit</button>}
+                            <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed30",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>PDF</button>
+                            {settings?.receiptEnabled!==false&&<button onClick={()=>exportPDF(d,products,"receipt",settings)} style={{background:"#2563eb15",color:"#2563eb",border:"1px solid #2563eb30",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Receipt</button>}
+                            {settings?.agentInvoiceEnabled!==false&&<button onClick={()=>exportPDF(d,products,"invoice",settings)} style={{background:"#059669 15",color:"#059669",border:"1px solid #05996930",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 Invoice</button>}
+                            <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D36615",color:"#25D366",border:"1px solid #25D36630",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>WA</button>
+                            {(can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&<button onClick={()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
+                            {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Delete</button>}
+                          </div>
+                        </div>;
+                      })}
+                    </div>
+                  </div>;
+                })}
+                {/* Pagination */}
+                {totalDelivRows>DELIV_PAGE_SIZE&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"8px 0"}}>
+                  <button onClick={()=>{if(delivPage>1)setDelivPage(delivPage-1);}} disabled={delivPage===1} style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:t.text,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===1?0.4:1}}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  {Array.from({length:Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)},(_,i)=>i+1).map(p=>(
+                    <button key={p} onClick={()=>setDelivPage(p)} style={{width:32,height:32,borderRadius:8,background:delivPage===p?"#2563eb":t.inp,border:`1px solid ${delivPage===p?"#2563eb":t.border}`,color:delivPage===p?"#fff":t.text,fontWeight:delivPage===p?800:500,fontSize:12,cursor:"pointer"}}>{p}</button>
+                  ))}
+                  <button onClick={()=>{const tp=Math.ceil(totalDelivRows/DELIV_PAGE_SIZE);if(delivPage<tp)setDelivPage(delivPage+1);}} disabled={delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)} style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:t.text,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?0.4:1}}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>}
+              </div>;
+            }
+
+            return <div className="flex flex-col gap-0">
+              {/* Table Card */}
+              <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
+                    <thead>
+                      <tr style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.025)",borderBottom:`1.5px solid ${t.border}`}}>
+                        <th style={{padding:"11px 8px 11px 16px",width:28}}></th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Delivery ID</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Customer</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Delivery Date</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Items</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Driver</th>
+                        <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Status</th>
+                        {canSeePrices&&<th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Amount</th>}
+                        <th style={{padding:"11px 16px 11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedDelivs.map((d,di)=>{
+                        const tot=lineTotal(d.orderLines);
+                        const rows=lineRows(d.orderLines,products);
+                        const itemCount=rows.reduce((s,r)=>s+(r.qty||0),0);
+                        const itemNames=rows.slice(0,2).map(r=>`${r.qty}× ${r.name||r.id}`).join(", ")+(rows.length>2?` +${rows.length-2} more`:"");
+                        const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||`#${(d.id||"").slice(-6).toUpperCase()}`;
+                        const driver=d.driver||d.createdBy||"—";
+                        const vehicle=d.vehicle||"";
+                        const orderNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
+                        const isEven=di%2===0;
+                        return <tr key={d.id||di}
+                          style={{borderBottom:`1px solid ${t.border}`,background:isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",cursor:"pointer",transition:"background 0.12s"}}
+                          onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(37,99,235,0.04)";}}
+                          onMouseLeave={e=>{e.currentTarget.style.background=isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
+                          {/* Status dot */}
+                          <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}}>
+                            {statusDot(d.status)}
+                          </td>
+                          {/* Delivery ID */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
+                            <span style={{color:t.sub,fontSize:11,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.07)",border:"1px solid rgba(139,92,246,0.15)",borderRadius:5,padding:"2px 7px",fontWeight:600,whiteSpace:"nowrap"}}>{invNo}</span>
+                          </td>
+                          {/* Customer + order number stacked */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:160}}>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{d.customer}</p>
+                            {orderNo&&<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"monospace"}}>{orderNo}</p>}
+                          </td>
+                          {/* Date + time stacked */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
+                            <p style={{color:t.text,fontWeight:600,fontSize:13,marginBottom:2}}>{d.date}</p>
+                            {d.deliveryDate&&d.deliveryDate!==d.date&&<p style={{color:t.sub,fontSize:10}}>Due {d.deliveryDate}</p>}
+                            {!d.deliveryDate&&<p style={{color:t.sub,fontSize:10}}>—</p>}
+                          </td>
+                          {/* Items count + names stacked */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:180}}>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{itemCount} item{itemCount!==1?"s":""}</p>
+                            <p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:170}}>{itemNames||"—"}</p>
+                          </td>
+                          {/* Driver + vehicle stacked */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:140}}>
+                            <p style={{color:t.text,fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{driver}</p>
+                            {vehicle?<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vehicle}</p>:<p style={{color:t.sub,fontSize:10}}>—</p>}
+                          </td>
+                          {/* Status pill */}
+                          <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
+                            {statusPill(d.status,dm)}
+                          </td>
+                          {/* Amount */}
+                          {canSeePrices&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                            <span style={{color:tot>0?"#059669":t.sub,fontWeight:800,fontSize:13}}>{inr(tot)}</span>
+                          </td>}
+                          {/* Actions: eye + 3-dot */}
+                          <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                            <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                              {/* Eye / View */}
+                              <button onClick={e=>{e.stopPropagation();setDetailModal({type:"delivery",data:d});}}
+                                title="View details"
+                                style={{width:32,height:32,borderRadius:8,background:dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s"}}
+                                onMouseEnter={e=>{e.currentTarget.style.background="#2563eb";e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor="#2563eb";}}
+                                onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)";e.currentTarget.style.color=t.sub;e.currentTarget.style.borderColor=t.border;}}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              </button>
+                              {/* 3-dot menu — opens a quick-action popover */}
+                              <div style={{position:"relative"}}>
+                                <button
+                                  id={`dot3_${d.id}`}
+                                  onClick={e=>{e.stopPropagation();const el=document.getElementById(`dot3menu_${d.id}`);if(el){el.style.display=el.style.display==="block"?"none":"block";}}}
+                                  title="More actions"
+                                  style={{width:32,height:32,borderRadius:8,background:dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s"}}
+                                  onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.09)";}}
+                                  onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)";}}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                                </button>
+                                <div id={`dot3menu_${d.id}`} style={{display:"none",position:"absolute",right:0,top:"calc(100% + 6px)",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:100,minWidth:180,overflow:"hidden"}}
+                                  onClick={e=>e.stopPropagation()}>
+                                  {[
+                                    can("deliv_edit")&&{label:"✏️  Edit",action:()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    {label:"📄  PDF Invoice",action:()=>{exportPDF(d,products,"delivery",settings);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    can("deliv_dispatch")&&d.status==="Pending"&&{label:"🚚  Dispatch",action:()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    can("deliv_markDone")&&{label:d.status==="Delivered"?"↩️  Mark Pending":"✅  Mark Delivered",action:()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer);notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    (can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&{label:"💰  Collect Payment",action:()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    {label:"📱  Share WhatsApp",action:()=>{shareWhatsApp(d,products,"delivery",settings);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    can("deliv_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{delD(d);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                  ].filter(Boolean).map((item,ii)=>(
+                                    <button key={ii} onClick={item.action}
+                                      style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"10px 16px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
+                                      onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)";}}
+                                      onMouseLeave={e=>{e.currentTarget.style.background="none";}}>
+                                      {item.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ── TABLE PAGINATION FOOTER ── */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
+                  {/* Left: showing X to Y of Z */}
+                  <p style={{color:t.sub,fontSize:12,fontWeight:500,flexShrink:0}}>
+                    Showing <b style={{color:t.text}}>{Math.min((delivPage-1)*DELIV_PAGE_SIZE+1,totalDelivRows)}</b> to <b style={{color:t.text}}>{Math.min(delivPage*DELIV_PAGE_SIZE,totalDelivRows)}</b> of <b style={{color:t.text}}>{totalDelivRows}</b> deliveries
+                  </p>
+                  {/* Center: page buttons */}
+                  {totalDelivRows>DELIV_PAGE_SIZE&&(()=>{
+                    const totalPages=Math.ceil(totalDelivRows/DELIV_PAGE_SIZE);
+                    const pages=[];
+                    for(let p=1;p<=totalPages;p++){
+                      if(p===1||p===totalPages||Math.abs(p-delivPage)<=1) pages.push(p);
+                      else if(pages[pages.length-1]!=="…") pages.push("…");
+                    }
+                    return <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button onClick={()=>{if(delivPage>1){setDelivPage(delivPage-1);window.scrollTo({top:0,behavior:"smooth"});}}}
+                        disabled={delivPage===1}
+                        style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:delivPage===1?t.sub:t.text,cursor:delivPage===1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===1?0.4:1}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                      </button>
+                      {pages.map((p,pi)=>p==="…"?<span key={`e${pi}`} style={{color:t.sub,fontSize:12,padding:"0 4px"}}>…</span>:
+                        <button key={p} onClick={()=>{setDelivPage(p);window.scrollTo({top:0,behavior:"smooth"});}}
+                          style={{width:32,height:32,borderRadius:8,background:delivPage===p?"#2563eb":t.inp,border:`1px solid ${delivPage===p?"#2563eb":t.border}`,color:delivPage===p?"#fff":t.text,fontWeight:delivPage===p?800:500,fontSize:12,cursor:"pointer",transition:"all 0.12s"}}>{p}</button>
+                      )}
+                      <button onClick={()=>{const tp=Math.ceil(totalDelivRows/DELIV_PAGE_SIZE);if(delivPage<tp){setDelivPage(delivPage+1);window.scrollTo({top:0,behavior:"smooth"});}}}
+                        disabled={delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)}
+                        style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?t.sub:t.text,cursor:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?0.4:1}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                      </button>
+                    </div>;
+                  })()}
+                  {/* Right: rows per page dropdown */}
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    <span style={{color:t.sub,fontSize:11}}>Rows</span>
+                    <select value={DELIV_PAGE_SIZE} onChange={()=>{}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12,cursor:"pointer",outline:"none"}}>
+                      <option value={15}>15</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>;
+          })()}
+        </>)}
+            {/* LEGACY_REMOVE_START */}
+            {false&&<div className="flex flex-col gap-3">
+              <div/>
+              {pagedGroups.map(group=>{
                 const isExpanded=expandedDeliveryCust===group.customerId||expandedDeliveryCust===group.name;
                 const totalOrders=group.delivs.length;
                 const totalAmt=group.delivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
@@ -6662,9 +7544,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   </div>}
                 </Card>;
               })}
-            </div>;
-          })()}
-        </>)}
+            </div>}
+
+        {/* SUPPLIES */}
 
         {/* SUPPLIES */}
         {tab==="Supplies"&&(()=>{
@@ -6681,6 +7563,15 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           })).sort((a,b)=>b.total-a.total).slice(0,5);
           const maxSup=suppByName[0]?.total||1;
           return <>
+          {/* ── SUPPLIES TAB HEADER ── */}
+          <SectionHeader dm={dm} title="Supplies" sub="Track inventory and supplier costs"
+            cta={null}/>
+          {canSeeFinancials&&<TabStatCards dm={dm} cards={[
+            {icon:"📦",label:"Total Cost",value:inr(totalSupC),sub:`${supplies.length} entries`,iconBg:t.statIcon4},
+            {icon:"📅",label:"This Month",value:inr(supThisMonthCost),sub:`${supThisMonth.length} entries`,iconBg:t.statIcon3},
+            {icon:"🏪",label:"Suppliers",value:uniqueSuppliers.length,sub:"unique vendors",iconBg:t.statIcon1},
+            {icon:"⚠️",label:"Low Stock",value:lowStockItems.length,sub:lowStockItems.length===0?"all good":"need restocking",iconBg:lowStockItems.length>0?t.statIcon5:t.statIcon2},
+          ]}/>}
           {/* ── HERO WIDGETS ROW ── */}
           {canSeeFinancials&&<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Total Cost */}
@@ -6751,84 +7642,115 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               {canSeeFinancials&&supplies.length>0&&<span style={{color:"#8b5cf6",background:dm?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)",fontSize:12,fontWeight:700,padding:"3px 9px",borderRadius:8}}>{inr(fSup.reduce((a,s)=>a+(s.cost||0),0))}</span>}
               {lowStockItems.length>0&&<span style={{color:"#ef4444",background:dm?"rgba(239,68,68,0.12)":"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:8}}>⚠️ {lowStockItems.length} low</span>}
             </div>
-            <div className="flex gap-2 items-center">
-              {can("sup_export")&&<div className="flex gap-1.5">
+            <div className="flex gap-3 items-center">
+              {can("sup_export")&&<div className="flex gap-2">
                 <button onClick={()=>exportTabPDF("Supplies",supplies,[{label:"Item",key:"item"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost (₹)",key:"cost",num:true},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>PDF</button>
                 <button onClick={()=>exportTabExcel("Supplies",supplies,[{label:"Item",key:"item"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost",num:true},{label:"Min Stock",key:"minStock"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>XLS</button>
               </div>}
-              {can("sup_add")&&<button onClick={()=>{setSf(blkS());setSsh("add");}} style={{background:"#8b5cf6",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,minHeight:40}}>
+              {can("sup_add")&&<button onClick={()=>{setSf(blkS());setSsh("add");}} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,minHeight:40,boxShadow:"0 2px 8px rgba(37,99,235,0.35)"}}>
                 <span style={{fontSize:16,lineHeight:1}}>+</span> Add Supply
               </button>}
             </div>
           </div>
 
           {/* ── SEARCH ── */}
-          <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search item, supplier, date…"/>
+          {/* Supplies search is in the desktop header */}
 
-          {/* ── SUPPLY CARDS ── */}
-          {fSup.length===0&&<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,padding:"40px 20px",textAlign:"center"}}>
+          {/* ── SUPPLIES DATA TABLE ── */}
+          {fSup.length===0&&<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"40px 20px",textAlign:"center"}}>
             <div style={{fontSize:40,marginBottom:12}}>📦</div>
             <p style={{color:t.text,fontSize:15,fontWeight:700,marginBottom:4}}>{srch?"No results found":"No supplies yet"}</p>
             <p style={{color:t.sub,fontSize:13,marginBottom:16}}>{srch?"Try a different search term":"Log your first supply entry to get started"}</p>
             {!srch&&can("sup_add")&&<button onClick={()=>{setSf(blkS());setSsh("add");}} style={{background:"#8b5cf6",color:"#fff",border:"none",borderRadius:12,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Log Supply</button>}
           </div>}
-          <div className="flex flex-col gap-3">
-          {fSup.map(s=>{
-            const isLow=s.minStock&&(+s.qty||0)<=(+s.minStock);
-            const stockPct=s.minStock?(Math.min(100,Math.round(((+s.qty||0)/(+s.minStock*2))*100))):null;
-            return <div key={s.id} style={{background:t.card,border:`1.5px solid ${isLow?(dm?"#7f1d1d30":"#fecdd3"):t.border}`,borderRadius:18,overflow:"hidden",transition:"box-shadow 0.15s",boxShadow:dm?"0 1px 4px rgba(0,0,0,0.4)":"0 1px 3px rgba(0,0,0,0.05)"}}>
-              {/* Top color stripe for low stock */}
-              {isLow&&<div style={{height:3,background:"linear-gradient(90deg,#ef4444,#f97316)"}}/>}
-              <div className="p-4">
-                <div className="flex items-start gap-3">
-                  {/* Icon bubble */}
-                  <div style={{width:44,height:44,borderRadius:14,background:isLow?(dm?"rgba(239,68,68,0.15)":"rgba(239,68,68,0.08)"):(dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
-                    {isLow?"⚠️":"📦"}
-                  </div>
-                  {/* Main info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p style={{color:t.text,fontSize:15,fontWeight:700}}>{s.item}</p>
-                      {isLow&&<span style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700}}>LOW STOCK</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
-                      {s.supplier&&<span style={{color:t.sub,fontSize:12}} className="flex items-center gap-1"><span>🏭</span>{s.supplier}</span>}
-                      {s.date&&<span style={{color:t.sub,fontSize:12}} className="flex items-center gap-1"><span>📅</span>{s.date}</span>}
-                    </div>
-                    {s.notes&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",marginTop:4}}>"{s.notes}"</p>}
-                    {/* Stock level bar */}
-                    {stockPct!==null&&<div className="mt-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span style={{color:t.sub,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Stock level</span>
-                        <span style={{color:isLow?"#ef4444":t.sub,fontSize:10,fontWeight:700}}>{s.qty} / {+s.minStock*2} {s.unit}</span>
-                      </div>
-                      <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden"}}>
-                        <div style={{width:`${Math.max(4,stockPct)}%`,background:isLow?"linear-gradient(90deg,#ef4444,#f97316)":"linear-gradient(90deg,#8b5cf6,#06b6d4)",height:"100%",borderRadius:5,transition:"width 0.3s"}}/>
-                      </div>
-                    </div>}
-                  </div>
-                  {/* Right: qty + cost + actions */}
-                  <div className="shrink-0 text-right flex flex-col items-end gap-1">
-                    <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:"6px 10px",textAlign:"center",minWidth:64}}>
-                      <p style={{color:t.text,fontSize:18,fontWeight:800,lineHeight:1}}>{s.qty}</p>
-                      <p style={{color:t.sub,fontSize:10,fontWeight:600,marginTop:2}}>{s.unit}</p>
-                    </div>
-                    {can("sup_seeCost")&&s.cost>0&&<span style={{color:"#8b5cf6",fontWeight:700,fontSize:13}}>{inr(s.cost)}</span>}
-                  </div>
-                </div>
-                {/* Actions row */}
-                <div className="flex gap-2 mt-3 pt-3" style={{borderTop:`1px solid ${t.border}`}}>
-                  {can("sup_edit")&&<button onClick={()=>{setSf({...s});setSsh(s);}} style={{flex:1,background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,minHeight:40,borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                    ✏️ Edit
-                  </button>}
-                  {can("sup_delete")&&<button onClick={()=>delS(s)} style={{background:dm?"rgba(220,38,38,0.12)":"rgba(220,38,38,0.06)",color:"#ef4444",border:"1.5px solid rgba(220,38,38,0.25)",minHeight:40,padding:"0 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6}}>
-                    🗑️ Delete
-                  </button>}
-                </div>
+          {fSup.length>0&&(()=>{
+            const sortedSup=[...fSup].sort((a,b)=>b.date.localeCompare(a.date));
+            return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+              <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                  <thead>
+                    <tr style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.025)",borderBottom:`1.5px solid ${t.border}`}}>
+                      <th style={{padding:"11px 8px 11px 16px",width:28}}></th>
+                      <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Item</th>
+                      <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Supplier</th>
+                      <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Date</th>
+                      <th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Quantity</th>
+                      {can("sup_seeCost")&&<th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Cost</th>}
+                      <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Stock</th>
+                      <th style={{padding:"11px 16px 11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedSup.map((s,si)=>{
+                      const isLow=s.minStock&&(+s.qty||0)<=(+s.minStock);
+                      const isEven=si%2===0;
+                      return <tr key={s.id||si}
+                        style={{borderBottom:`1px solid ${t.border}`,background:isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",transition:"background 0.12s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(139,92,246,0.04)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background=isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
+                        {/* Low stock dot */}
+                        <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}}>
+                          <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:isLow?"#ef4444":"#10b981"}}/>
+                        </td>
+                        {/* Item */}
+                        <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:180}}>
+                          <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.item}</p>
+                          {s.notes&&<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:170,fontStyle:"italic"}}>{s.notes}</p>}
+                          {isLow&&<span style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:6,padding:"1px 6px",fontSize:10,fontWeight:700}}>LOW</span>}
+                        </td>
+                        {/* Supplier */}
+                        <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:140}}>
+                          <p style={{color:t.text,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.supplier||"—"}</p>
+                        </td>
+                        {/* Date */}
+                        <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
+                          <p style={{color:t.text,fontWeight:600,fontSize:13}}>{s.date||"—"}</p>
+                        </td>
+                        {/* Qty */}
+                        <td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                          <span style={{color:isLow?"#ef4444":t.text,fontWeight:800,fontSize:13}}>{s.qty}</span>
+                          <span style={{color:t.sub,fontSize:11,marginLeft:4}}>{s.unit}</span>
+                        </td>
+                        {/* Cost */}
+                        {can("sup_seeCost")&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                          <span style={{color:"#7c3aed",fontWeight:700,fontSize:13}}>{s.cost>0?inr(s.cost):"—"}</span>
+                        </td>}
+                        {/* Stock pill */}
+                        <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
+                          {s.minStock?<span style={{display:"inline-flex",alignItems:"center",gap:5,background:isLow?"#ef444415":"#10b98115",color:isLow?"#dc2626":"#059669",border:`1px solid ${isLow?"#ef444425":"#10b98125"}`,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                            {isLow?"⚠️ Low":"✓ OK"}
+                          </span>:<span style={{color:t.sub,fontSize:11}}>—</span>}
+                        </td>
+                        {/* Actions */}
+                        <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                          <div style={{display:"inline-flex",gap:6}}>
+                            {can("sup_edit")&&<button onClick={()=>{setSf({...s});setSsh(s);}}
+                              style={{width:32,height:32,borderRadius:8,background:dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s",fontSize:13}}
+                              onMouseEnter={e=>{e.currentTarget.style.background="#2563eb";e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor="#2563eb";}}
+                              onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)";e.currentTarget.style.color=t.sub;e.currentTarget.style.borderColor=t.border;}}>
+                              ✏️
+                            </button>}
+                            {can("sup_delete")&&<button onClick={()=>delS(s)}
+                              style={{width:32,height:32,borderRadius:8,background:dm?"rgba(239,68,68,0.1)":"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",color:"#ef4444",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s",fontSize:13}}
+                              onMouseEnter={e=>{e.currentTarget.style.background="#ef4444";e.currentTarget.style.color="#fff";}}
+                              onMouseLeave={e=>{e.currentTarget.style.background=dm?"rgba(239,68,68,0.1)":"rgba(239,68,68,0.06)";e.currentTarget.style.color="#ef4444";}}>
+                              🗑️
+                            </button>}
+                          </div>
+                        </td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Footer */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
+                <p style={{color:t.sub,fontSize:12,fontWeight:500}}>Showing <b style={{color:t.text}}>{fSup.length}</b> of <b style={{color:t.text}}>{fSup.length}</b> supplies</p>
+                {can("sup_seeCost")&&<p style={{color:"#7c3aed",fontSize:12,fontWeight:700}}>Total: {inr(fSup.reduce((a,s)=>a+(s.cost||0),0))}</p>}
+                <span style={{color:t.sub,fontSize:11}}>{lowStockItems.length>0?`⚠️ ${lowStockItems.length} low stock`:"✓ Stock OK"}</span>
               </div>
             </div>;
-          })}
-          </div>
+          })()}
           </>;
         })()}
 
@@ -6930,46 +7852,45 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           return (
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-              {/* ── PAGE HEADER ── */}
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-                <div>
-                  <p style={{color:t.text,fontWeight:700,fontSize:18,lineHeight:1}}>Expenses</p>
-                  <p style={{color:t.sub,fontSize:12,marginTop:3}}>{filterLabel} · {filteredExp.length} entries</p>
-                </div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                  {/* Date filter chips */}
-                  {[["all","All time"],["month","This month"],["week","7 days"],["today","Today"],["custom","📅 Custom"]].map(([v,l])=>(
-                    <button key={v} onClick={()=>setExpDateFilter(v)}
-                      style={{border:`1px solid ${expDateFilter===v?"#ef4444":t.border}`,borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",background:expDateFilter===v?(dm?"rgba(239,68,68,0.15)":"#fff1f2"):(t.inp),color:expDateFilter===v?"#ef4444":t.sub,transition:"all .15s"}}>
-                      {l}
-                    </button>
-                  ))}
-                  {/* Search */}
-                  <input value={expSearch} onChange={e=>setExpSearch(e.target.value)} placeholder="🔍 Search…"
-                    style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:20,padding:"5px 12px",fontSize:12,color:t.text,outline:"none",width:140}}/>
-                  {/* Add button */}
-                  <button onClick={()=>{setEsh("add");setEf(blkE());}}
-                    style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                    + Add Expense
+              {/* ── EXPENSES TAB HEADER ── */}
+              <SectionHeader dm={dm} title="Expenses" sub={`${filterLabel} · ${filteredExp.length} entries`}
+                cta={<button onClick={()=>{setEsh("add");setEf(blkE());}}
+                    style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Expense
+                  </button>}/>
+              {/* ── DATE FILTER PILLS ── */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["all","All time"],["month","Month"],["week","7 days"],["today","Today"],["custom","Custom"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setExpDateFilter(v)}
+                    style={{border:`1.5px solid ${expDateFilter===v?"#2563eb":t.border}`,borderRadius:99,padding:"6px 16px",fontSize:12,fontWeight:700,cursor:"pointer",background:expDateFilter===v?"#2563eb":t.inp,color:expDateFilter===v?"#fff":t.sub,transition:"all .15s",whiteSpace:"nowrap"}}>
+                    {l}
                   </button>
-                </div>
-                {/* Custom date range pickers — only shown when "custom" is active */}
-                {expDateFilter==="custom"&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:4,background:dm?"rgba(239,68,68,0.07)":"#fff1f2",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px"}}>
-                    <span style={{color:"#ef4444",fontSize:12,fontWeight:700}}>📅 From</span>
-                    <input type="date" value={expCustomFrom} onChange={e=>setExpCustomFrom(e.target.value)}
-                      style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
-                    <span style={{color:t.sub,fontSize:12,fontWeight:600}}>→ To</span>
-                    <input type="date" value={expCustomTo} onChange={e=>setExpCustomTo(e.target.value)}
-                      style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
-                    {expCustomFrom&&expCustomTo&&(
+                ))}
+              </div>
+              <TabStatCards dm={dm} cards={[
+                {icon:"💸",label:"Total Expenses",value:inr(totalExpOp),sub:`${expenses.length} entries`,iconBg:t.statIcon5},
+                {icon:"📅",label:"This Period",value:inr(filtExpTotal),sub:filterLabel,iconBg:t.statIcon3},
+                {icon:"📊",label:"Exp/Revenue",value:`${expRatio}%`,sub:"of total revenue",iconBg:t.statIcon4},
+                {icon:"📉",label:"Avg/Day",value:inr(Math.round(avgExpPerDay)),sub:"daily average",iconBg:t.statIcon1},
+              ]}/>
+
+              {/* Custom date range pickers — only shown when "custom" is active */}
+              {expDateFilter==="custom"&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:"10px 14px"}}>
+                  <span style={{color:t.sub,fontSize:12,fontWeight:700}}>From</span>
+                  <input type="date" value={expCustomFrom} onChange={e=>setExpCustomFrom(e.target.value)}
+                    style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
+                  <span style={{color:t.sub,fontSize:12,fontWeight:600}}>→ To</span>
+                  <input type="date" value={expCustomTo} onChange={e=>setExpCustomTo(e.target.value)}
+                    style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 10px",fontSize:12,color:t.text,outline:"none",cursor:"pointer"}}/>
+                  {expCustomFrom&&expCustomTo&&(
                       <span style={{color:"#ef4444",fontSize:11,fontWeight:700,background:"rgba(239,68,68,0.12)",padding:"3px 10px",borderRadius:20,border:"1px solid rgba(239,68,68,0.3)"}}>
                         {filteredExp.length} entries · {inr(filtExpTotal)}
                       </span>
                     )}
                   </div>
                 )}
-              </div>
+              
 
               {/* ── BUDGET ALERTS ── */}
               {budgetAlerts.map(({cat,budget,spent,over,pct})=>(
@@ -7180,14 +8101,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     })
                 }
                 </div>
-                {/* Footer: entry count + add button */}
+                {/* Footer: entry count */}
                 <div style={{padding:"10px 16px",borderTop:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <p style={{color:t.sub,fontSize:12}}>{filteredExp.length} {filteredExp.length===1?"entry":"entries"} · {inr(filtExpTotal)} total</p>
-                  <button
-                    onClick={()=>{setEsh("add");setEf(blkE());}}
-                    style={{background:"#ef4444",border:"none",borderRadius:8,padding:"5px 14px",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
-                    + Add Expense
-                  </button>
                 </div>
               </div>
 
@@ -7215,6 +8131,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
         {/* WASTAGE */}
         {tab==="Wastage"&&(<>
+          <SectionHeader dm={dm} title="Wastage" sub="Track production wastage and losses"
+            cta={<button onClick={()=>{setWSh("add");setWF(blkW());}}
+              style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Wastage
+            </button>}/>
           {/* Stats row */}
           {(()=>{
             const canW = isAdmin||(settings?.showWastageTo||["admin","factory"]).includes(sess.role);
@@ -7255,9 +8176,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </div></Card>}
 
               {/* Controls */}
-              <div className="flex gap-2 items-center justify-between flex-wrap">
+              <div className="flex gap-3 items-center justify-between flex-wrap">
                 <Pill dm={dm} c="red">{wastage.length} total records</Pill>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>{
                     const cols=[{label:"Date",key:"date"},{label:"Shift",key:"shift"},{label:"Product",key:"product"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Type",key:"type"},{label:"Reason",key:"reason"},{label:"Cost (₹)",key:"cost",num:true},{label:"Logged By",key:"loggedBy"}];
                     const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px"><div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#c2410c">${totalWasteQty}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Total Qty Wasted</div></div><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#b91c1c">${inr(totalWasteCost)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Cost Loss</div></div><div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px"><div style="font-size:20px;font-weight:900;color:#92400e">${todayWaste.reduce((s,w)=>s+(w.qty||0),0)}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:3px">Today's Wastage</div></div></div>`;
@@ -7278,8 +8199,6 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <Btn dm={dm} size="sm" onClick={()=>{setWF(blkW());setWSh("add");}}>+ Log Wastage</Btn>
                 </div>
               </div>
-              <Search dm={dm} value={srch} onChange={setSrch} placeholder="Search product, type, reason, user…"/>
-
               {/* Records list */}
               {fWaste.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-6">No wastage records found.</p>}
               {fWaste.map(w=>(
@@ -7417,33 +8336,25 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           ];
 
           return <>
-            {/* ══ HERO KPI STRIP ══ */}
-            <div style={{background:dm?"linear-gradient(135deg,#0d1f12,#0a1628)":"linear-gradient(135deg,#f0fdf9,#eff6ff)",border:`1px solid ${dm?"#1a3a24":"#c7f0da"}`,borderRadius:20,padding:"18px 20px",marginBottom:2}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                <div>
-                  <p style={{color:dm?"#34d399":"#059669",fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.1em"}}>💰 Payments Overview</p>
-                  <p style={{color:t.sub,fontSize:10,marginTop:2}}>{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}</p>
-                </div>
-                <button onClick={()=>{setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}}
-                  style={{background:green,color:"#fff",borderRadius:12,padding:"10px 18px",fontSize:13,fontWeight:800,border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 12px #10b98140"}}>
-                  <span style={{fontSize:16}}>+</span> Record Payment
-                </button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-                {statBox("Total Collected",inr(grandTotal),green,`${allLedgerEntries.length} transactions`)}
-                {statBox("Outstanding",inr(totalBalanceAll),totalBalanceAll>0?red:green,`${pendingCustCount} customer${pendingCustCount!==1?"s":""} with dues`)}
-                {statBox("Replacements",inr(totalReplAll),orange,"deducted from orders")}
-                {statBox("Partial Payments",partialCustCount,amber,`${partialCustCount} customers`)}
-              </div>
-            </div>
-
-            {/* ══ OUTSTANDING ALERT BANNER — shown only when dues exist ══ */}
-            {totalBalanceAll>0&&<div style={{background:dm?"#1f0a0a":"#fff1f1",border:`1.5px solid ${red}30`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+            {/* ── PAYMENTS TAB HEADER ── */}
+            <SectionHeader dm={dm} title="Payments" sub="Track collections, dues, and ledger"
+              cta={<button onClick={()=>{setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");setPayLedgerSh(true);}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Record Payment
+              </button>}/>
+            <TabStatCards dm={dm} cards={[
+              {icon:"💰",label:"Total Collected",value:inr(grandTotal),sub:`${allLedgerEntries.length} transactions`,iconBg:t.statIcon2},
+              {icon:"⚠️",label:"Outstanding",value:inr(totalBalanceAll),sub:`${pendingCustCount} customers with dues`,iconBg:totalBalanceAll>0?t.statIcon5:t.statIcon2},
+              {icon:"🔄",label:"Replacements",value:inr(totalReplAll),sub:"deducted from orders",iconBg:t.statIcon3},
+              {icon:"⚡",label:"Partial Payments",value:partialCustCount,sub:"customers",iconBg:t.statIcon4},
+            ]}/>
+            {/* ══ OUTSTANDING ALERT BANNER — shown when any customer has dues ══ */}
+            {(totalBalanceAll>0||customers.some(c=>(c.pending||0)>0))&&<div style={{background:dm?"#1f0a0a":"#fff1f1",border:`1.5px solid ${red}30`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:22}}>⚠️</span>
                 <div>
-                  <p style={{color:red,fontWeight:800,fontSize:13}}>{inr(totalBalanceAll)} outstanding</p>
-                  <p style={{color:t.sub,fontSize:11}}>{pendingCustCount} customer{pendingCustCount!==1?"s":""} haven't fully paid · {partialCustCount} partial</p>
+                  <p style={{color:red,fontWeight:800,fontSize:13}}>{inr(Math.max(totalBalanceAll,customers.reduce((s,c)=>s+(c.pending||0),0)))} outstanding</p>
+                  <p style={{color:t.sub,fontSize:11}}>{pendingCustCount||customers.filter(c=>(c.pending||0)>0).length} customer{(pendingCustCount||1)!==1?"s":""} haven't fully paid · {partialCustCount} partial</p>
                 </div>
               </div>
               <button onClick={()=>setPaymentsSubTab("outstanding")}
@@ -7453,15 +8364,15 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>}
 
             {/* ══ SUB-TAB NAV ══ */}
-            <div className="crm-tab-seg crm-tab-seg-3" style={{gap:6,background:t.inp,borderRadius:14,padding:4}}>
+            <div style={{display:"flex",gap:8,background:t.inp,borderRadius:14,padding:4}}>
               {SUB_TABS.map(s=>(
                 <button key={s.id} onClick={()=>setPaymentsSubTab(s.id)}
-                  style={{background:paymentsSubTab===s.id?(dm?"#1e3a5f":"#1e3a5f"):"transparent",
+                  style={{flex:1,background:paymentsSubTab===s.id?"#2563eb":"transparent",
                     color:paymentsSubTab===s.id?"#fff":t.sub,
-                    borderRadius:10,padding:"10px 6px",fontSize:12,fontWeight:700,border:"none",
+                    borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:700,border:"none",
                     cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent",
-                    display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:16}}>{s.icon}</span>
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:6,whiteSpace:"nowrap"}}>
+                  <span style={{fontSize:15}}>{s.icon}</span>
                   <span>{s.label}</span>
                 </button>
               ))}
@@ -7579,44 +8490,78 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     <p style={{fontSize:32,marginBottom:8}}>📭</p>
                     <p style={{color:t.sub,fontSize:13}}>No payment records found.</p>
                   </div>
-                :filteredEntries.map((entry)=>{
-                    const sc=entry.payStatus==="settled"?green:entry.payStatus==="partial"?amber:entry.payStatus==="manual"?blue:red;
-                    const slabel=entry.payStatus==="settled"?"Settled":entry.payStatus==="partial"?"Partial":entry.payStatus==="manual"?"Manual":"Pending";
-                    return <div key={entry.id} style={{background:t.card,border:`1px solid ${sc}20`,borderRadius:16,overflow:"hidden"}}>
-                      <div style={{display:"flex",alignItems:"stretch"}}>
-                        {/* Color stripe */}
-                        <div style={{width:4,background:sc,flexShrink:0}}/>
-                        <div style={{flex:1,padding:"12px 14px"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <p style={{color:t.text,fontWeight:800,fontSize:14}}>{entry.customer}</p>
-                                <span style={pillStyle(sc)}>{slabel}</span>
-                              </div>
-                              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
-                                <span style={{color:t.sub,fontSize:10}}>📅 {entry.date}</span>
-                                {entry.invNo&&<span style={{color:t.sub,fontSize:9,fontFamily:"monospace",background:t.inp,borderRadius:4,padding:"1px 5px"}}>{entry.invNo}</span>}
-                                <span style={{color:t.sub,fontSize:10}}>via {entry.method}</span>
-                                <span style={{color:t.sub,fontSize:10}}>by {entry.by}</span>
-                              </div>
-                            </div>
-                            <div style={{textAlign:"right",flexShrink:0}}>
-                              <p style={{color:green,fontWeight:900,fontSize:18,letterSpacing:"-0.5px"}}>{inr(entry.amount)}</p>
-                              {entry.balance>0&&<p style={{color:red,fontSize:10,fontWeight:600}}>{inr(entry.balance)} due</p>}
-                            </div>
-                          </div>
-                          {/* Delivery breakdown pills */}
-                          {entry.type==="delivery"&&(entry.replAmt>0||entry.netPayable>0)&&
-                            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-                              {entry.orderTotal>0&&<span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10}}>Order <b style={{color:t.text}}>{inr(entry.orderTotal)}</b></span>}
-                              {entry.replAmt>0&&<span style={{background:orange+"15",color:orange,borderRadius:6,padding:"2px 8px",fontSize:10}}>🔄 −{inr(entry.replAmt)}</span>}
-                              {entry.netPayable>0&&<span style={{background:t.inp,color:t.sub,borderRadius:6,padding:"2px 8px",fontSize:10}}>Net <b style={{color:t.text}}>{inr(entry.netPayable)}</b></span>}
-                            </div>}
-                          {entry.note&&<p style={{color:t.sub,fontSize:11,marginTop:6,fontStyle:"italic"}}>📝 {entry.note}</p>}
-                        </div>
-                      </div>
-                    </div>;
-                  })}
+                :<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                        <thead>
+                          <tr style={{background:dm?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.025)",borderBottom:`1.5px solid ${t.border}`}}>
+                            <th style={{padding:"11px 8px 11px 16px",width:28}}></th>
+                            <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Customer</th>
+                            <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Date</th>
+                            <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Invoice / Ref</th>
+                            <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Method</th>
+                            <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Status</th>
+                            <th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Amount</th>
+                            <th style={{padding:"11px 16px 11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredEntries.map((entry,ei)=>{
+                            const sc=entry.payStatus==="settled"?green:entry.payStatus==="partial"?amber:entry.payStatus==="manual"?blue:red;
+                            const slabel=entry.payStatus==="settled"?"Settled":entry.payStatus==="partial"?"Partial":entry.payStatus==="manual"?"Manual":"Pending";
+                            const isEven=ei%2===0;
+                            return <tr key={entry.id}
+                              style={{borderBottom:`1px solid ${t.border}`,background:isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",transition:"background 0.12s"}}
+                              onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(16,185,129,0.04)";}}
+                              onMouseLeave={e=>{e.currentTarget.style.background=isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
+                              {/* Status dot */}
+                              <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}}>
+                                <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:sc}}/>
+                              </td>
+                              {/* Customer + note stacked */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:160}}>
+                                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.customer}</p>
+                                {entry.note&&<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:"italic"}}>{entry.note}</p>}
+                              </td>
+                              {/* Date */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
+                                <p style={{color:t.text,fontWeight:600,fontSize:13}}>{entry.date}</p>
+                              </td>
+                              {/* Invoice / Ref */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:140}}>
+                                {entry.invNo?<span style={{color:t.sub,fontSize:11,fontFamily:"monospace",background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.07)",border:"1px solid rgba(139,92,246,0.15)",borderRadius:5,padding:"2px 7px"}}>{entry.invNo}</span>:<span style={{color:t.sub,fontSize:11}}>—</span>}
+                              </td>
+                              {/* Method + by stacked */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:120}}>
+                                <p style={{color:t.text,fontSize:12,fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.method||"—"}</p>
+                                <p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>by {entry.by||"—"}</p>
+                              </td>
+                              {/* Status pill */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
+                                <span style={{display:"inline-flex",alignItems:"center",gap:5,background:sc+"18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                                  <span style={{width:6,height:6,borderRadius:"50%",background:sc,display:"inline-block"}}/>
+                                  {slabel}
+                                </span>
+                              </td>
+                              {/* Amount */}
+                              <td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                                <span style={{color:green,fontWeight:800,fontSize:13}}>{inr(entry.amount)}</span>
+                              </td>
+                              {/* Balance due */}
+                              <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+                                <span style={{color:entry.balance>0?red:t.sub,fontWeight:entry.balance>0?800:400,fontSize:13}}>{entry.balance>0?inr(entry.balance):"—"}</span>
+                              </td>
+                            </tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Footer */}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
+                      <p style={{color:t.sub,fontSize:12}}><b style={{color:t.text}}>{filteredEntries.length}</b> entries</p>
+                      <p style={{color:green,fontWeight:700,fontSize:12}}>Total collected: {inr(filteredEntries.reduce((s,e)=>s+e.amount,0))}</p>
+                    </div>
+                  </div>}
             </>}
 
             {/* ══════ DAILY SUMMARY SUB-TAB ══════ */}
@@ -7779,55 +8724,46 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const periodLabel=plPeriod==="custom"?`${plCustomFrom||"—"} → ${plCustomTo}`:PL_PERIODS.find(p=>p[0]===plPeriod)?.[1]||"";
 
           return <>
+            {/* ── P&L TAB HEADER ── */}
+            <SectionHeader dm={dm} title="Profit & Loss" sub={`${periodLabel} · ${healthLabel} · ${healthScore}/100`}
+              cta={null}/>
+            <TabStatCards dm={dm} cards={[
+              {icon:totProfit>=0?"📈":"📉",label:"Net Profit",value:inr(totProfit),sub:`${totMargin}% margin`,iconBg:totProfit>=0?t.statIcon2:t.statIcon5},
+              {icon:"💰",label:"Revenue",value:inr(totRev),sub:`${filtD.length} deliveries`,iconBg:t.statIcon2},
+              {icon:"📦",label:"Supply Cost",value:inr(totSupC),sub:`${filtS.length} entries`,iconBg:t.statIcon4},
+              {icon:"💸",label:"Op. Expenses",value:inr(totExpC),sub:`${filtE.length} entries`,iconBg:t.statIcon5},
+              {icon:"🗑️",label:"Wastage Cost",value:inr(totWasteC),sub:`${filtW.length} entries`,iconBg:t.statIcon3},
+            ]}/>
             {/* ══════════════════════════════════════════════════════
-                P&L HEADER — Period Selector + Title + Export
+                P&L PERIOD SELECTOR
             ══════════════════════════════════════════════════════ */}
-            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:20,overflow:"hidden",boxShadow:dm?"0 4px 20px rgba(0,0,0,0.45)":"0 2px 12px rgba(0,0,0,0.07)"}}>
-              {/* Title bar */}
-              <div style={{background:dm?"linear-gradient(135deg,#0c1a30,#091a0e)":"linear-gradient(135deg,#f0f9ff,#f0fdf4)",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,borderBottom:`1px solid ${t.border}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{width:44,height:44,borderRadius:14,background:totProfit>=0?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)",border:`1.5px solid ${totProfit>=0?"rgba(16,185,129,0.35)":"rgba(239,68,68,0.35)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{totProfit>=0?"📈":"📉"}</div>
-                  <div>
-                    <p style={{color:t.text,fontWeight:900,fontSize:17,lineHeight:1,letterSpacing:"-0.02em"}}>Profit & Loss</p>
-                    <p style={{color:t.sub,fontSize:11,marginTop:3}}>
-                      {periodLabel} · INR · Accrual ·&nbsp;
-                      <span style={{color:healthColor,fontWeight:700}}>{healthLabel}</span>
-                      <span style={{color:t.sub}}> ({healthScore}/100)</span>
-                    </p>
-                  </div>
-                </div>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  {momProfit!==null&&(
-                    <span style={{background:momProfit>=0?"rgba(16,185,129,0.12)":"rgba(239,68,68,0.12)",color:momProfit>=0?"#10b981":"#ef4444",border:`1px solid ${momProfit>=0?"rgba(16,185,129,0.3)":"rgba(239,68,68,0.3)"}`,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:800}}>
-                      {momProfit>=0?"▲":"▼"} {Math.abs(momProfit)}% profit MoM
-                    </span>
-                  )}
-                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 Export CSV</Btn>
-                </div>
-              </div>
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden"}}>
               {/* Period pills */}
               <div style={{padding:"12px 16px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",borderBottom:plPeriod==="custom"?`1px solid ${t.border}`:"none"}}>
                 <span style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginRight:2}}>Period</span>
                 {PL_PERIODS.map(([v,l])=>(
                   <button key={v} onClick={()=>setPlPeriod(v)}
                     style={plPeriod===v
-                      ?{background:totProfit>=0?"#10b981":"#ef4444",color:"#fff",borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:800,border:"none",cursor:"pointer",boxShadow:`0 2px 10px ${totProfit>=0?"rgba(16,185,129,0.4)":"rgba(239,68,68,0.4)"}`}
+                      ?{background:"#2563eb",color:"#fff",borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:800,border:"none",cursor:"pointer"}
                       :{background:t.inp,color:t.sub,borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:600,border:`1.5px solid ${t.border}`,cursor:"pointer"}}>{l}
                   </button>
                 ))}
+                <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                  <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(mData,"pl_report",[{label:"Month",key:"monthFull"},{label:"Revenue",key:"revenue"},{label:"Supply Cost",key:"supplyCost"},{label:"Expenses",key:"expenses"},{label:"Waste Cost",key:"wasteCost"},{label:"Total Cost",key:"totalCost"},{label:"Profit/Loss",key:"profit"},{label:"Margin %",key:"margin"},{label:"Deliveries",key:"deliveriesCount"}])}>📊 CSV</Btn>
+                </div>
               </div>
               {/* Custom date range — inline below pills */}
               {plPeriod==="custom"&&(
-                <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:dm?"rgba(16,185,129,0.05)":"rgba(16,185,129,0.03)"}}>
-                  <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>📅 From</span>
+                <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <span style={{color:t.sub,fontSize:12,fontWeight:700}}>From</span>
                   <input type="date" value={plCustomFrom} onChange={e=>setPlCustomFrom(e.target.value)}
                     style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:13,color:t.text,outline:"none",cursor:"pointer"}}/>
                   <span style={{color:t.sub,fontSize:13,fontWeight:700}}>→</span>
                   <input type="date" value={plCustomTo} max={today()} onChange={e=>setPlCustomTo(e.target.value)}
                     style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"6px 12px",fontSize:13,color:t.text,outline:"none",cursor:"pointer"}}/>
                   {plCustomFrom&&plCustomTo&&(
-                    <span style={{background:"rgba(16,185,129,0.12)",color:"#10b981",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:800,border:"1px solid rgba(16,185,129,0.3)"}}>
-                      ✓ {Math.round((new Date(plCustomTo)-new Date(plCustomFrom))/86400000)+1} days selected
+                    <span style={{background:t.accentLight,color:t.accent,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:800}}>
+                      ✓ {Math.round((new Date(plCustomTo)-new Date(plCustomFrom))/86400000)+1} days
                     </span>
                   )}
                 </div>
@@ -8748,69 +9684,73 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           if(prodSales.filter(p=>p.totalQty>0).length<products.length*0.5&&products.length>2) analyticsInsights.push({icon:"📦",color:"#8b5cf6",text:`${products.length-prodSales.filter(p=>p.totalQty>0).length} products have zero sales. Consider rationalising catalogue.`});
 
           return <>
-            {/* ── DATE FILTER BAR ── */}
-            <div style={{background:t.card,border:`1.5px solid ${t.border}`,borderRadius:14,padding:"12px 16px"}}>
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <div>
-                  <p style={{color:t.text}} className="font-black text-base">📊 Analytics</p>
-                  <p style={{color:t.sub}} className="text-xs">Period: {anlLabel} · {totalDelivered} deliveries · {inr(totalNetRevenue)} net revenue</p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button onClick={()=>setAnlShowInsights(v=>!v)} style={{background:anlShowInsights?"#8b5cf620":t.inp,color:anlShowInsights?"#8b5cf6":t.sub,border:`1px solid ${anlShowInsights?"#8b5cf650":t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>💡 Insights</button>
-                  <div style={{display:"flex",gap:3,background:t.inp,borderRadius:8,padding:3,border:`1px solid ${t.border}`}}>
-                    {[["bar","▮▮ Bar"],["line","╱ Line"]].map(([v,l])=>(
-                      <button key={v} onClick={()=>setAnlChartType(v)} style={{background:anlChartType===v?t.card:t.inp,color:anlChartType===v?t.text:t.sub,border:anlChartType===v?`1px solid ${t.border}`:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l}</button>
+            {/* ── ANALYTICS TAB HEADER ── */}
+            <SectionHeader dm={dm} title="Analytics" sub={`${anlLabel} · ${totalDelivered} deliveries · ${inr(totalNetRevenue)} net revenue`}
+              cta={<>
+                <button onClick={()=>setAnlShowInsights(v=>!v)} style={{background:anlShowInsights?"#2563eb":t.card,color:anlShowInsights?"#fff":t.sub,border:`1px solid ${anlShowInsights?"#2563eb":t.border}`,borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💡 Insights</button>
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setAnlExportOpen(anlExportOpen==="all"?null:"all")} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 18px",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>⬇ Export All</button>
+                  {anlExportOpen==="all"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,zIndex:99,minWidth:220,boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
+                    <div style={{padding:"8px 14px 6px",borderBottom:`1px solid ${t.border}`}}>
+                      <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em"}}>Export: {anlLabel}</p>
+                    </div>
+                    {[
+                      ["📊 Overview CSV",()=>exportCSV([{period:anlLabel,revenue:totalNetRevenue,gross:totalGrossRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,cancellation:`${cancelRate}%`,replacement:`${replRate}%`,avgOrder:avgRevPerDeliv,outstanding:totalOutstanding}],"analytics_overview",[{label:"Period",key:"period"},{label:"Net Revenue",key:"revenue"},{label:"Gross Revenue",key:"gross"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Cancellation Rate",key:"cancellation"},{label:"Replacement Rate",key:"replacement"},{label:"Avg Order (₹)",key:"avgOrder"},{label:"Outstanding (₹)",key:"outstanding"}])],
+                      ["👥 Customers CSV",()=>exportCSV(custRev,"customers_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"totalOrders"},{label:"Revenue (₹)",key:"totalRev"},{label:"Outstanding (₹)",key:"outstandingBalance"},{label:"Partial Collected (₹)",key:"partialCollected"},{label:"Repl Deducted (₹)",key:"replDeducted"}])],
+                      ["📦 Products CSV",()=>exportCSV(prodSales,"products_analytics",[{label:"Product",key:"name"},{label:"Qty Sold",key:"totalQty"},{label:"Revenue (₹)",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])],
+                      ["💸 Expenses CSV",()=>exportCSV(expCatData,"expenses_breakdown",[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount"},{label:"Count",key:"count"}])],
+                      ["📈 14-Day Trend CSV",()=>exportCSV(dailyData,"14day_trend",[{label:"Date",key:"date"},{label:"Scheduled",key:"scheduled"},{label:"Delivered",key:"delivered"},{label:"Revenue (₹)",key:"revenue"},{label:"Expenses (₹)",key:"expenses"}])],
+                      ["🔄 Returns CSV",()=>{const inPD=deliveries.filter(d=>inAnlRange(d.date));const rows=[...inPD.filter(d=>d.replacement?.done).map(d=>({type:"Replacement",customer:d.customer,date:d.date,item:d.replacement?.item||"",qty:d.replacement?.qty||"",amount:+d.replacement?.amount||0,reason:d.replacement?.reason||"",replType:d.replacement?.type||""})),...inPD.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).map(d=>({type:"Partial Payment",customer:d.customer,date:d.date,item:"",qty:"",amount:+d.partialPayment?.amount||0,reason:d.partialPayment?.note||"",replType:""})),...inPD.filter(d=>d.status==="Cancelled").map(d=>({type:"Return/Cancel",customer:d.customer,date:d.date,item:"",qty:"",amount:0,reason:d.notes||"",replType:""}))];exportCSV(rows,"returns_replacements",[{label:"Type",key:"type"},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Amount (₹)",key:"amount"},{label:"Notes/Reason",key:"reason"}]);}],
+                    ].map(([lbl,fn])=>(
+                      <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none",borderBottom:`1px solid ${t.border}`}}>{lbl}</button>
                     ))}
-                  </div>
-                  <div style={{position:"relative"}}>
-                    <button onClick={()=>setAnlExportOpen(anlExportOpen==="all"?null:"all")} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export All ▾</button>
-                    {anlExportOpen==="all"&&<div style={{position:"absolute",right:0,top:"110%",background:t.card,border:`1px solid ${t.border}`,borderRadius:10,zIndex:99,minWidth:200,boxShadow:"0 4px 24px rgba(0,0,0,0.18)"}}>
-                      <div style={{padding:"8px 14px 6px",borderBottom:`1px solid ${t.border}`}}>
-                        <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em"}}>Export for period: {anlLabel}</p>
-                      </div>
-                      {[
-                        ["📊 Overview CSV",()=>exportCSV([{period:anlLabel,revenue:totalNetRevenue,gross:totalGrossRevenue,deliveries:totalDelivered,fulfillment:`${fulfillmentRate}%`,cancellation:`${cancelRate}%`,replacement:`${replRate}%`,avgOrder:avgRevPerDeliv,outstanding:totalOutstanding}],"analytics_overview",[{label:"Period",key:"period"},{label:"Net Revenue",key:"revenue"},{label:"Gross Revenue",key:"gross"},{label:"Deliveries",key:"deliveries"},{label:"Fulfillment",key:"fulfillment"},{label:"Cancellation Rate",key:"cancellation"},{label:"Replacement Rate",key:"replacement"},{label:"Avg Order (₹)",key:"avgOrder"},{label:"Outstanding (₹)",key:"outstanding"}])],
-                        ["👥 Customers CSV",()=>exportCSV(custRev,"customers_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"totalOrders"},{label:"Revenue (₹)",key:"totalRev"},{label:"Outstanding (₹)",key:"outstandingBalance"},{label:"Partial Collected (₹)",key:"partialCollected"},{label:"Repl Deducted (₹)",key:"replDeducted"}])],
-                        ["📦 Products CSV",()=>exportCSV(prodSales,"products_analytics",[{label:"Product",key:"name"},{label:"Qty Sold",key:"totalQty"},{label:"Revenue (₹)",key:"totalRev"},{label:"Deliveries",key:"deliveryCount"}])],
-                        ["💸 Expenses CSV",()=>exportCSV(expCatData,"expenses_breakdown",[{label:"Category",key:"category"},{label:"Amount (₹)",key:"amount"},{label:"Count",key:"count"}])],
-                        ["📈 14-Day Trend CSV",()=>exportCSV(dailyData,"14day_trend",[{label:"Date",key:"date"},{label:"Scheduled",key:"scheduled"},{label:"Delivered",key:"delivered"},{label:"Revenue (₹)",key:"revenue"},{label:"Expenses (₹)",key:"expenses"}])],
-                        ["🔄 Returns & Replacements CSV",()=>{const inPD=deliveries.filter(d=>inAnlRange(d.date));const rows=[...inPD.filter(d=>d.replacement?.done).map(d=>({type:"Replacement",customer:d.customer,date:d.date,item:d.replacement?.item||"",qty:d.replacement?.qty||"",amount:+d.replacement?.amount||0,reason:d.replacement?.reason||"",replType:d.replacement?.type||""})),...inPD.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).map(d=>({type:"Partial Payment",customer:d.customer,date:d.date,item:"",qty:"",amount:+d.partialPayment?.amount||0,reason:d.partialPayment?.note||"",replType:""})),...inPD.filter(d=>d.status==="Cancelled").map(d=>({type:"Return/Cancel",customer:d.customer,date:d.date,item:"",qty:"",amount:0,reason:d.notes||"",replType:""}))];exportCSV(rows,"returns_replacements",[{label:"Type",key:"type"},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Amount (₹)",key:"amount"},{label:"Notes/Reason",key:"reason"}]);}],
-                      ].map(([lbl,fn])=>(
-                        <button key={lbl} onClick={()=>{fn();setAnlExportOpen(null);}} style={{display:"block",width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:t.text,textAlign:"left",cursor:"pointer",background:"transparent",border:"none",borderBottom:`1px solid ${t.border}`}}>{lbl}</button>
-                      ))}
-                    </div>}
-                  </div>
+                  </div>}
                 </div>
-              </div>
-              <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:10,padding:3,display:"flex",gap:2,flexWrap:"wrap"}}>
+              </>}/>
+            <TabStatCards dm={dm} cards={[
+              {icon:"💰",label:"Net Revenue",value:inr(totalNetRevenue),sub:`${totalDelivered} deliveries`,iconBg:t.statIcon2},
+              {icon:"✅",label:"Fulfillment",value:`${fulfillmentRate}%`,sub:`${totalDelivered}/${totalScheduled} orders`,iconBg:t.statIcon2},
+              {icon:"❌",label:"Cancellation",value:`${cancelRate}%`,sub:`${cancelCount} cancelled`,iconBg:cancelRate>5?t.statIcon5:t.statIcon2},
+              {icon:"🔄",label:"Replacement",value:`${replRate}%`,sub:`${replCount} replacements`,iconBg:t.statIcon3},
+              {icon:"💵",label:"Avg Order",value:inr(avgRevPerDeliv),sub:"per delivery",iconBg:t.statIcon1},
+            ]}/>
+            {/* ── PERIOD SELECTOR ── */}
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"12px 16px"}}>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:anlPeriod==="custom"||anlPeriod==="date"?10:0}}>
                 {ANL_PERIODS.map(([v,l])=>(
                   <button key={v} onClick={()=>setAnlPeriod(v)}
                     style={anlPeriod===v
-                      ?{background:dm?"#8b5cf6":"#7c3aed",color:"#fff",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}
-                      :{background:"transparent",color:t.sub,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,border:"none",cursor:"pointer",touchAction:"manipulation",WebkitTapHighlightColor:"transparent"}}>{l}</button>
+                      ?{background:"#2563eb",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer"}
+                      :{background:t.inp,color:t.sub,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,border:`1px solid ${t.border}`,cursor:"pointer"}}>{l}</button>
                 ))}
+                <div style={{display:"flex",gap:4,background:t.inp,borderRadius:8,padding:3,border:`1px solid ${t.border}`,marginLeft:"auto"}}>
+                  {[["bar","▮▮ Bar"],["line","╱ Line"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setAnlChartType(v)} style={{background:anlChartType===v?t.card:t.inp,color:anlChartType===v?t.text:t.sub,border:anlChartType===v?`1px solid ${t.border}`:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l}</button>
+                  ))}
+                </div>
               </div>
-              {anlPeriod==="custom"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginTop:10}}>
+              {anlPeriod==="custom"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <span style={{color:t.sub,fontSize:12,fontWeight:600}}>From</span>
-                <input type="date" value={anlCustomFrom} onChange={e=>setAnlCustomFrom(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                <input type="date" value={anlCustomFrom} onChange={e=>setAnlCustomFrom(e.target.value)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
                 <span style={{color:t.sub,fontSize:12,fontWeight:600}}>To</span>
-                <input type="date" value={anlCustomTo} max={today()} onChange={e=>setAnlCustomTo(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                <input type="date" value={anlCustomTo} max={today()} onChange={e=>setAnlCustomTo(e.target.value)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
                 {anlCustomFrom&&anlCustomTo&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ {Math.round((new Date(anlCustomTo)-new Date(anlCustomFrom))/86400000)+1} days</span>}
               </div>}
-              {anlPeriod==="date"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginTop:10}}>
+              {anlPeriod==="date"&&<div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <span style={{color:t.sub,fontSize:12,fontWeight:600}}>Date</span>
-                <input type="date" value={anlSpecificDate} max={today()} onChange={e=>setAnlSpecificDate(e.target.value)} style={{background:t.card,border:`1px solid ${t.inpB}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
-                {anlSpecificDate&&<span style={{color:"#8b5cf6",fontSize:11,fontWeight:700}}>📅 {new Date(anlSpecificDate).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short",year:"numeric"})}</span>}
+                <input type="date" value={anlSpecificDate} max={today()} onChange={e=>setAnlSpecificDate(e.target.value)} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,fontSize:13,borderRadius:8,padding:"5px 10px",outline:"none"}}/>
+                {anlSpecificDate&&<span style={{color:"#2563eb",fontSize:11,fontWeight:700}}>📅 {new Date(anlSpecificDate).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short",year:"numeric"})}</span>}
               </div>}
             </div>
 
             {/* ── SECTION TABS ── */}
-            <div style={{background:t.inp,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",gap:2,overflowX:"auto"}}>
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",gap:2,overflowX:"auto"}}>
               {[["overview","📊 Overview"],["customers","👥 Customers"],["products","📦 Products"],["operations","🏭 Operations"],["financials","💰 Financials"],["trends","📈 Trends"]].map(([k,l])=>(
                 <button key={k} onClick={()=>setAnlActiveSection(k)}
                   style={anlActiveSection===k
-                    ?{background:dm?"#1e1e2e":t.card,color:t.text,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:`1px solid ${t.border}`,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
-                    :{background:"transparent",color:t.sub,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>{l}</button>
+                    ?{background:"#2563eb",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
+                    :{background:"transparent",color:t.sub,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
+                  }>{l}</button>
               ))}
             </div>
 
@@ -9106,7 +10046,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>
                     <button onClick={()=>exportCSV(filtCust2,"customer_analytics",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Total Orders",key:"totalOrders"},{label:"Revenue",key:"totalRev"},{label:"Gross Revenue",key:"grossRev"},{label:"Repl Deducted",key:"replDeducted"},{label:"Partial Collected",key:"partialCollected"},{label:"Outstanding",key:"outstandingBalance"},{label:"Paid",key:"paid"},{label:"Agent / Created By",val:r=>[...new Set((deliveries.filter(d=>d.customerId===r.id).map(d=>d.createdBy).filter(Boolean)))].join(", ")||"—"}])} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
                   </div>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-3 flex-wrap">
                     <input value={anlCustSearch} onChange={e=>setAnlCustSearch(e.target.value)} placeholder="Search customer…" style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:12,flex:1,minWidth:120,outline:"none"}}/>
                     <select value={anlCustSort} onChange={e=>setAnlCustSort(e.target.value)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,cursor:"pointer"}}>
                       <option value="revenue">Sort: Revenue ↓</option>
@@ -9705,6 +10645,17 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const totalQCPass=batchesWithQC.filter(x=>x.qcGrade!=="F").length+filteredQC.filter(q=>q.grade!=="F").length;
           const qcPassPct=Math.round(totalQCPass/Math.max(totalQCChecks,1)*100);
           return <>
+            <SectionHeader dm={dm} title="Production" sub="Batch logs, QC checks & wastage tracking"
+              cta={<button onClick={()=>{
+                    const batchDate=todayStr;
+                    const existingBatchCount=prodTargets.filter(x=>x.date===batchDate).length;
+                    const nextNum=existingBatchCount+1;
+                    setPtF({date:batchDate,shift:(settings?.shifts||["Morning"])[0]||"",product:(prodItems||[])[0]?.name||"",actual:"",notes:"",batchId:uid(),batchLabel:`Batch ${nextNum}`,qcGrade:"A",qcNotes:"",embWastage:[],embQC:[],embHandover:[]});
+                    setPtSh("add");
+                  }}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Batch
+              </button>}/>
             {/* KPI strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard dm={dm} label="Total Batches" value={filteredPT.length} sub={`${todayPT.length} today`} accent="#8b5cf6"/>
@@ -9911,7 +10862,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <Pill dm={dm} c="purple">{filteredPT.length} runs · {filteredPT.reduce((s,x)=>s+(+x.actual||0),0)} units</Pill>
                   {deliveries.filter(d=>d.date===todayStr&&d.status!=="Cancelled").length>0&&<Pill dm={dm} c="sky">{deliveries.filter(d=>d.date===todayStr&&d.status!=="Cancelled").length} customers today</Pill>}
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabPDF("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty",key:"actual",num:true},{label:"QC",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>PDF</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportTabExcel("Production",filteredPT,[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual",num:true},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join(", ")},{label:"Notes",key:"notes"}],settings)}>XLS</Btn>
                   <Btn dm={dm} v="outline" size="sm" onClick={()=>exportCSV(filteredPT,"production",[{label:"Date",key:"date"},{label:"Batch",key:"batchLabel"},{label:"Product",key:"product"},{label:"Shift",key:"shift"},{label:"Qty Produced",key:"actual"},{label:"QC Grade",key:"qcGrade"},{label:"Linked Invoices",val:r=>(r.linkedInvoices||[]).join("; ")},{label:"Notes",key:"notes"}])}>CSV</Btn>
@@ -10228,7 +11179,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* ── WASTAGE ── */}
             {prodSubTab==="wastage"&&<>
               <div className="flex items-center justify-between">
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   <Pill dm={dm} c="orange">{filteredWaste.length} records</Pill>
                   <Pill dm={dm} c="red">{inr(filteredWaste.reduce((s,w)=>s+(w.cost||0),0))} cost</Pill>
                 </div>
@@ -10380,8 +11331,13 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           (ingItems||[]).forEach(it=>{stockMap[it.name]={...it,consumed:0};});
           (ingLogs||[]).forEach(l=>{if(stockMap[l.ingredient])stockMap[l.ingredient].consumed+=(l.qty||0);else stockMap[l.ingredient]={name:l.ingredient,unit:l.unit||"kg",stock:0,consumed:l.qty||0};});
           return <>
+            <SectionHeader dm={dm} title="Ingredients" sub="Stock levels and consumption logs"
+              cta={isAdmin&&<button onClick={()=>{setIngF({ingredient:"",qty:"",unit:(settings?.supplyUnits||["kg"])[0]||"kg",date:today(),notes:"",loggedBy:displayName});setIngSh("add");}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Usage
+              </button>}/>
             {/* Stats */}
-            <div className="crm-grid-4" style={{marginBottom:8}}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" style={{marginBottom:8}}>
               {[
                 {label:"Total Logs",val:(ingLogs||[]).length,color:"#3b82f6"},
                 {label:"Today Consumed",val:`${totalToday} units`,color:"#f59e0b"},
@@ -10407,7 +11363,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 <select value={ingDateFilter} onChange={e=>setIngDateFilter(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:13,outline:"none",WebkitAppearance:"none"}}>
                   {[["all","All time"],["today","Today"],["yesterday","Yesterday"],["week","This week"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                 </select>
-                {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setIngF({ingredient:"",qty:"",unit:(settings?.supplyUnits||["kg"])[0]||"kg",date:today(),notes:"",loggedBy:displayName});setIngSh("add");}}>+ Log</Btn>}
+                
               </div>
               {/* Logs */}
               {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🧂</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No consumption logs yet</p></div>
@@ -10507,7 +11463,12 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             return mS&&mD;
           }).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||"").localeCompare(a.createdAt||""));
           return <>
-            <div className="crm-grid-4" style={{marginBottom:8}}>
+            <SectionHeader dm={dm} title="Staff" sub="Attendance tracking and staff roster"
+              cta={(isAdmin||isFactory)&&<button onClick={()=>{setStaffF({staffId:"",staffName:"",date:today(),shift:settings?.staffDefaultShift||shifts[0]||"Morning",status:(settings?.staffStatuses||["Present"])[0],inTime:"",outTime:"",breakMins:"",department:"",task:"",overtimeReason:"",notes:"",temperature:"",loggedBy:displayName});setStaffSh("add");}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Attendance
+              </button>}/>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" style={{marginBottom:8}}>
               {[
                 {label:"Total Staff",val:(staffList||[]).length,color:"#3b82f6"},
                 {label:"Present Today",val:presentToday,color:"#10b981"},
@@ -10532,7 +11493,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 <select value={staffDateFilter} onChange={e=>setStaffDateFilter(e.target.value)} style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:13,outline:"none",WebkitAppearance:"none"}}>
                   {[["all","All time"],["today","Today"],["week","This week"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                 </select>
-                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setStaffF({staffId:"",staffName:"",date:today(),shift:settings?.staffDefaultShift||shifts[0]||"Morning",status:(settings?.staffStatuses||["Present"])[0],inTime:"",outTime:"",breakMins:"",department:"",task:"",overtimeReason:"",notes:"",temperature:"",loggedBy:displayName});setStaffSh("add");}}>+ Log</Btn>}
+                
               </div>
               {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🧑‍🍳</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No attendance records yet</p></div>
               :fLogs.map(l=>{
@@ -10747,7 +11708,12 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           const totalCost=(machineLogs||[]).reduce((s,l)=>s+(l.cost||0),0);
           const overdueMachines=(machineList||[]).filter(m=>{const last=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];return last?.nextDue&&last.nextDue<tStr;});
           return <>
-            <div className="crm-grid-4" style={{marginBottom:8}}>
+            <SectionHeader dm={dm} title="Machines" sub="Maintenance logs and equipment tracker"
+              cta={(isAdmin||isFactory)&&<button onClick={()=>{setMachF({machineId:"",machineName:"",date:today(),type:(settings?.machineLogTypes||["Servicing"])[0],severity:"Medium",issue:"",action:"",technician:"",partsReplaced:"",partsCost:"",laborCost:"",cost:"",downtimeHrs:"",nextDue:"",loggedBy:displayName,status:(settings?.machineStatuses||["Operational"])[0]});setMachSh("add");}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Maintenance
+              </button>}/>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" style={{marginBottom:8}}>
               {[
                 {label:"Machines",val:(machineList||[]).length,color:"#3b82f6"},
                 {label:"Total Logs",val:(machineLogs||[]).length,color:"#8b5cf6"},
@@ -10773,7 +11739,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {machSubTab==="log"&&<>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <input value={machSearch} onChange={e=>setMachSearch(e.target.value)} placeholder="Search machine or issue…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
-                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setMachF({machineId:"",machineName:"",date:today(),type:(settings?.machineLogTypes||["Servicing"])[0],severity:"Medium",issue:"",action:"",technician:"",partsReplaced:"",partsCost:"",laborCost:"",cost:"",downtimeHrs:"",nextDue:"",loggedBy:displayName,status:(settings?.machineStatuses||["Operational"])[0]});setMachSh("add");}}>+ Log</Btn>}
+                
               </div>
               {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>⚙️</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No maintenance logs yet</p></div>
               :fLogs.map(l=>{
@@ -10966,7 +11932,12 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           const totalMaint=(vehLogs||[]).reduce((s,l)=>s+(l.maintenanceCost||0),0);
           const totalKms=(vehLogs||[]).reduce((s,l)=>s+(l.kms||0),0);
           return <>
-            <div className="crm-grid-4" style={{marginBottom:8}}>
+            <SectionHeader dm={dm} title="Vehicles" sub="Trip logs, fuel tracking and fleet management"
+              cta={(isAdmin||isFactory)&&<button onClick={()=>{setVehF({vehicleId:"",vehicleName:"",date:today(),type:(settings?.vehicleLogTypes||["Trip"])[0],kms:"",odometerStart:"",odometerEnd:"",driver:"",destination:"",routeStops:"",fuelCost:"",fuelLiters:"",fuelType:(settings?.vehicleFuelTypes||["Petrol"])[0],tollCost:"",maintenanceCost:"",nextServiceDue:"",priority:"Normal",notes:"",status:(settings?.vehicleStatuses||["OK"])[0]});setVehSh("add");}}
+                style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Trip
+              </button>}/>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" style={{marginBottom:8}}>
               {[
                 {label:"Vehicles",val:(vehList||[]).length,color:"#3b82f6"},
                 {label:"Total Km",val:totalKms.toLocaleString("en-IN"),color:"#8b5cf6"},
@@ -10988,7 +11959,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {vehSubTab==="log"&&<>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <input value={vehSearch} onChange={e=>setVehSearch(e.target.value)} placeholder="Search vehicle, driver…" style={{flex:1,minWidth:160,background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"9px 12px",fontSize:14,outline:"none"}}/>
-                {(isAdmin||isFactory)&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setVehF({vehicleId:"",vehicleName:"",date:today(),type:(settings?.vehicleLogTypes||["Trip"])[0],kms:"",odometerStart:"",odometerEnd:"",driver:"",destination:"",routeStops:"",fuelCost:"",fuelLiters:"",fuelType:(settings?.vehicleFuelTypes||["Petrol"])[0],tollCost:"",maintenanceCost:"",nextServiceDue:"",priority:"Normal",notes:"",status:(settings?.vehicleStatuses||["OK"])[0]});setVehSh("add");}}>+ Log</Btn>}
+                
               </div>
               {fLogs.length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{fontSize:32,marginBottom:8}}>🚐</p><p style={{color:t.sub,fontSize:14,fontWeight:600}}>No vehicle logs yet</p></div>
               :fLogs.map(l=>{
@@ -11345,28 +12316,19 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           const gpsSection = gpsSubSection||"overview";
 
           return <>
-            {/* ── Page header ── */}
-            <div style={{borderBottom:`1px solid ${t.border}`,paddingBottom:12,marginBottom:4}}>
-              <div className="flex items-start justify-between flex-wrap gap-2">
-                <div>
-                  <p style={{color:t.text}} className="font-black text-lg tracking-tight">📍 Location Intelligence</p>
-                  <p style={{color:t.sub}} className="text-[11px] mt-0.5">Real-time agent tracking · Full audit trail · GPS-verified delivery records</p>
-                </div>
-                {isAdmin&&logsWithGps.length>0&&<div className="flex gap-2">
-                  <button onClick={exportGpsCSV} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
-                  <button onClick={printReport} style={{background:"#6366f1",color:"#fff",borderRadius:9,padding:"6px 13px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer"}}>🖨 Print Report</button>
-                </div>}
-              </div>
-              {/* sub-nav */}
-              {isAdmin&&<div className="flex gap-1 mt-3 overflow-x-auto scrollbar-hide">
-                {GPS_SECTIONS.map(s=>(
-                  <button key={s.id} onClick={()=>setGpsSubSection(s.id)}
-                    style={{background:gpsSection===s.id?"#6366f1":t.inp,color:gpsSection===s.id?"#fff":t.sub,border:`1px solid ${gpsSection===s.id?"#6366f1":t.border}`,borderRadius:9,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                    {s.icon} {s.label}
-                  </button>
-                ))}
-              </div>}
-            </div>
+            <SectionHeader dm={dm} title="GPS & Location" sub="Real-time agent tracking · Full audit trail · GPS-verified delivery records"
+              cta={isAdmin&&logsWithGps.length>0&&<div style={{display:"flex",gap:8}}>
+                <button onClick={exportGpsCSV} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ CSV</button>
+                <button onClick={printReport} style={{background:"#2563eb",color:"#fff",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>🖨 Print</button>
+              </div>}/>
+            {isAdmin&&<div className="flex gap-1 overflow-x-auto scrollbar-hide">
+              {GPS_SECTIONS.map(s=>(
+                <button key={s.id} onClick={()=>setGpsSubSection(s.id)}
+                  style={{background:gpsSection===s.id?"#6366f1":t.inp,color:gpsSection===s.id?"#fff":t.sub,border:`1px solid ${gpsSection===s.id?"#6366f1":t.border}`,borderRadius:9,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                  {s.icon} {s.label}
+                </button>
+              ))}
+            </div>}
 
             {/* ══ OVERVIEW ══ */}
             {(gpsSection==="overview"||!isAdmin)&&<>
@@ -11678,16 +12640,33 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {id:"data",icon:"💾",label:"Data"},
           ];
           return <>
-          {/* Section pill nav */}
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-0 scrollbar-hide" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
-            {SECS.map(s=>(
-              <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
-                style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,whiteSpace:"nowrap"}}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0">
-                <span>{s.icon}</span>{s.label}
-              </button>
-            ))}
-          </div>
+          <SectionHeader dm={dm} title="Settings" sub="Configure your CRM, manage users and customize features"/>
+          {/* Settings layout: sidebar on desktop, pill nav on mobile */}
+          <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+            {/* ── SIDEBAR NAV (desktop) ── */}
+            <div className="hidden lg:flex" style={{flexDirection:"column",gap:4,width:180,flexShrink:0,position:"sticky",top:80}}>
+              {SECS.map(s=>(
+                <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
+                  style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,borderRadius:10,padding:"10px 14px",textAlign:"left",cursor:"pointer",transition:"all 0.12s",display:"flex",alignItems:"center",gap:8,fontWeight:settingsSection===s.id?700:500,fontSize:13}}
+                  onMouseEnter={e=>{if(settingsSection!==s.id){e.currentTarget.style.background=t.card;e.currentTarget.style.color=t.text;}}}
+                  onMouseLeave={e=>{if(settingsSection!==s.id){e.currentTarget.style.background=t.inp;e.currentTarget.style.color=t.sub;}}}>
+                  <span style={{fontSize:16,flexShrink:0}}>{s.icon}</span>
+                  <span className="truncate">{s.label}</span>
+                </button>
+              ))}
+            </div>
+            {/* ── PILL NAV (mobile/tablet) ── */}
+            <div className="lg:hidden flex gap-2 overflow-x-auto pb-1 w-full" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+              {SECS.map(s=>(
+                <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
+                  style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,whiteSpace:"nowrap"}}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0">
+                  <span>{s.icon}</span>{s.label}
+                </button>
+              ))}
+            </div>
+            {/* ── SETTINGS CONTENT ── */}
+            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:16}}>
 
           {/* ── FEATURE TOGGLES ── */}
           {settingsSection==="toggles"&&<>
@@ -11911,7 +12890,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>}
               {settings?.featureMultiLanguage&&<div className="flex flex-col gap-2 mt-4 pt-4" style={{borderTop:`1.5px solid ${t.border}`}}>
                 <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Default Language</p>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   {[{code:"en",label:"English"},{code:"hi",label:"हिंदी"},{code:"mr",label:"मराठी"}].map(lang=>(
                     <button key={lang.code} onClick={()=>setSettings(s=>({...s,defaultLanguage:lang.code}))}
                       style={{background:(settings?.defaultLanguage||"en")===lang.code?t.accent:t.inp,color:(settings?.defaultLanguage||"en")===lang.code?t.accentFg:t.sub,border:`1.5px solid ${(settings?.defaultLanguage||"en")===lang.code?t.accent:t.border}`,borderRadius:10,padding:"7px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
@@ -12039,7 +13018,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   </div>
                   <Pill dm={dm} c={u.active?"green":"stone"}>{u.active?"Active":"Inactive"}</Pill>
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   <Btn dm={dm} v="ghost" size="sm" onClick={()=>{setUf({...u,password:""});setUsh(u);}}>✏️ Edit Profile</Btn>
                   {isMe&&<Btn dm={dm} v="ghost" size="sm" onClick={()=>{setChangePwF({current:"",next:"",confirm:""});setChangePwSh(true);}}>🔑 Change Password</Btn>}
                   {!isMe&&<Btn dm={dm} v="danger" size="sm" onClick={()=>delU(u)}>Remove</Btn>}
@@ -12054,6 +13033,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                         onClick={()=>{
                           // Save lang on user object in Firebase + update local session
                           setUsers(p=>p.map(x=>x.id===u.id?{...x,lang:lg.code}:x));
+                          // If changing own language, update the session too so UI switches immediately
+                          if(isMe) onSessUpdate(s=>s?{...s,lang:lg.code}:s);
                           notify(`Language set to ${lg.label} ✓`);
                         }}
                         style={{background:active?t.accent:t.inp,color:active?t.accentFg:t.sub,
@@ -12859,6 +13840,17 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>
             </div>
 
+            {/* Language selector */}
+            <Card dm={dm}><div className="p-4 flex flex-col gap-3">
+              <p style={{color:t.text}} className="text-sm font-bold">🌐 Language</p>
+              <p style={{color:t.sub,fontSize:11}}>Changes tab labels, status strings, and UI text across the app.</p>
+              <Sel dm={dm} label="App Language" value={settings?.language||"en"} onChange={e=>{setSettings(s=>({...s,language:e.target.value}));setAppLang(e.target.value);}}>
+                <option value="en">🇬🇧 English</option>
+                <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
+                <option value="ml">🇮🇳 മലയാളം (Malayalam)</option>
+              </Sel>
+            </div></Card>
+
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">🖼️ Company Logo</p>
               <p style={{color:t.sub}} className="text-[11px]">Upload your logo to display it on invoices, receipts, and PDF exports. Recommended: PNG or JPG, square or landscape, under 500KB.</p>
@@ -12918,7 +13910,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <Inp dm={dm} label="Invoice Footer Note (optional)" value={settings?.invoiceFooterNote||""} onChange={e=>setSettings(s=>({...s,invoiceFooterNote:e.target.value}))} placeholder="Thank you for your business! Payment due within 7 days."/>
               <div>
                 <label style={{color:t.sub,letterSpacing:"0.05em"}} className="crm-form-label block text-[11px] font-semibold uppercase mb-1.5">Payment Terms</label>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-3 flex-wrap">
                   {["Immediate","Net 7","Net 15","Net 30","COD"].map(pt=>(
                     <button key={pt} onClick={()=>setSettings(s=>({...s,paymentTerms:pt}))} style={{background:settings?.paymentTerms===pt?"#10b981":t.inp,color:settings?.paymentTerms===pt?"#fff":t.sub,border:`1.5px solid ${settings?.paymentTerms===pt?"#10b981":t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{pt}</button>
                   ))}
@@ -13007,7 +13999,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 const cur=settings?.notifTargets?.[key]||[];
                 return <div key={key} style={{borderBottom:`1px solid ${t.border}`,paddingBottom:12,marginBottom:12}}>
                   <p style={{color:t.text,fontSize:12,fontWeight:700,marginBottom:8}}>{icon} {label}</p>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-3 flex-wrap">
                     {["admin","factory","agent"].map(role=>{
                       const on=cur.includes(role);
                       return <button key={role} onClick={()=>{const next=on?cur.filter(r=>r!==role):[...cur,role];setSettings(s=>({...s,notifTargets:{...(s.notifTargets||{}),[key]:next}}));}}
@@ -13044,6 +14036,15 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           {settingsSection==="security"&&<>
             <SecuritySessions dm={dm} t={t} ask={ask} addLog={addLog} notify={notify}/>
 
+              {/* ── PASSKEY / BIOMETRIC MANAGEMENT ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔑 Passkeys & Biometrics</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Register a passkey for passwordless login using Face ID, fingerprint, or Windows Hello on this device.</p>
+                {(settings?.secBiometricEnabled!==false)
+                  ? <PasskeyManager dm={dm} t={t} sess={sess} notify={notify} ask={ask} addLog={addLog}/>
+                  : <p style={{color:"#ef4444",fontSize:12,fontWeight:600}}>⚠️ Biometric login is disabled by the admin. Enable it in Security Settings above.</p>}
+              </div></Card>
+
               <Card dm={dm}><div className="p-4">
                 <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:2}}>🔐 Security Settings</p>
                 <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Account protection and access controls</p>
@@ -13052,6 +14053,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   {key:"secAutoLogoutIdle",label:"Auto-Logout After Inactivity",desc:"Automatically log out after 30 minutes of no activity",icon:"⏱",defOn:false},
                   {key:"secLogFailedLogins",label:"Log Failed Login Attempts",desc:"Record failed login attempts in the audit log",icon:"⚠️",defOn:true},
                   {key:"secShowLastLogin",label:"Show Last Login Info on Login Screen",desc:"Display last login time when signing in",icon:"📋",defOn:true},
+                  {key:"secBiometricEnabled",label:"Enable Biometric / Passkey Login",desc:"Allow users to register Face ID, fingerprint, or Windows Hello for passwordless login. Admin controls which accounts can use this.",icon:"🫆",defOn:true},
                 ].map(({key,label,desc,icon,defOn})=>(
                   <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
                     <div className="flex-1 min-w-0 pr-4">
@@ -13117,7 +14119,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </label>
               <Hr dm={dm}/>
               <p style={{color:t.text}} className="text-sm font-bold">Export as CSV</p>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-3 flex-wrap">
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Join Date",key:"joinDate"},{label:"Notes",key:"notes"}])}>Customers</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"}])}>Supplies</Btn>
@@ -13171,48 +14173,64 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{setCust(D_CUST);setDeliv(D_DELIV);setSup(D_SUP);setExp(D_EXP);setProd(D_PRODS);setWaste(D_WASTE);const r=[{id:uid(),user:sess.name,role:sess.role,action:"FULL RESET",detail:"All data reset to defaults",ts:ts()}];setAct(r);notify("Reset complete");})}>Reset All Data to Defaults</Btn>
             </div></Card>
           </>}
+          </div>{/* end settings content col */}
+          </div>{/* end settings flex layout */}
           </>;
         })()}
       </div>
 
-      {/* ── MOBILE BOTTOM NAV (visible only below lg) ─────────── */}
-      <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
-        {/* Scrollable pill tabs */}
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",display:"flex",gap:4,padding:"8px 12px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",alignItems:"center",minHeight:64}}
-          className="crm-bottom-nav-scroll">
-          <style>{`.crm-bottom-nav-scroll::-webkit-scrollbar{display:none}`}</style>
-          {TABS.map(tb=>{
-            const isActive=tab===tb;
-            const hasBadge=tb==="Dashboard"&&pendingD.length>0&&!isActive;
-            return <button key={tb} onClick={()=>{setTab(tb);setSrch("");}}
-              style={{
-                flexShrink:0,
-                display:"flex",alignItems:"center",gap:isActive?6:0,
-                padding:isActive?"8px 14px 8px 10px":"8px 12px",
-                borderRadius:40,
-                background:isActive?t.accent:"transparent",
-                border:`1.5px solid ${isActive?t.accent:t.border}`,
-                color:isActive?t.accentFg:t.sub,
-                minHeight:40,
-                WebkitTapHighlightColor:"transparent",touchAction:"manipulation",
-                cursor:"pointer",
-                transition:"all 0.18s cubic-bezier(.32,1,.6,1)",
-                position:"relative",
-                fontWeight:isActive?700:500,
-              }}>
-              <span style={{fontSize:18,lineHeight:1,flexShrink:0}}>{TAB_ICONS[tb]||"•"}</span>
-              {isActive&&<span style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",lineHeight:1}}>{TAB_LABELS[tb]||tb}</span>}
-              {hasBadge&&<span style={{position:"absolute",top:-2,right:-2,background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
-            </button>;
-          })}
-          {/* Divider */}
-          <div style={{width:1,height:28,background:t.border,flexShrink:0,marginLeft:4}}/>
-          {/* Dark mode */}
-          <button onClick={()=>setDm(d=>!d)} style={{flexShrink:0,width:40,height:40,borderRadius:40,border:`1.5px solid ${t.border}`,background:"transparent",color:t.sub,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>{dm?"☀️":"🌙"}</button>
-          {/* Sign out */}
-          <button onClick={onLogout} style={{flexShrink:0,height:40,borderRadius:40,border:"1.5px solid rgba(239,68,68,0.35)",background:"rgba(239,68,68,0.08)",color:"#ef4444",fontSize:12,fontWeight:700,padding:"0 14px",display:"flex",alignItems:"center",gap:5,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",whiteSpace:"nowrap"}}>↩ Out</button>
-        </div>
-      </nav>
+      {/* ── MOBILE BOTTOM NAV — Phase 3: fixed 5-tab bar + More drawer ──────── */}
+      {(()=>{
+        const BN_PRIMARY=["Dashboard","Customers","Deliveries","Payments"];
+        const bnTabs=BN_PRIMARY.filter(tb=>TABS.includes(tb));
+        const moreTabs=TABS.filter(tb=>!BN_PRIMARY.includes(tb));
+        const isMoreActive=moreTabs.includes(tab);
+        const moreOpen=showMoreNav; const setMoreOpen=setShowMoreNav;
+        return <>
+          {/* More drawer backdrop */}
+          {moreOpen&&<div onClick={()=>setMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:48,background:"rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} className="lg:hidden"/>}
+          {/* More drawer panel */}
+          {moreOpen&&<div style={{position:"fixed",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
+            <div style={{width:36,height:4,borderRadius:99,background:t.border,margin:"0 auto 16px"}}/>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+              {moreTabs.map(tb=>{
+                const isA=tab===tb;
+                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
+                  style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"12px 6px",borderRadius:14,background:isA?"#2563eb":"transparent",border:`1.5px solid ${isA?"#2563eb":t.border}`,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+                  <span style={{fontSize:11,fontWeight:isA?700:500,color:isA?"#fff":t.sub,lineHeight:1.2,textAlign:"center"}}>{TAB_LABELS[tb]||tb}</span>
+                </button>;
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:12,paddingBottom:4}}>
+              <button onClick={()=>{setDm(d=>!d);setMoreOpen(false);}} style={{flex:1,padding:"11px",borderRadius:12,border:`1.5px solid ${t.border}`,background:t.inp,color:t.text,fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>{dm?"☀️ Light":"🌙 Dark"}</button>
+              <button onClick={()=>{setMoreOpen(false);onLogout();}} style={{flex:1,padding:"11px",borderRadius:12,border:"1.5px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>↩ Sign Out</button>
+            </div>
+          </div>}
+          {/* Fixed bottom tab bar */}
+          <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,height:"calc(68px + env(safe-area-inset-bottom,0px))",WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
+            <div style={{display:"flex",alignItems:"stretch",height:68}}>
+              {bnTabs.map(tb=>{
+                const isA=tab===tb;
+                const hasBadge=tb==="Dashboard"&&pendingD.length>0&&!isA;
+                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
+                  style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isA?"#2563eb":"transparent"}`,color:isA?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
+                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+                  <span style={{fontSize:10,fontWeight:isA?700:500,lineHeight:1,letterSpacing:"0.01em"}}>{TAB_LABELS[tb]||tb}</span>
+                  {hasBadge&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
+                </button>;
+              })}
+              {/* More tab */}
+              <button onClick={()=>setMoreOpen(o=>!o)}
+                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isMoreActive||moreOpen?"#2563eb":"transparent"}`,color:isMoreActive||moreOpen?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
+                <span style={{fontSize:22,lineHeight:1}}>⋯</span>
+                <span style={{fontSize:10,fontWeight:isMoreActive||moreOpen?700:500,lineHeight:1,letterSpacing:"0.01em"}}>More</span>
+                {isMoreActive&&!moreOpen&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#2563eb",width:6,height:6,borderRadius:"50%",border:`2px solid ${t.card}`}}/>}
+              </button>
+            </div>
+          </nav>
+        </>;
+      })()}
 
       </div>{/* end desktop flex child */}
     </div>{/* end outer flex */}
@@ -14012,7 +15030,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         {paySh&&<>
           <p style={{color:t.text}} className="text-sm font-semibold">{paySh.name}</p>
           <div className="flex gap-3"><span className="text-sm text-emerald-500 font-bold">Paid: {inr(paySh.paid)}</span><span className="text-sm text-red-500 font-bold">Due: {inr(paySh.pending)}</span></div>
-          <div className="flex gap-2 flex-wrap">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">₹{q.toLocaleString("en-IN")}</button>)}</div>
+          <div className="flex gap-3 flex-wrap">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">₹{q.toLocaleString("en-IN")}</button>)}</div>
           <Inp dm={dm} label="Amount (₹)" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="Enter amount"/>
           <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn dm={dm} v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
         </>}
@@ -14515,7 +15533,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* Quick amount selector */}
             {canSeePrices&&<div>
               <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Quick Select</p>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-3 flex-wrap">
                 {[suggestedAmt,...[500,1000,2000].filter(v=>v!==suggestedAmt&&v>0)].filter((v,i,a)=>a.indexOf(v)===i&&v>0).slice(0,4).map(q=>(
                   <button key={q} onClick={()=>setCollectAmt(String(q))}
                     style={{background:collectAmt===String(q)?"#10b981":t.inp,color:collectAmt===String(q)?"#fff":t.text,border:`1.5px solid ${collectAmt===String(q)?"#10b981":t.border}`,borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
@@ -14633,7 +15651,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
             {(note||(viewOnly&&rd.partialPayment?.note))&&<p style={{color:t.sub,fontSize:12,fontStyle:"italic",textAlign:"center"}}>📝 "{note||(rd.partialPayment?.note)}"</p>}
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-3 flex-wrap">
               <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setLastReceiptData(null)}>Close</Btn>
               {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportDeliveryReceipt(rd,products,settings,getOrCreateInvNo(rd.id))}>🧾 Receipt</Btn>}
               {isAdmin&&<Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportDeliveryInvoice(rd,products,settings,getOrCreateInvNo(rd.id))}>📄 Invoice</Btn>}
