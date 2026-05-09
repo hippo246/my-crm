@@ -1,6 +1,9 @@
-/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-undef, no-use-before-define, react/jsx-no-duplicate-props */
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars, no-undef, no-use-before-define, react/jsx-no-duplicate-props, import/first */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
+import { db } from "./firebase";
+import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
 
 // ── GLOBAL ERROR BOUNDARY ────────────────────────────────────────────────────
 // Catches any render crash and shows a readable screen instead of white blank.
@@ -23,9 +26,6 @@ class AppErrorBoundary extends React.Component {
   }
 }
 // ─────────────────────────────────────────────────────────────────────────────
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
-import { db } from "./firebase";
-import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  App.js  —  TAS Healthy World · Operations CRM
@@ -127,7 +127,12 @@ function useStore(key, def) {
       if (_writing[key] > 0) { setFbLoaded(true); return; }
       if (snap.exists()) {
         const raw = snap.val();
-        const incoming = (raw && raw.v !== undefined) ? raw.v : raw;
+        let incoming = (raw && raw.v !== undefined) ? raw.v : raw;
+        // Firebase turns arrays with deleted elements into objects {0:x,2:z}.
+        // If the default value is an array, coerce back to array.
+        if (Array.isArray(defRef.current) && incoming && typeof incoming === "object" && !Array.isArray(incoming)) {
+          incoming = Object.values(incoming);
+        }
         setRaw(incoming);
       } else {
         const d = defRef.current;
@@ -226,6 +231,9 @@ const ts    = () => new Date().toLocaleString("en-IN",{day:"2-digit",month:"shor
 const inr   = n  => `₹${Number(n||0).toLocaleString("en-IN")}`;
 const cx    = (...a) => a.filter(Boolean).join(" ");
 const safeO = x  => (x && typeof x === "object" && !Array.isArray(x)) ? x : {};
+// safeArr: Firebase can return an object {0:x,1:y} instead of an array when elements
+// have been deleted. This coerces it back to a real array safely everywhere.
+const safeArr = x => Array.isArray(x) ? x : (x && typeof x === "object") ? Object.values(x) : [];
 const mapU  = (a,lat,lng) => lat&&lng ? `https://maps.google.com/?q=${lat},${lng}` : `https://maps.google.com/?q=${encodeURIComponent(a||"")}`;
 
 function lineTotal(lines) {
@@ -571,7 +579,7 @@ function exportPDF(record, products, type, settings, deliveries) {
   // ── Customer delivery history (only for customer type) ──
   let historyHtml = "";
   if(type==="customer" && Array.isArray(deliveries)) {
-    const cDelivs = [...deliveries.filter(d=>d.customerId===record.id)].sort((a,b)=>b.date.localeCompare(a.date));
+    const cDelivs = [...deliveries.filter(d=>d.customerId===record.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
     const cDone   = cDelivs.filter(d=>d.status==="Delivered");
     const cPend   = cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
     const cCanc   = cDelivs.filter(d=>d.status==="Cancelled");
@@ -2261,7 +2269,7 @@ ${topProd.length>0?section("Product Sales (Period)", tableHtml(
 
 ${filtE.length>0?section("Expense Paper Trail — All Entries", tableHtml(
   ["Date","Category","Amount","Vendor","Payment","Approved By","Receipt","Tags","Notes"],
-  [...filtE].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>`<tr>
+  [...filtE].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(e=>`<tr>
     <td style="white-space:nowrap">${e.date}</td>
     <td><span class="badge br">${e.category}</span></td>
     <td class="r2">${inr(e.amount)}</td>
@@ -2275,7 +2283,7 @@ ${filtE.length>0?section("Expense Paper Trail — All Entries", tableHtml(
 
 ${filtS.length>0?section("Supply Paper Trail — All Entries", tableHtml(
   ["Date","Item","Category","Qty","Unit","Cost","Supplier","Notes"],
-  [...filtS].sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr>
+  [...filtS].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(s=>`<tr>
     <td style="white-space:nowrap">${s.date}</td>
     <td style="font-weight:600">${s.item||"—"}</td>
     <td>${s.category||"—"}</td>
@@ -2324,22 +2332,22 @@ function exportPnLCSV({mData,filtD,filtE,filtS,filtW,customers,deliveries,expens
   // Section: Delivery paper trail
   rows.push(row(["=== DELIVERY PAPER TRAIL ==="]));
   rows.push(row(["Invoice No","Receipt No","Date","Customer","Status","Order Total","Repl Amount","Net Amount","Collected","Balance Due","Replacement Item","Notes"]));
-  [...filtD].sort((a,b)=>a.date.localeCompare(b.date)).forEach(d=>{const inv=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;const rcp=`RCP-${inv.replace(/^[A-Z]+-/,"")}`;const tot=lineTotal(d.orderLines);const repl=+(d.replacement?.amount)||0;const net=Math.max(0,tot-repl);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;const bal=Math.max(0,net-coll);rows.push(row([inv,rcp,d.date,d.customer,d.status,tot,repl,net,coll,bal,d.replacement?.done?(d.replacement.item||""):"",d.notes||""]));});
+  [...filtD].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(d=>{const inv=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;const rcp=`RCP-${inv.replace(/^[A-Z]+-/,"")}`;const tot=lineTotal(d.orderLines);const repl=+(d.replacement?.amount)||0;const net=Math.max(0,tot-repl);const coll=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;const bal=Math.max(0,net-coll);rows.push(row([inv,rcp,d.date,d.customer,d.status,tot,repl,net,coll,bal,d.replacement?.done?(d.replacement.item||""):"",d.notes||""]));});
   rows.push([""]);
   // Section: Expenses paper trail
   rows.push(row(["=== EXPENSE PAPER TRAIL ==="]));
   rows.push(row(["Date","Category","Amount","Vendor","Payment Method","Approved By","Receipt","Tags","Notes","Created At"]));
-  [...filtE].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push(row([e.date,e.category,e.amount,e.vendor||"",e.paymentMethod||"Cash",e.approvedBy||"",e.receipt||"",e.tags||"",e.notes||"",e.createdAt||""])));
+  [...filtE].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(e=>rows.push(row([e.date,e.category,e.amount,e.vendor||"",e.paymentMethod||"Cash",e.approvedBy||"",e.receipt||"",e.tags||"",e.notes||"",e.createdAt||""])));
   rows.push([""]);
   // Section: Supply paper trail
   rows.push(row(["=== SUPPLY PAPER TRAIL ==="]));
   rows.push(row(["Date","Item","Category","Qty","Unit","Cost","Supplier","Notes"]));
-  [...filtS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(s=>rows.push(row([s.date,s.item||"",s.category||"",s.qty||"",s.unit||"",s.cost||0,s.supplier||"",s.notes||""])));
+  [...filtS].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(s=>rows.push(row([s.date,s.item||"",s.category||"",s.qty||"",s.unit||"",s.cost||0,s.supplier||"",s.notes||""])));
   rows.push([""]);
   // Section: Wastage paper trail
   rows.push(row(["=== WASTAGE PAPER TRAIL ==="]));
   rows.push(row(["Date","Product","Qty","Unit","Type","Reason","Cost","Logged By"]));
-  [...filtW].sort((a,b)=>a.date.localeCompare(b.date)).forEach(w=>rows.push(row([w.date,w.product||"",w.qty||"",w.unit||"",w.type||"",w.reason||"",w.cost||0,w.loggedBy||""])));
+  [...filtW].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(w=>rows.push(row([w.date,w.product||"",w.qty||"",w.unit||"",w.type||"",w.reason||"",w.cost||0,w.loggedBy||""])));
   const csv=rows.map(r=>Array.isArray(r)?r.join(""):r).join("\n");
   const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
   const burl=URL.createObjectURL(blob);
@@ -2982,7 +2990,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
             })()}
             {/* Vendor history */}
             {e.vendor&&(()=>{
-              const vendorExps = expenses.filter(x=>x.vendor===e.vendor).sort((a,b)=>b.date.localeCompare(a.date));
+              const vendorExps = expenses.filter(x=>x.vendor===e.vendor).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
               const vendorTotal = vendorExps.reduce((s,x)=>s+(x.amount||0),0);
               return vendorExps.length>1&&<div style={{margin:"4px 0 12px"}}>
                 <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>All Payments to {e.vendor}</p>
@@ -3033,8 +3041,8 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
       const rev=cDelivered.reduce((s,d)=>s+(safeO(d.orderLines)[p.id]?.qty||0)*(safeO(d.orderLines)[p.id]?.priceAmount||0),0);
       return{...p,qty,rev};
     }).filter(x=>x.qty>0).sort((a,b)=>b.rev-a.rev);
-    const lastD = cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
-    const firstD = cDelivs.length>0?[...cDelivs].sort((a,b)=>a.date.localeCompare(b.date))[0]:null;
+    const lastD = cDelivs.length>0?[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]:null;
+    const firstD = cDelivs.length>0?[...cDelivs].sort((a,b)=>(a.date||"").localeCompare(b.date||""))[0]:null;
     return (
       <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
         <div style={panelStyle}>
@@ -3087,7 +3095,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
               <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Delivery History ({cDelivs.length})</p>
               <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
                 <div style={{maxHeight:300,overflowY:"auto"}}>
-                  {[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).map((d,di)=>{
+                  {[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map((d,di)=>{
                     const st = d.status;
                     const sc = st==="Delivered"?"#10b981":st==="Cancelled"?"#ef4444":"#f59e0b";
                     const tot = lineTotal(d.orderLines);
@@ -3269,10 +3277,10 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
   if (type === "agent") {
     const agentName = data.name;
     // Fix: spread before sort to avoid mutating the filtered array in-place
-    const agentDelivs = [...deliveries.filter(d=>d.createdBy===agentName||d.agent===agentName)].sort((a,b)=>b.date.localeCompare(a.date));
+    const agentDelivs = [...deliveries.filter(d=>d.createdBy===agentName||d.agent===agentName)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
     const agentDone = agentDelivs.filter(d=>d.status==="Delivered");
     const agentRev = agentDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-    const agentExps = [...expenses.filter(e=>e.approvedBy===agentName)].sort((a,b)=>b.date.localeCompare(a.date));
+    const agentExps = [...expenses.filter(e=>e.approvedBy===agentName)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
     const u = data.user||null;
     return (
       <div style={overlayStyle} onClick={ev=>{if(ev.target===ev.currentTarget)onClose();}}>
@@ -3341,7 +3349,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
             <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>All {cat} Entries</p>
             <div style={{border:`1px solid ${t.border}`,borderRadius:10,overflow:"hidden"}}>
               <div style={{maxHeight:400,overflowY:"auto"}}>
-                {[...catExpenses].sort((a,b)=>b.date.localeCompare(a.date)).map((e,ei)=>(
+                {[...catExpenses].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map((e,ei)=>(
                   <div key={e.id||ei} style={{padding:"10px 12px",borderTop:ei>0?`1px solid ${t.border}`:"none",cursor:"pointer",transition:"background .12s"}}
                     onClick={()=>setDetailModal({type:"expense",data:e})}
                     onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
@@ -4081,6 +4089,226 @@ function PasskeyManager({dm,t,sess,notify,ask,addLog}){
 //  EXPORTS — consumed by CRM_top.js and CRM_bottom.js
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// SecuritySessions — proper component so hooks are legal
+// ─────────────────────────────────────────────────────────────
+function SecuritySessions({dm,t,ask,addLog,notify}){
+  const [liveSessions,setLiveSessions]=useState([]);
+  const [passkeyDevices,setPasskeyDevices]=useState([]);
+  const [locMap,setLocMap]=useState({});
+
+  // Load passkey registrations from Firebase
+  useEffect(()=>{
+    const r=ref(db,"tas_passkey_devices");
+    const unsub=onValue(r,(snap)=>{
+      if(!snap.exists()){setPasskeyDevices([]);return;}
+      const raw=snap.val()||{};
+      const list=Object.values(raw).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
+      setPasskeyDevices(list);
+    });
+    return()=>unsub();
+  },[]);
+
+  // Reverse-geocode a lat/lng to a human readable address
+  async function reverseGeocode(lat,lng,key){
+    if(!lat||!lng)return;
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{"Accept-Language":"en"}});
+      const j=await res.json();
+      const addr=j.address||{};
+      const parts=[addr.suburb||addr.neighbourhood||addr.village,addr.city||addr.town||addr.county,addr.state,addr.country].filter(Boolean);
+      setLocMap(m=>({...m,[key]:parts.slice(0,3).join(", ")||`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
+    }catch{
+      setLocMap(m=>({...m,[key]:`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
+    }
+  }
+
+  useEffect(()=>{
+    const r=ref(db);
+    const unsub=onValue(r,(snap)=>{
+      if(!snap.exists())return;
+      const val=snap.val()||{};
+      const now=Date.now();
+      const sessions=Object.entries(val)
+        .filter(([k])=>k.startsWith("tas9_sess_"))
+        .map(([k,v])=>{
+          const s=(v&&v.v!==undefined)?v.v:v;
+          if(!s||!s.loginAt)return null;
+          const age=now-s.loginAt;
+          if(age>SESSION_TTL*1.5)return null;
+          return{
+            deviceKey:k,
+            isMe:k==="tas9_sess_"+DEVICE_ID,
+            name:s.displayOverride||s.name||"Unknown",
+            username:s.username||"—",
+            role:s.role||"—",
+            browser:s.browser||"Unknown",
+            os:s.os||"Unknown",
+            deviceType:s.deviceType||"Desktop",
+            screenRes:s.screenRes||"—",
+            tz:s.tz||"—",
+            lang:s.lang||"—",
+            ua:s.ua||"",
+            passkeyLogin:s.passkeyLogin||false,
+            lat:s.lat||null,
+            lng:s.lng||null,
+            locationLabel:s.locationLabel||null,
+            loginAt:s.loginAt,
+            loginAtLabel:new Date(s.loginAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}),
+            lastSeen:age<60000?"Just now":age<3600000?`${Math.floor(age/60000)}m ago`:`${Math.floor(age/3600000)}h ago`,
+          };
+        }).filter(Boolean).sort((a,b)=>b.loginAt-a.loginAt);
+      setLiveSessions(sessions);
+      // Reverse-geocode any sessions with lat/lng
+      sessions.forEach(s=>{
+        if(s.lat&&s.lng&&!locMap[s.deviceKey]){
+          reverseGeocode(s.lat,s.lng,s.deviceKey);
+        }
+      });
+    });
+    return()=>unsub();
+  },[]);
+
+  const deviceIcon=(d)=>d==="Mobile"?"📱":d==="Tablet"?"📟":"💻";
+  const browserIcon=(b)=>b==="Chrome"?"🟡":b==="Firefox"?"🦊":b==="Safari"?"🧭":b==="Edge"?"🔵":b==="Opera"?"🔴":b==="Brave"?"🦁":"🌐";
+  const osIcon=(o)=>o==="Android"?"🤖":o==="iOS"||o==="iPadOS"?"🍎":o==="Windows"?"🪟":o==="macOS"?"🍎":o==="Linux"?"🐧":"💻";
+
+  return<Card dm={dm}><div className="p-4">
+    <div className="flex items-center justify-between mb-3">
+      <div>
+        <p style={{color:t.text,fontWeight:700,fontSize:14}}>🛡️ Active Sessions</p>
+        <p style={{color:t.sub,fontSize:11,marginTop:2}}>{liveSessions.length} device{liveSessions.length!==1?"s":""} currently logged in</p>
+      </div>
+      <button onClick={()=>ask("Force logout all OTHER devices? Your current session will remain active.",async()=>{
+        const r=ref(db);
+        const snap=await fbGet(r).catch(()=>null);
+        if(!snap||!snap.exists())return;
+        const all=Object.keys(snap.val()||{}).filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
+        for(const k of all) await fbRemove(ref(db,k)).catch(()=>{});
+        addLog("Force-logged out all other devices","Security action by admin");
+        notify("All other devices logged out ✓");
+      })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+        🔴 Logout All Others
+      </button>
+    </div>
+    {liveSessions.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"20px 0"}}>No active sessions found.</p>
+    :liveSessions.map(s=>{
+      const locLabel=s.locationLabel||(s.lat&&s.lng?locMap[s.deviceKey]||`${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`:"Location not available");
+      const mapsUrl=s.lat&&s.lng?`https://maps.google.com/?q=${s.lat},${s.lng}`:`https://maps.google.com/?q=${encodeURIComponent(locLabel||"")}`;
+      return(
+      <div key={s.deviceKey} style={{background:s.isMe?(dm?"rgba(16,185,129,0.08)":"rgba(16,185,129,0.05)"):t.inp,border:`1.5px solid ${s.isMe?"#10b98140":t.border}`,borderRadius:14,padding:"14px 16px",marginBottom:10}}>
+        <div className="flex items-start justify-between gap-3">
+          <div style={{display:"flex",gap:12,flex:1,minWidth:0}}>
+            <div style={{fontSize:32,flexShrink:0,lineHeight:1,marginTop:2}}>{deviceIcon(s.deviceType)}</div>
+            <div style={{flex:1,minWidth:0}}>
+              {/* Row 1: Name + badges */}
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                <span style={{color:t.text,fontWeight:700,fontSize:14}}>{s.name}</span>
+                {s.isMe&&<span style={{background:"#10b98120",color:"#10b981",fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:99}}>● THIS DEVICE</span>}
+                <span style={{background:s.role==="admin"?"#f59e0b20":s.role==="factory"?"#8b5cf620":"#0ea5e920",color:s.role==="admin"?"#f59e0b":s.role==="factory"?"#8b5cf6":"#0ea5e9",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,textTransform:"uppercase"}}>{s.role}</span>
+                {s.passkeyLogin&&<span style={{background:"#3b82f620",color:"#3b82f6",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>🔑 Passkey</span>}
+              </div>
+              {/* Row 2: Username */}
+              <p style={{color:t.sub,fontSize:11,marginBottom:4}}>@{s.username}</p>
+              {/* Row 3: Browser + OS */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:3}}>
+                <span style={{color:t.sub,fontSize:11}}>{browserIcon(s.browser)} {s.browser}</span>
+                <span style={{color:t.sub,fontSize:11}}>{osIcon(s.os)} {s.os} · {s.deviceType}</span>
+                <span style={{color:t.sub,fontSize:11}}>🖥 {s.screenRes}</span>
+                <span style={{color:t.sub,fontSize:11}}>🌍 {s.tz}</span>
+                {s.lang&&s.lang!=="—"&&<span style={{color:t.sub,fontSize:11}}>🗣 {s.lang}</span>}
+              </div>
+              {/* Row 4: Login time + last seen */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:4}}>
+                <span style={{color:t.sub,fontSize:11}}>🕐 Logged in: {s.loginAtLabel}</span>
+                <span style={{color:t.sub,fontSize:11}}>⏱ {s.lastSeen}</span>
+              </div>
+              {/* Row 5: Location */}
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:s.lat?t.text:t.sub}}>📍 {locLabel}</span>
+                {s.lat&&s.lng&&<a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                  style={{fontSize:10,color:"#3b82f6",fontWeight:700,background:"#3b82f615",padding:"2px 8px",borderRadius:99,textDecoration:"none"}}>Open Map</a>}
+              </div>
+              {/* UA string (collapsed) */}
+              {s.ua&&<p style={{color:t.sub,fontSize:9,marginTop:4,opacity:0.6,wordBreak:"break-all",fontFamily:"monospace"}}>{s.ua.slice(0,100)}{s.ua.length>100?"…":""}</p>}
+            </div>
+          </div>
+          {!s.isMe&&<button onClick={()=>ask(`Log out ${s.name}'s session on ${s.os}?`,async()=>{
+            await fbRemove(ref(db,s.deviceKey)).catch(()=>{});
+            addLog("Force-logged out session",`${s.name} (${s.os} ${s.browser})`);
+            notify("Session terminated ✓");
+          })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,marginTop:4}}>
+            Log Out
+          </button>}
+        </div>
+      </div>
+    );})}
+
+    {/* Passkey-registered devices */}
+    {passkeyDevices.length>0&&<>
+      <div style={{borderTop:`1.5px solid ${t.border}`,margin:"16px 0 12px"}}/>
+      <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:8}}>🔑 Devices with Passkey Registered ({passkeyDevices.length})</p>
+      {passkeyDevices.map((pk,i)=>(
+        <div key={i} style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"10px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🔑</span>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{color:t.text,fontWeight:700,fontSize:12}}>{pk.userName||pk.userId||"Unknown User"}</span>
+              {pk.deviceLabel&&<span style={{color:t.sub,fontSize:11}}>{pk.deviceLabel}</span>}
+              <span style={{background:"#8b5cf620",color:"#8b5cf6",fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:99}}>Passkey</span>
+            </div>
+            <p style={{color:t.sub,fontSize:10,marginTop:2}}>
+              {pk.browser&&<span>{browserIcon(pk.browser)} {pk.browser} · </span>}
+              {pk.os&&<span>{pk.os} · </span>}
+              Registered: {pk.registeredAt?new Date(pk.registeredAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"Unknown"}
+            </p>
+          </div>
+        </div>
+      ))}
+    </>}
+  </div></Card>;
+}
+
+
+function FailedLoginAttempts({dm,t,ask,notify}){
+  const [failedLogins,setFailedLogins]=useState([]);
+  useEffect(()=>{
+    const r=ref(db,"tas_failed_logins");
+    const unsub=onValue(r,(snap)=>{
+      if(!snap.exists()){setFailedLogins([]);return;}
+      const raw=snap.val()||{};
+      const list=Object.values(raw).sort((a,b)=>(b.loginAt||0)-(a.loginAt||0)).slice(0,50);
+      setFailedLogins(list);
+    });
+    return()=>unsub();
+  },[]);
+  if(failedLogins.length===0)return null;
+  return <Card dm={dm}><div className="p-4">
+    <div className="flex items-center justify-between mb-3">
+      <div>
+        <p style={{color:"#ef4444",fontWeight:700,fontSize:14}}>⚠️ Failed Login Attempts</p>
+        <p style={{color:t.sub,fontSize:11,marginTop:1}}>{failedLogins.length} failed attempt{failedLogins.length!==1?"s":""} recorded</p>
+      </div>
+      <button onClick={()=>ask("Clear all failed login records?",()=>{fbRemove(ref(db,"tas_failed_logins")).catch(()=>{});setFailedLogins([]);notify("Cleared ✓");})}
+        style={{color:"#ef4444",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Clear</button>
+    </div>
+    {failedLogins.slice(0,20).map((l,i)=>(
+      <div key={i} style={{borderBottom:`1px solid ${t.border}`,padding:"7px 0"}} className="last:border-0">
+        <div className="flex items-center justify-between gap-2">
+          <span style={{color:"#ef4444",fontSize:12,fontWeight:600}}>@{l.username||"(unknown)"}</span>
+          <span style={{color:t.sub,fontSize:10}}>{l.ts}</span>
+        </div>
+        <div className="flex gap-x-3 flex-wrap mt-0.5">
+          {l.browser&&<span style={{color:t.sub,fontSize:9}}>🌐 {l.browser}</span>}
+          {l.os&&<span style={{color:t.sub,fontSize:9}}>💻 {l.os}</span>}
+          {l.deviceType&&<span style={{color:t.sub,fontSize:9}}>📱 {l.deviceType}</span>}
+        </div>
+      </div>
+    ))}
+  </div></Card>;
+}
+
+
 function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
   const isFactory=sess.role==="factory";
@@ -4096,7 +4324,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const canSeePrices    = isAdmin || can("cust_seePrices")  || can("deliv_seePrices");
   const canSeeFinancials= isAdmin || can("cust_seeFinance");
 
-  const [customers, setCust,  custLoaded]    =useStore("tas9_cust", D_CUST);
+  const [rawCustomers, setCust,  custLoaded]    =useStore("tas9_cust", D_CUST);
   const [deliveries,setDeliv, delivLoaded]   =useStore("tas9_deliv",D_DELIV);
   const [supplies,  setSup,   supLoaded]     =useStore("tas9_sup",  D_SUP);
   const [expenses,  setExp,   expLoaded]     =useStore("tas9_exp",  D_EXP);
@@ -4147,8 +4375,8 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [paymentsStatusFilter, setPaymentsStatusFilter] = useState("all"); // "all"|"partial"|"pending"|"settled"
   function recordPaymentLedger(customerId, customerName, amount, note, method){
     const entry = {id:uid(), customerId, customerName, amount:+amount, note:note||"", method:method||"Cash", recordedBy:displayName, date:today(), ts:ts()};
-    setPaymentLedger(p=>[entry,...(p||[])]);
-    setCust(p=>p.map(c=>c.id===customerId?{...c,paid:(c.paid||0)+(+amount),pending:Math.max(0,(c.pending||0)-(+amount))}:c));
+    setPaymentLedger(p=>[entry,...safeArr(p)]);
+    setCust(p=>safeArr(p).map(c=>c.id===customerId?{...c,paid:(c.paid||0)+(+amount),pending:Math.max(0,(c.pending||0)-(+amount))}:c));
     addLog("Manual payment recorded",`${customerName} — ${inr(amount)}${note?" · "+note:""}`);
     addNotif("Payment Recorded",`${inr(amount)} from ${customerName}`,"success","payment");
     notify(`${inr(amount)} recorded ✓`);
@@ -4198,8 +4426,8 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const targets=(settings?.notifTargets||{})[notifType]||["admin"];
     if(targets.includes(sess.role)) sendBrowserNotif(title,body);
   }
-  function markAllRead(){setNotifs(p=>p.map(n=>({...n,read:true})));}
-  function delNotif(id){setNotifs(p=>p.filter(n=>n.id!==id));}
+  function markAllRead(){setNotifs(p=>safeArr(p).map(n=>({...n,read:true})));}
+  function delNotif(id){setNotifs(p=>safeArr(p).filter(n=>n.id!==id));}
 
   // Firebase handles all sync via useStore — no extra sync needed
 
@@ -4321,22 +4549,47 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   // Fix #1 & #4: All these were running on every single render with no memoization.
   // Also fix #4: totalRev now computed purely from deliveries (single source of truth)
   // instead of mixing customers.paid (ledger) with delivery-level replacement deductions.
-  const activeC=useMemo(()=>customers.filter(c=>c.active),[customers]);
-  const totalReplDeductions=useMemo(()=>deliveries.reduce((a,d)=>a+(+d.replacement?.amount||0),0),[deliveries]);
-  const totalRev=useMemo(()=>deliveries.filter(d=>d.status==="Delivered").reduce((a,d)=>a+lineTotal(d.orderLines),0)-totalReplDeductions,[deliveries,totalReplDeductions]);
-  const totalDue=useMemo(()=>customers.reduce((a,c)=>a+(c.pending||0),0),[customers]);
-  const totalExpOp=useMemo(()=>expenses.reduce((a,e)=>a+(e.amount||0),0),[expenses]);
-  const totalSupC=useMemo(()=>supplies.reduce((a,s)=>a+(s.cost||0),0),[supplies]);
+  // ── COMPUTED PENDING: derive pending from deliveries, never trust stored value ──
+  // For each customer, pending = sum of all non-cancelled delivery order totals
+  //   minus replacements deducted minus partial payments collected.
+  // This makes the customers tab self-healing: even if stored pending drifts,
+  // the displayed and used value is always correct.
+  const taxRtGlobal=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
+  const computedPendingMap=useMemo(()=>{
+    const map={};
+    safeArr(rawCustomers).forEach(c=>{ map[c.id]=0; });
+    safeArr(deliveries).forEach(d=>{
+      if(!d.customerId||d.status==="Cancelled") return;
+      const orderAmt=lineTotalWithTax(d.orderLines||{},taxRtGlobal);
+      const repl=+d.replacement?.amount||0;
+      const partial=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+      map[d.customerId]=(map[d.customerId]||0)+orderAmt-repl-partial;
+    });
+    Object.keys(map).forEach(k=>{ map[k]=Math.max(0,map[k]); });
+    return map;
+  },[rawCustomers,deliveries,taxRtGlobal]);
+
+  // Enrich customers with computed pending — all c.pending reads get the live value
+  const customers=useMemo(()=>safeArr(rawCustomers).map(c=>({
+    ...c,
+    pending: computedPendingMap[c.id]??c.pending??0,
+  })),[rawCustomers,computedPendingMap]);
+
+  const activeC=useMemo(()=>safeArr(customers).filter(c=>c.active),[customers]);
+  const totalReplDeductions=useMemo(()=>safeArr(deliveries).reduce((a,d)=>a+(+d.replacement?.amount||0),0),[deliveries]);
+  const totalRev=useMemo(()=>safeArr(deliveries).filter(d=>d.status==="Delivered").reduce((a,d)=>a+lineTotal(d.orderLines),0)-totalReplDeductions,[deliveries,totalReplDeductions]);
+  const totalDue=useMemo(()=>safeArr(customers).reduce((a,c)=>a+(c.pending||0),0),[customers]);
+  const totalExpOp=useMemo(()=>safeArr(expenses).reduce((a,e)=>a+(e.amount||0),0),[expenses]);
+  const totalSupC=useMemo(()=>safeArr(supplies).reduce((a,s)=>a+(s.cost||0),0),[supplies]);
   const netProfit=useMemo(()=>totalRev-totalExpOp-totalSupC,[totalRev,totalExpOp,totalSupC]);
-  const pendingD=useMemo(()=>deliveries.filter(d=>d.status==="Pending"),[deliveries]);
+  const pendingD=useMemo(()=>safeArr(deliveries).filter(d=>d.status==="Pending"),[deliveries]);
 
   // ── PUSH PERMISSION ──────────────────────────────────────────
   useEffect(() => { requestPushPermission(); }, []);
 
   // ── LOW STOCK ALERTS ─────────────────────────────────────────
-  // Fix #2: memoize lowStockItems — previously re-filtered supplies on every render
   const lowStockThreshold = settings?.lowStockThreshold ?? 5;
-  const lowStockItems = useMemo(()=>supplies.filter(s => (s.qty || 0) <= lowStockThreshold && s.item),[supplies,lowStockThreshold]);
+  const lowStockItems = useMemo(()=>safeArr(supplies).filter(s => (s.qty || 0) <= lowStockThreshold && s.item),[supplies,lowStockThreshold]);
   const lowStockNotifiedRef = useRef({});
   useEffect(() => {
     lowStockItems.forEach(s => {
@@ -4352,16 +4605,14 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const churnedCustomers = useMemo(() => {
     const now = new Date();
     const churnMs = churnDays * 86400000;
-    // Fix #3: pre-index deliveries by customerId to avoid O(n×m) nested filter per customer.
-    // Previously: 200 customers × 5000 deliveries = 1,000,000 iterations on every change.
     const lastDelivByCustomer = {};
-    for (const d of deliveries) {
+    for (const d of safeArr(deliveries)) {
       if (!d.customerId) continue;
       if (!lastDelivByCustomer[d.customerId] || d.date > lastDelivByCustomer[d.customerId]) {
         lastDelivByCustomer[d.customerId] = d.date;
       }
     }
-    return customers.filter(c => {
+    return safeArr(customers).filter(c => {
       if (!c.active) return false;
       const lastDate = lastDelivByCustomer[c.id];
       if (!lastDate) return c.joinDate && (now - new Date(c.joinDate)) > churnMs;
@@ -4371,44 +4622,42 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
 
 
   // ── DASHBOARD STATS MEMO ─────────────────────────────────────────────────────
-  // Pre-computes all dashboard values once per data change, not on every render.
-  // Fixes: repeated deliveries.filter / customers.filter / wastage.filter inside
-  // the Dashboard IIFE that previously ran on every keystroke / modal open.
   const dashStats = useMemo(() => {
     const tStr = today();
     const startOfWeek  = (() => { const d=new Date(tStr); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
     const startOfMonth = (() => { const d=new Date(tStr); d.setDate(1); return d.toISOString().slice(0,10); })();
-    const todayDelivs  = deliveries.filter(d => d.date === tStr);
+    const safeD = safeArr(deliveries);
+    const safeC = safeArr(customers);
+    const safePT = safeArr(prodTargets);
+    const safeW = safeArr(wastage);
+    const todayDelivs  = safeD.filter(d => d.date === tStr);
     const todayDone    = todayDelivs.filter(d => d.status === "Delivered");
     const todayPend    = todayDelivs.filter(d => d.status === "Pending");
     const todayTransit = todayDelivs.filter(d => d.status === "In Transit");
     const todayCancl   = todayDelivs.filter(d => d.status === "Cancelled");
     const todayRev     = todayDone.reduce((s,d) => s + lineTotal(d.orderLines), 0);
-    const weekDelivs   = deliveries.filter(d => d.date >= startOfWeek && d.status === "Delivered");
-    const monthDelivs  = deliveries.filter(d => d.date >= startOfMonth && d.status === "Delivered");
+    const weekDelivs   = safeD.filter(d => d.date >= startOfWeek && d.status === "Delivered");
+    const monthDelivs  = safeD.filter(d => d.date >= startOfMonth && d.status === "Delivered");
     const weekRev      = weekDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
     const monthRev     = monthDelivs.reduce((s,d) => s + lineTotal(d.orderLines), 0);
-    const allDue       = customers.filter(c => c.pending > 0);
+    const allDue       = safeC.filter(c => c.pending > 0);
     const totalDueAmt  = allDue.reduce((s,c) => s + (c.pending||0), 0);
-    const todayPT      = prodTargets.filter(p => p.date === tStr);
+    const todayPT      = safePT.filter(p => p.date === tStr);
     const totalTarget  = todayPT.reduce((s,p) => s + (p.target||0), 0);
     const totalActual  = todayPT.reduce((s,p) => s + (p.actual||0), 0);
     const prodPct      = totalTarget > 0 ? Math.round(totalActual / totalTarget * 100) : null;
-    const overdueD     = deliveries.filter(d => d.status === "Pending" && d.date < tStr);
-    const todayWastage = wastage.filter(w => w.date === tStr);
+    const overdueD     = safeD.filter(d => d.status === "Pending" && d.date < tStr);
+    const todayWastage = safeW.filter(w => w.date === tStr);
     const todayWasteCost = todayWastage.reduce((s,w) => s + (w.cost||0), 0);
     return {todayDelivs,todayDone,todayPend,todayTransit,todayCancl,todayRev,
             weekDelivs,monthDelivs,weekRev,monthRev,allDue,totalDueAmt,
             todayPT,totalTarget,totalActual,prodPct,overdueD,todayWastage,todayWasteCost};
   }, [deliveries, customers, prodTargets, wastage]);
 
-  // ── DERIVED DELIVERY/CUSTOMER MEMOS — replaces inline JSX filters ────────────
-  // These replace scattered deliveries.filter() calls in StatCards and pill labels
-  // that were re-running on every render, including during search typing.
-  const dashReplacementCount = useMemo(()=>deliveries.filter(d=>d.replacement?.done).length,[deliveries]);
-  const dashPartialCount = useMemo(()=>deliveries.filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length,[deliveries]);
-  const dashPartialTotal = useMemo(()=>deliveries.reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0),[deliveries]);
-  const dashTotalCollected = useMemo(()=>customers.reduce((s,c)=>s+(c.paid||0),0),[customers]);
+  const dashReplacementCount = useMemo(()=>safeArr(deliveries).filter(d=>d.replacement?.done).length,[deliveries]);
+  const dashPartialCount = useMemo(()=>safeArr(deliveries).filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length,[deliveries]);
+  const dashPartialTotal = useMemo(()=>safeArr(deliveries).reduce((s,d)=>s+(d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0),0),[deliveries]);
+  const dashTotalCollected = useMemo(()=>safeArr(customers).reduce((s,c)=>s+(c.paid||0),0),[customers]);
   // Delivery status counts for filter pills — one pass over deliveries, not 3 separate filters
   const delivStatusCounts = useMemo(()=>{
     const counts={"Pending":0,"In Transit":0,"Delivered":0,"Cancelled":0};
@@ -4448,7 +4697,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
       const batchLabels=(prodTargets||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
       const productNames=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>l.name||"").join(" ");
-      const matchSearch=!q||d.customer.toLowerCase().includes(q)||d.date.includes(q)||d.status.toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
+      const matchSearch=!q||(d.customer||"").toLowerCase().includes(q)||(d.date||"").includes(q)||(d.status||"").toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
       const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
       const matchDate=delivDateFilter==="all"||(delivDateFilter==="today"&&d.date===tStr)||(delivDateFilter==="yesterday"&&d.date===yStr)||(delivDateFilter==="week"&&d.date>=wStr&&d.date<=tStr)||(delivDateFilter==="custom"&&delivDateFrom&&delivDateTo&&d.date>=delivDateFrom&&d.date<=delivDateTo);
       const matchBatch=delivBatchFilter==="all"||(d.batchId===delivBatchFilter);
@@ -4680,21 +4929,21 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       setIngLogs(p=>[rec,...p]);
       // Auto-deduct from supplies if matching item found
       const match=supplies.find(s=>(s.item||"").toLowerCase().includes(ingF.ingredient.toLowerCase())||ingF.ingredient.toLowerCase().includes((s.item||"").toLowerCase()));
-      if(match){setSup(p=>p.map(s=>s.id===match.id?{...s,qty:Math.max(0,(s.qty||0)-(+ingF.qty||0))}:s));addLog("Ingredient consumed (auto-deducted)",`${ingF.ingredient} ×${ingF.qty} from "${match.item}"`);}
+      if(match){setSup(p=>safeArr(p).map(s=>s.id===match.id?{...s,qty:Math.max(0,(s.qty||0)-(+ingF.qty||0))}:s));addLog("Ingredient consumed (auto-deducted)",`${ingF.ingredient} ×${ingF.qty} from "${match.item}"`);}
       else{addLog("Ingredient consumed",`${ingF.ingredient} ×${ingF.qty}`);}
       notify("Consumption logged ✓");
     } else {
-      setIngLogs(p=>p.map(x=>x.id===ingSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));
+      setIngLogs(p=>safeArr(p).map(x=>x.id===ingSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));
       addLog("Edited ingredient log",ingF.ingredient);notify("Updated ✓");
     }
     setIngSh(null);
   }
-  function delIng(r){ask(`Delete consumption record?`,()=>{setIngLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted ingredient log",r.ingredient);notify("Deleted");});}
+  function delIng(r){ask(`Delete consumption record?`,()=>{setIngLogs(p=>safeArr(p).filter(x=>x.id!==r.id));addLog("Deleted ingredient log",r.ingredient);notify("Deleted");});}
   function saveIngItem(){
     if(!ingItemF.name.trim()){notify("Name required");return;}
     const rec={...ingItemF,id:ingItemSh==="add"?uid():ingItemSh.id,stock:+ingItemF.stock||0};
-    if(ingItemSh==="add"){setIngItems(p=>[...p,rec]);addLog("Added ingredient",rec.name);notify("Added ✓");}
-    else{setIngItems(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited ingredient",rec.name);notify("Updated ✓");}
+    if(ingItemSh==="add"){setIngItems(p=>[...safeArr(p),rec]);addLog("Added ingredient",rec.name);notify("Added ✓");}
+    else{setIngItems(p=>safeArr(p).map(x=>x.id===rec.id?rec:x));addLog("Edited ingredient",rec.name);notify("Updated ✓");}
     setIngItemSh(null);
   }
 
@@ -4703,15 +4952,15 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     if(!staffF.staffName.trim()||!staffF.date){notify("Staff name and date required");return;}
     const rec={...staffF,loggedBy:displayName,id:uid(),createdAt:ts()};
     if(staffSh==="add"){setStaffLogs(p=>[rec,...p]);addLog("Staff attendance logged",`${staffF.staffName} — ${staffF.status}`);notify("Logged ✓");}
-    else{setStaffLogs(p=>p.map(x=>x.id===staffSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited staff log",staffF.staffName);notify("Updated ✓");}
+    else{setStaffLogs(p=>safeArr(p).map(x=>x.id===staffSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited staff log",staffF.staffName);notify("Updated ✓");}
     setStaffSh(null);
   }
-  function delStaff(r){ask(`Delete attendance record?`,()=>{setStaffLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted staff log",r.staffName);notify("Deleted");});}
+  function delStaff(r){ask(`Delete attendance record?`,()=>{setStaffLogs(p=>safeArr(p).filter(x=>x.id!==r.id));addLog("Deleted staff log",r.staffName);notify("Deleted");});}
   function saveStaffMember(){
     if(!staffMemberF.name.trim()){notify("Name required");return;}
     const rec={...staffMemberF,id:staffMemberSh==="add"?uid():staffMemberSh.id};
-    if(staffMemberSh==="add"){setStaffList(p=>[...p,rec]);addLog("Added staff member",rec.name);notify("Added ✓");}
-    else{setStaffList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited staff member",rec.name);notify("Updated ✓");}
+    if(staffMemberSh==="add"){setStaffList(p=>[...safeArr(p),rec]);addLog("Added staff member",rec.name);notify("Added ✓");}
+    else{setStaffList(p=>safeArr(p).map(x=>x.id===rec.id?rec:x));addLog("Edited staff member",rec.name);notify("Updated ✓");}
     setStaffMemberSh(null);
   }
 
@@ -4721,15 +4970,15 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const totalCost=(+machF.partsCost||0)+(+machF.laborCost||0)+(+machF.cost||0);
     const rec={...machF,cost:totalCost,partsCost:+machF.partsCost||0,laborCost:+machF.laborCost||0,downtimeHrs:+machF.downtimeHrs||0,loggedBy:displayName,id:uid(),createdAt:ts()};
     if(machSh==="add"){setMachineLogs(p=>[rec,...p]);addLog("Maintenance logged",`${machF.machineName} — ${machF.type}`);notify("Logged ✓");}
-    else{setMachineLogs(p=>p.map(x=>x.id===machSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited maintenance log",machF.machineName);notify("Updated ✓");}
+    else{setMachineLogs(p=>safeArr(p).map(x=>x.id===machSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited maintenance log",machF.machineName);notify("Updated ✓");}
     setMachSh(null);
   }
-  function delMach(r){ask(`Delete maintenance record?`,()=>{setMachineLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted maintenance log",r.machineName);notify("Deleted");});}
+  function delMach(r){ask(`Delete maintenance record?`,()=>{setMachineLogs(p=>safeArr(p).filter(x=>x.id!==r.id));addLog("Deleted maintenance log",r.machineName);notify("Deleted");});}
   function saveMachItem(){
     if(!machItemF.name.trim()){notify("Name required");return;}
     const rec={...machItemF,id:machItemSh==="add"?uid():machItemSh.id};
-    if(machItemSh==="add"){setMachineList(p=>[...p,rec]);addLog("Added machine",rec.name);notify("Added ✓");}
-    else{setMachineList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited machine",rec.name);notify("Updated ✓");}
+    if(machItemSh==="add"){setMachineList(p=>[...safeArr(p),rec]);addLog("Added machine",rec.name);notify("Added ✓");}
+    else{setMachineList(p=>safeArr(p).map(x=>x.id===rec.id?rec:x));addLog("Edited machine",rec.name);notify("Updated ✓");}
     setMachItemSh(null);
   }
 
@@ -4738,7 +4987,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     if(!machF.machineName||!vehF.vehicleName.trim()||!vehF.date){notify("Vehicle and date required");return;}
     const rec={...vehF,fuelCost:+vehF.fuelCost||0,maintenanceCost:+vehF.maintenanceCost||0,kms:+vehF.kms||0,loggedBy:displayName,id:uid(),createdAt:ts()};
     if(vehSh==="add"){setVehLogs(p=>[rec,...p]);addLog("Vehicle log added",`${vehF.vehicleName} — ${vehF.type}`);notify("Logged ✓");}
-    else{setVehLogs(p=>p.map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
+    else{setVehLogs(p=>safeArr(p).map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
     setVehSh(null);
   }
   function saveVehFixed(){
@@ -4746,23 +4995,23 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const kms=vehF.odometerEnd&&vehF.odometerStart?(+vehF.odometerEnd-(+vehF.odometerStart||0)):+vehF.kms||0;
     const rec={...vehF,fuelCost:+vehF.fuelCost||0,fuelLiters:+vehF.fuelLiters||0,tollCost:+vehF.tollCost||0,maintenanceCost:+vehF.maintenanceCost||0,kms,odometerStart:+vehF.odometerStart||0,odometerEnd:+vehF.odometerEnd||0,loggedBy:displayName,id:vehSh==="add"?uid():vehSh.id,createdAt:ts()};
     if(vehSh==="add"){setVehLogs(p=>[rec,...p]);addLog("Vehicle log added",`${vehF.vehicleName} — ${vehF.type}`);notify("Logged ✓");}
-    else{setVehLogs(p=>p.map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
+    else{setVehLogs(p=>safeArr(p).map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
     setVehSh(null);
   }
-  function delVeh(r){ask(`Delete vehicle log?`,()=>{setVehLogs(p=>p.filter(x=>x.id!==r.id));addLog("Deleted vehicle log",r.vehicleName);notify("Deleted");});}
+  function delVeh(r){ask(`Delete vehicle log?`,()=>{setVehLogs(p=>safeArr(p).filter(x=>x.id!==r.id));addLog("Deleted vehicle log",r.vehicleName);notify("Deleted");});}
   function saveVehItem(){
     if(!vehItemF.name.trim()){notify("Name required");return;}
     const rec={...vehItemF,id:vehItemSh==="add"?uid():vehItemSh.id};
-    if(vehItemSh==="add"){setVehList(p=>[...p,rec]);addLog("Added vehicle",rec.name);notify("Added ✓");}
-    else{setVehList(p=>p.map(x=>x.id===rec.id?rec:x));addLog("Edited vehicle",rec.name);notify("Updated ✓");}
+    if(vehItemSh==="add"){setVehList(p=>[...safeArr(p),rec]);addLog("Added vehicle",rec.name);notify("Added ✓");}
+    else{setVehList(p=>safeArr(p).map(x=>x.id===rec.id?rec:x));addLog("Edited vehicle",rec.name);notify("Updated ✓");}
     setVehItemSh(null);
   }
 
   // CUSTOMERS
-  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...p,{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>p.map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
-  function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
-  function togActive(c){setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
-  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>p.map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
+  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...safeArr(p),{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>safeArr(p).map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
+  function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
+  function togActive(c){setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
+  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>safeArr(p).map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
   function pickCust(id){const c=customers.find(x=>x.id===id);setDf(f=>({...f,customer:c?.name||"",customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
@@ -4790,7 +5039,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     if(dSh==="add"){
       // ── NEW DELIVERY: add order total to customer pending, then apply deductions ──
       if(dF.customerId){
-        setCust(p=>p.map(c=>{
+        setCust(p=>safeArr(p).map(c=>{
           if(c.id!==dF.customerId) return c;
           let newPending=(c.pending||0)+newOrderTotal;
           let newPaid=c.paid||0;
@@ -4815,7 +5064,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const delivDate=dF.date||today();
       const delivItems=Object.values(safeO(dF.orderLines)).filter(l=>(l.qty||0)>0).map(l=>l.name||"");
       if(delivItems.length>0){
-        setProdTargets(prev=>prev.map(pt=>{
+        setProdTargets(prev=>safeArr(prev).map(pt=>{
           if(pt.date!==delivDate) return pt;
           // Use prodNamesMatch for consistent fuzzy matching (same as batch-side logic)
         const matches=delivItems.some(item=>pt.product&&prodNamesMatch(item,pt.product));
@@ -4834,7 +5083,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
         );
         if(matchedBatch) autoBatchId=matchedBatch.batchId||"";
       }
-      setDeliv(p=>[...p,{...dF,id:newId,invNo:newInvNo,batchId:autoBatchId||dF.batchId||"",partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
+      setDeliv(p=>[...safeArr(p),{...dF,id:newId,invNo:newInvNo,batchId:autoBatchId||dF.batchId||"",partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
       addLog("Added delivery",`${dF.customer} [${newInvNo}]`);
       notify(`Delivery added · ${newInvNo} ✓`);
       addNotif("Delivery Added",`${dF.customer} — ${newInvNo}`,"success");
@@ -4851,14 +5100,14 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
         const custIdChanged=dF.customerId!==oldD.customerId;
         if(custIdChanged && oldD.customerId){
           // Reverse everything on old customer
-          setCust(p=>p.map(c=>{
+          setCust(p=>safeArr(p).map(c=>{
             if(c.id!==oldD.customerId) return c;
             let newPending=(c.pending||0)-oldOrderTotal+oldReplAmt+oldPartialAmt;
             const newPaid=Math.max(0,(c.paid||0)-oldPartialAmt);
             return {...c,pending:Math.max(0,newPending),paid:newPaid};
           }));
         }
-        setCust(p=>p.map(c=>{
+        setCust(p=>safeArr(p).map(c=>{
           if(custIdChanged){
             // Apply new amounts to new customer
             if(c.id!==dF.customerId) return c;
@@ -4879,12 +5128,12 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
         if(replAmt!==oldReplAmt&&replAmt>0) addLog("Replacement deduction (edit)",`${dF.customer} — ${inr(replAmt)} off pending`);
         if(partialAmt!==oldPartialAmt&&partialAmt>0) addLog("Partial payment updated (edit)",`${dF.customer} — ${inr(partialAmt)} collected`);
       }
-      setDeliv(p=>p.map(d=>d.id===dSh.id?{...dF,id:d.id}:d));
+      setDeliv(p=>safeArr(p).map(d=>d.id===dSh.id?{...dF,id:d.id}:d));
       addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);
     }
     setDsh(null);
   }
-  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
+  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{
     // ── Reverse the customer balance impact when a delivery is deleted ──
     if(d.customerId){
@@ -4892,7 +5141,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const orderTotal=lineTotalWithTax(d.orderLines||{},taxRt);
       const replAmt=+d.replacement?.amount||0;
       const partialAmt=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-      setCust(p=>p.map(c=>{
+      setCust(p=>safeArr(p).map(c=>{
         if(c.id!==d.customerId) return c;
         // Reverse: remove order total from pending, restore replacement & partial
         const newPending=Math.max(0,(c.pending||0)-orderTotal+replAmt+partialAmt);
@@ -4900,7 +5149,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
         return {...c,pending:newPending,paid:newPaid};
       }));
     }
-    setDeliv(p=>p.filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");
+    setDeliv(p=>safeArr(p).filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");
   });}
 
   // BULK ORDER ENTRY
@@ -4928,10 +5177,10 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       return {...r,id:newId,invNo,date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}};
     });
     setInvRegistry(prev=>({seq,issued:{...(prev.issued||{}),...newIssuedMap}}));
-    setDeliv(p=>[...p,...newDelivs]);
+    setDeliv(p=>[...safeArr(p),...newDelivs]);
     // ── Update customer pending balances for each bulk order ──
     const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
-    setCust(p=>p.map(c=>{
+    setCust(p=>safeArr(p).map(c=>{
       const custDelivs=newDelivs.filter(d=>d.customerId===c.id);
       if(!custDelivs.length) return c;
       const addedPending=custDelivs.reduce((s,d)=>s+lineTotalWithTax(d.orderLines||{},taxRt),0);
@@ -4945,8 +5194,8 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   function saveS(){
     if(!sF.item.trim()){notify("Item required");return;}
     const rec={...sF,qty:+sF.qty||0,cost:+sF.cost||0,minStock:sF.minStock?+sF.minStock:""};
-    if(sSh==="add"){setSup(p=>[...p,{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");captureGPS("supply_logged",sF.item);}
-    else{setSup(p=>p.map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");captureGPS("supply_logged",sF.item);}
+    if(sSh==="add"){setSup(p=>[...safeArr(p),{...rec,id:uid()}]);addLog("Added supply",sF.item);notify("Supply logged ✓");captureGPS("supply_logged",sF.item);}
+    else{setSup(p=>safeArr(p).map(s=>s.id===sSh.id?{...rec,id:s.id}:s));addLog("Edited supply",sF.item);notify("Updated ✓");captureGPS("supply_logged",sF.item);}
     // Low stock push notification on save
     const threshold=+sF.minStock;
     if(threshold>0&&(+sF.qty||0)<=threshold){
@@ -4955,14 +5204,14 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     }
     setSsh(null);
   }
-  function delS(s){ask(`Delete supply "${s.item}"?`,()=>{setSup(p=>p.filter(x=>x.id!==s.id));addLog("Deleted supply",s.item);notify("Deleted");});}
+  function delS(s){ask(`Delete supply "${s.item}"?`,()=>{setSup(p=>safeArr(p).filter(x=>x.id!==s.id));addLog("Deleted supply",s.item);notify("Deleted");});}
 
   // EXPENSES
   function saveE(){if(!eF.amount){notify("Amount required");return;}
-    if(eSh==="add"){setExp(p=>[...p,{...eF,id:uid(),amount:+eF.amount}]);addLog("Added expense",`${eF.category} ${inr(eF.amount)}`);notify("Expense logged ✓");captureGPS("expense_logged",eF.category);}
-    else{setExp(p=>p.map(x=>x.id===eSh.id?{...eF,id:x.id,amount:+eF.amount}:x));addLog("Edited expense",`${eF.category} ${inr(eF.amount)}`);notify("Updated ✓");captureGPS("expense_logged",eF.category);}
+    if(eSh==="add"){setExp(p=>[...safeArr(p),{...eF,id:uid(),amount:+eF.amount}]);addLog("Added expense",`${eF.category} ${inr(eF.amount)}`);notify("Expense logged ✓");captureGPS("expense_logged",eF.category);}
+    else{setExp(p=>safeArr(p).map(x=>x.id===eSh.id?{...eF,id:x.id,amount:+eF.amount}:x));addLog("Edited expense",`${eF.category} ${inr(eF.amount)}`);notify("Updated ✓");captureGPS("expense_logged",eF.category);}
     setEsh(null);}
-  function delE(e){ask(`Delete "${e.category} ${inr(e.amount)}"?`,()=>{setExp(p=>p.filter(x=>x.id!==e.id));addLog("Deleted expense",`${e.category} ${inr(e.amount)}`);notify("Deleted");});}
+  function delE(e){ask(`Delete "${e.category} ${inr(e.amount)}"?`,()=>{setExp(p=>safeArr(p).filter(x=>x.id!==e.id));addLog("Deleted expense",`${e.category} ${inr(e.amount)}`);notify("Deleted");});}
   function saveFinSnapshot(dateStr){
     const dayRevenue=deliveries.filter(d=>d.date===dateStr&&d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
     const daySupply=supplies.filter(s=>s.date===dateStr).reduce((s,x)=>s+(x.cost||0),0);
@@ -4977,10 +5226,10 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     if(!wF.product.trim()||!wF.qty){notify("Product and quantity required");return;}
     const rec={...wF,qty:+wF.qty||0,cost:+wF.cost||0,loggedBy:sess.name};
     if(wSh==="add"){setWaste(p=>[{...rec,id:uid(),createdAt:ts()},...p]);addLog("Logged wastage",`${rec.qty} ${rec.unit} ${rec.product} — ${rec.type}`);notify("Wastage logged ✓");captureGPS("wastage_logged",rec.product);}
-    else{setWaste(p=>p.map(x=>x.id===wSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited wastage",`${rec.product} ${rec.qty} ${rec.unit}`);notify("Updated ✓");captureGPS("wastage_logged",rec.product);}
+    else{setWaste(p=>safeArr(p).map(x=>x.id===wSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited wastage",`${rec.product} ${rec.qty} ${rec.unit}`);notify("Updated ✓");captureGPS("wastage_logged",rec.product);}
     setWSh(null);
   }
-  function delW(w){ask(`Delete wastage record for "${w.product}"?`,()=>{setWaste(p=>p.filter(x=>x.id!==w.id));addLog("Deleted wastage",`${w.product} ${w.qty} ${w.unit}`);notify("Deleted");});}
+  function delW(w){ask(`Delete wastage record for "${w.product}"?`,()=>{setWaste(p=>safeArr(p).filter(x=>x.id!==w.id));addLog("Deleted wastage",`${w.product} ${w.qty} ${w.unit}`);notify("Deleted");});}
 
   // QC LOGS
   function saveQC(){
@@ -4992,7 +5241,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     notify("QC log saved ✓");
     setQcSh(null);
   }
-  function delQC(q){ask(`Delete QC record for "${q.product}"?`,()=>{setQcLogs(p=>p.filter(x=>x.id!==q.id));addLog("Deleted QC log",q.product);notify("Deleted");});}
+  function delQC(q){ask(`Delete QC record for "${q.product}"?`,()=>{setQcLogs(p=>safeArr(p).filter(x=>x.id!==q.id));addLog("Deleted QC log",q.product);notify("Deleted");});}
   // ── Smart Auto-Deduct ─────────────────────────────────────────
   // Returns deduction info object so savePT can store it on the record
   function runAutoDeduct(productName,actualQty,prevActual,currentSupplies){
@@ -5019,7 +5268,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const qtyBefore=best.qty||0;
     const newQty=Math.max(0,qtyBefore-deductQty);
     // Use functional update to avoid stale state when multiple saves happen quickly
-    setSup(p=>p.map(s=>s.id===best.id?{...s,qty:Math.max(0,(s.qty||0)-deductQty)}:s));
+    setSup(p=>safeArr(p).map(s=>s.id===best.id?{...s,qty:Math.max(0,(s.qty||0)-deductQty)}:s));
     addLog("Auto-deducted supply",`${best.item}: ${qtyBefore}→${newQty} (${productName} ×${deductQty})`);
     const lowWarn=best.minStock>0&&newQty<=best.minStock?" · ⚠️ Low stock!":"";
     if(best.minStock>0&&newQty<=best.minStock) addNotif(`⚠️ Low Stock: ${best.item}`,`Only ${newQty} ${best.unit||""} left after auto-deduct`,"warning","lowstock");
@@ -5064,7 +5313,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const matchingInvNos=matchingDelivs.map(d=>(invRegistry?.issued||{})[d.id]||d.invNo).filter(Boolean);
       // Stamp batchId onto matching deliveries if auto-link enabled & they have no batchId yet
       if(autoLink&&matchingDelivs.length>0){
-        setDeliv(prev=>prev.map(d=>{
+        setDeliv(prev=>safeArr(prev).map(d=>{
           const isMatch=matchingDelivs.some(m=>m.id===d.id);
           if(!isMatch)return d;
           if(d.batchId)return d; // don't overwrite manual assignments
@@ -5084,7 +5333,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const prev=prodTargets.find(x=>x.id===ptSh.id);
       const deduction=runAutoDeduct(productName,rec.actual,prev?.actual);
       const mergedDeduction=deduction||(prev?.deduction||null);
-      setProdTargets(p=>p.map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
+      setProdTargets(p=>safeArr(p).map(x=>x.id===ptSh.id?{...rec,id:x.id,createdAt:x.createdAt,deduction:mergedDeduction}:x));
       // On edit: remove old linked records and re-add from embedded
       setWaste(p=>{const withoutOld=p.filter(w=>w.batchId!==batchIdFinal||!w._embLinked);return embW.length>0?[...embW.map(w=>({...w,date:rec.date,batchId:batchIdFinal,_embLinked:true,id:w.id||uid(),createdAt:w.createdAt||ts()})),...withoutOld]:withoutOld;});
       setQcLogs(p=>{const withoutOld=p.filter(q=>q.batchId!==batchIdFinal||!q._embLinked);return embQ.length>0?[...embQ.map(q=>({...q,date:rec.date,batchId:batchIdFinal,_embLinked:true,id:q.id||uid(),createdAt:q.createdAt||ts()})),...withoutOld]:withoutOld;});
@@ -5095,11 +5344,11 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     }
     setPtSh(null);
   }
-  function delPT(pt){ask(`Delete production record?`,()=>{setProdTargets(p=>p.filter(x=>x.id!==pt.id));addLog("Deleted production record",`${pt.product} ${pt.date}`);notify("Deleted");});}
+  function delPT(pt){ask(`Delete production record?`,()=>{setProdTargets(p=>safeArr(p).filter(x=>x.id!==pt.id));addLog("Deleted production record",`${pt.product} ${pt.date}`);notify("Deleted");});}
 
   // PRODUCTS
-  function saveP(){if(!pF.name.trim()||!pF.id.trim()){notify("Name and ID required");return;}const rec={...pF,id:pF.id.toLowerCase().replace(/\s+/g,""),prices:pF.prices.map(x=>+x||0).filter(x=>x>0)};if(!rec.prices.length){notify("Add at least one price");return;}if(pSh==="add"){if(products.find(p=>p.id===rec.id)){notify("ID exists");return;}setProd(p=>[...p,rec]);addLog("Added product",rec.name);notify("Product added ✓");}else{setProd(p=>p.map(x=>x.id===pSh.id?rec:x));addLog("Edited product",rec.name);notify("Updated ✓");}setPsh(null);}
-  function delP(p){ask(`Delete product "${p.name}"?`,()=>{setProd(prev=>prev.filter(x=>x.id!==p.id));addLog("Deleted product",p.name);notify("Deleted");});}
+  function saveP(){if(!pF.name.trim()||!pF.id.trim()){notify("Name and ID required");return;}const rec={...pF,id:pF.id.toLowerCase().replace(/\s+/g,""),prices:pF.prices.map(x=>+x||0).filter(x=>x>0)};if(!rec.prices.length){notify("Add at least one price");return;}if(pSh==="add"){if(products.find(p=>p.id===rec.id)){notify("ID exists");return;}setProd(p=>[...safeArr(p),rec]);addLog("Added product",rec.name);notify("Product added ✓");}else{setProd(p=>safeArr(p).map(x=>x.id===pSh.id?rec:x));addLog("Edited product",rec.name);notify("Updated ✓");}setPsh(null);}
+  function delP(p){ask(`Delete product "${p.name}"?`,()=>{setProd(prev=>safeArr(prev).filter(x=>x.id!==p.id));addLog("Deleted product",p.name);notify("Deleted");});}
   function saveProdItem(){
     if(!piF.name.trim()){notify("Name required");return;}
     const id=piF.id||piF.name.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
@@ -5121,11 +5370,11 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const perms=uF.role==="admin"?ROLE_DEF.admin:(uF.permissions||ROLE_DEF[uF.role]||ROLE_DEF.agent);
     const finePerms=uF.role==="admin"?defaultFinePerms("admin"):(uF.finePerms||defaultFinePerms(uF.role));
     const rec={...uF,password:pw,pin,permissions:perms,finePerms};
-    if(uSh==="add"){if(users.find(x=>x.username===rec.username)){notify("Username exists");return;}setUsers(p=>[...p,{...rec,id:uid(),createdAt:today()}]);addLog("Created user",`@${rec.username} (${rec.role})`);notify("User created ✓");}
-    else{setUsers(p=>p.map(x=>x.id===uSh.id?{...rec,id:x.id}:x));addLog("Edited user",`@${rec.username}`);notify("Updated ✓");}
+    if(uSh==="add"){if(users.find(x=>x.username===rec.username)){notify("Username exists");return;}setUsers(p=>[...safeArr(p),{...rec,id:uid(),createdAt:today()}]);addLog("Created user",`@${rec.username} (${rec.role})`);notify("User created ✓");}
+    else{setUsers(p=>safeArr(p).map(x=>x.id===uSh.id?{...rec,id:x.id}:x));addLog("Edited user",`@${rec.username}`);notify("Updated ✓");}
     setUsh(null);
   }
-  function delU(u){if(u.id===sess.id){notify("Cannot delete your own account");return;}if(u.role==="admin"&&users.filter(x=>x.role==="admin"&&x.active).length<=1){notify("Cannot remove last admin");return;}ask(`Delete user "@${u.username}"?`,()=>{setUsers(p=>p.filter(x=>x.id!==u.id));addLog("Deleted user",`@${u.username}`);notify("Deleted");});}
+  function delU(u){if(u.id===sess.id){notify("Cannot delete your own account");return;}if(u.role==="admin"&&users.filter(x=>x.role==="admin"&&x.active).length<=1){notify("Cannot remove last admin");return;}ask(`Delete user "@${u.username}"?`,()=>{setUsers(p=>safeArr(p).filter(x=>x.id!==u.id));addLog("Deleted user",`@${u.username}`);notify("Deleted");});}
 
   // EXPORT/IMPORT
   function exportAll(){const d={customers,deliveries,supplies,expenses,products,users,actLog,wastage,at:new Date().toISOString()};const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));a.download=`tas_backup_${today()}.json`;a.click();URL.revokeObjectURL(a.href);addLog("Exported backup","Full JSON");notify("Exported ✓");setLastBackupDate(today());}
@@ -5208,7 +5457,7 @@ ${custGroups.map(cg=>{
   <span class="${cRem>0?"red":"green"}">Remaining: <b>₹${cRem.toLocaleString("en-IN")}</b></span>
 </div>
 <table><tr><th>Invoice No</th><th>Receipt No</th><th>Date</th><th>Status</th><th>Items</th><th>Total Order</th><th>Repl</th><th>Net</th><th>Paid</th><th>Remaining</th></tr>
-${cg.delivs.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
+${cg.delivs.sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d=>{
   const tot=lineTotal(d.orderLines);
   const repl=+d.replacement?.amount||0;
   const net=tot-repl;
@@ -5276,223 +5525,6 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   // ─────────────────────────────────────────────────────────────
-  // SecuritySessions — proper component so hooks are legal
-  // ─────────────────────────────────────────────────────────────
-  function SecuritySessions({dm,t,ask,addLog,notify}){
-    const [liveSessions,setLiveSessions]=useState([]);
-    const [passkeyDevices,setPasskeyDevices]=useState([]);
-    const [locMap,setLocMap]=useState({});
-
-    // Load passkey registrations from Firebase
-    useEffect(()=>{
-      const r=ref(db,"tas_passkey_devices");
-      const unsub=onValue(r,(snap)=>{
-        if(!snap.exists()){setPasskeyDevices([]);return;}
-        const raw=snap.val()||{};
-        const list=Object.values(raw).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
-        setPasskeyDevices(list);
-      });
-      return()=>unsub();
-    },[]);
-
-    // Reverse-geocode a lat/lng to a human readable address
-    async function reverseGeocode(lat,lng,key){
-      if(!lat||!lng)return;
-      try{
-        const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{"Accept-Language":"en"}});
-        const j=await res.json();
-        const addr=j.address||{};
-        const parts=[addr.suburb||addr.neighbourhood||addr.village,addr.city||addr.town||addr.county,addr.state,addr.country].filter(Boolean);
-        setLocMap(m=>({...m,[key]:parts.slice(0,3).join(", ")||`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
-      }catch{
-        setLocMap(m=>({...m,[key]:`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
-      }
-    }
-
-    useEffect(()=>{
-      const r=ref(db);
-      const unsub=onValue(r,(snap)=>{
-        if(!snap.exists())return;
-        const val=snap.val()||{};
-        const now=Date.now();
-        const sessions=Object.entries(val)
-          .filter(([k])=>k.startsWith("tas9_sess_"))
-          .map(([k,v])=>{
-            const s=(v&&v.v!==undefined)?v.v:v;
-            if(!s||!s.loginAt)return null;
-            const age=now-s.loginAt;
-            if(age>SESSION_TTL*1.5)return null;
-            return{
-              deviceKey:k,
-              isMe:k==="tas9_sess_"+DEVICE_ID,
-              name:s.displayOverride||s.name||"Unknown",
-              username:s.username||"—",
-              role:s.role||"—",
-              browser:s.browser||"Unknown",
-              os:s.os||"Unknown",
-              deviceType:s.deviceType||"Desktop",
-              screenRes:s.screenRes||"—",
-              tz:s.tz||"—",
-              lang:s.lang||"—",
-              ua:s.ua||"",
-              passkeyLogin:s.passkeyLogin||false,
-              lat:s.lat||null,
-              lng:s.lng||null,
-              locationLabel:s.locationLabel||null,
-              loginAt:s.loginAt,
-              loginAtLabel:new Date(s.loginAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}),
-              lastSeen:age<60000?"Just now":age<3600000?`${Math.floor(age/60000)}m ago`:`${Math.floor(age/3600000)}h ago`,
-            };
-          }).filter(Boolean).sort((a,b)=>b.loginAt-a.loginAt);
-        setLiveSessions(sessions);
-        // Reverse-geocode any sessions with lat/lng
-        sessions.forEach(s=>{
-          if(s.lat&&s.lng&&!locMap[s.deviceKey]){
-            reverseGeocode(s.lat,s.lng,s.deviceKey);
-          }
-        });
-      });
-      return()=>unsub();
-    },[]);
-
-    const deviceIcon=(d)=>d==="Mobile"?"📱":d==="Tablet"?"📟":"💻";
-    const browserIcon=(b)=>b==="Chrome"?"🟡":b==="Firefox"?"🦊":b==="Safari"?"🧭":b==="Edge"?"🔵":b==="Opera"?"🔴":b==="Brave"?"🦁":"🌐";
-    const osIcon=(o)=>o==="Android"?"🤖":o==="iOS"||o==="iPadOS"?"🍎":o==="Windows"?"🪟":o==="macOS"?"🍎":o==="Linux"?"🐧":"💻";
-
-    return<Card dm={dm}><div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p style={{color:t.text,fontWeight:700,fontSize:14}}>🛡️ Active Sessions</p>
-          <p style={{color:t.sub,fontSize:11,marginTop:2}}>{liveSessions.length} device{liveSessions.length!==1?"s":""} currently logged in</p>
-        </div>
-        <button onClick={()=>ask("Force logout all OTHER devices? Your current session will remain active.",async()=>{
-          const r=ref(db);
-          const snap=await fbGet(r).catch(()=>null);
-          if(!snap||!snap.exists())return;
-          const all=Object.keys(snap.val()||{}).filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
-          for(const k of all) await fbRemove(ref(db,k)).catch(()=>{});
-          addLog("Force-logged out all other devices","Security action by admin");
-          notify("All other devices logged out ✓");
-        })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-          🔴 Logout All Others
-        </button>
-      </div>
-      {liveSessions.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"20px 0"}}>No active sessions found.</p>
-      :liveSessions.map(s=>{
-        const locLabel=s.locationLabel||(s.lat&&s.lng?locMap[s.deviceKey]||`${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`:"Location not available");
-        const mapsUrl=s.lat&&s.lng?`https://maps.google.com/?q=${s.lat},${s.lng}`:`https://maps.google.com/?q=${encodeURIComponent(locLabel||"")}`;
-        return(
-        <div key={s.deviceKey} style={{background:s.isMe?(dm?"rgba(16,185,129,0.08)":"rgba(16,185,129,0.05)"):t.inp,border:`1.5px solid ${s.isMe?"#10b98140":t.border}`,borderRadius:14,padding:"14px 16px",marginBottom:10}}>
-          <div className="flex items-start justify-between gap-3">
-            <div style={{display:"flex",gap:12,flex:1,minWidth:0}}>
-              <div style={{fontSize:32,flexShrink:0,lineHeight:1,marginTop:2}}>{deviceIcon(s.deviceType)}</div>
-              <div style={{flex:1,minWidth:0}}>
-                {/* Row 1: Name + badges */}
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
-                  <span style={{color:t.text,fontWeight:700,fontSize:14}}>{s.name}</span>
-                  {s.isMe&&<span style={{background:"#10b98120",color:"#10b981",fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:99}}>● THIS DEVICE</span>}
-                  <span style={{background:s.role==="admin"?"#f59e0b20":s.role==="factory"?"#8b5cf620":"#0ea5e920",color:s.role==="admin"?"#f59e0b":s.role==="factory"?"#8b5cf6":"#0ea5e9",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,textTransform:"uppercase"}}>{s.role}</span>
-                  {s.passkeyLogin&&<span style={{background:"#3b82f620",color:"#3b82f6",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>🔑 Passkey</span>}
-                </div>
-                {/* Row 2: Username */}
-                <p style={{color:t.sub,fontSize:11,marginBottom:4}}>@{s.username}</p>
-                {/* Row 3: Browser + OS */}
-                <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:3}}>
-                  <span style={{color:t.sub,fontSize:11}}>{browserIcon(s.browser)} {s.browser}</span>
-                  <span style={{color:t.sub,fontSize:11}}>{osIcon(s.os)} {s.os} · {s.deviceType}</span>
-                  <span style={{color:t.sub,fontSize:11}}>🖥 {s.screenRes}</span>
-                  <span style={{color:t.sub,fontSize:11}}>🌍 {s.tz}</span>
-                  {s.lang&&s.lang!=="—"&&<span style={{color:t.sub,fontSize:11}}>🗣 {s.lang}</span>}
-                </div>
-                {/* Row 4: Login time + last seen */}
-                <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:4}}>
-                  <span style={{color:t.sub,fontSize:11}}>🕐 Logged in: {s.loginAtLabel}</span>
-                  <span style={{color:t.sub,fontSize:11}}>⏱ {s.lastSeen}</span>
-                </div>
-                {/* Row 5: Location */}
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <span style={{fontSize:11,color:s.lat?t.text:t.sub}}>📍 {locLabel}</span>
-                  {s.lat&&s.lng&&<a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                    style={{fontSize:10,color:"#3b82f6",fontWeight:700,background:"#3b82f615",padding:"2px 8px",borderRadius:99,textDecoration:"none"}}>Open Map</a>}
-                </div>
-                {/* UA string (collapsed) */}
-                {s.ua&&<p style={{color:t.sub,fontSize:9,marginTop:4,opacity:0.6,wordBreak:"break-all",fontFamily:"monospace"}}>{s.ua.slice(0,100)}{s.ua.length>100?"…":""}</p>}
-              </div>
-            </div>
-            {!s.isMe&&<button onClick={()=>ask(`Log out ${s.name}'s session on ${s.os}?`,async()=>{
-              await fbRemove(ref(db,s.deviceKey)).catch(()=>{});
-              addLog("Force-logged out session",`${s.name} (${s.os} ${s.browser})`);
-              notify("Session terminated ✓");
-            })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,marginTop:4}}>
-              Log Out
-            </button>}
-          </div>
-        </div>
-      );})}
-
-      {/* Passkey-registered devices */}
-      {passkeyDevices.length>0&&<>
-        <div style={{borderTop:`1.5px solid ${t.border}`,margin:"16px 0 12px"}}/>
-        <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:8}}>🔑 Devices with Passkey Registered ({passkeyDevices.length})</p>
-        {passkeyDevices.map((pk,i)=>(
-          <div key={i} style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"10px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:20}}>🔑</span>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{color:t.text,fontWeight:700,fontSize:12}}>{pk.userName||pk.userId||"Unknown User"}</span>
-                {pk.deviceLabel&&<span style={{color:t.sub,fontSize:11}}>{pk.deviceLabel}</span>}
-                <span style={{background:"#8b5cf620",color:"#8b5cf6",fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:99}}>Passkey</span>
-              </div>
-              <p style={{color:t.sub,fontSize:10,marginTop:2}}>
-                {pk.browser&&<span>{browserIcon(pk.browser)} {pk.browser} · </span>}
-                {pk.os&&<span>{pk.os} · </span>}
-                Registered: {pk.registeredAt?new Date(pk.registeredAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"Unknown"}
-              </p>
-            </div>
-          </div>
-        ))}
-      </>}
-    </div></Card>;
-  }
-
-  function FailedLoginAttempts({dm,t,ask,notify}){
-    const [failedLogins,setFailedLogins]=useState([]);
-    useEffect(()=>{
-      const r=ref(db,"tas_failed_logins");
-      const unsub=onValue(r,(snap)=>{
-        if(!snap.exists()){setFailedLogins([]);return;}
-        const raw=snap.val()||{};
-        const list=Object.values(raw).sort((a,b)=>(b.loginAt||0)-(a.loginAt||0)).slice(0,50);
-        setFailedLogins(list);
-      });
-      return()=>unsub();
-    },[]);
-    if(failedLogins.length===0)return null;
-    return <Card dm={dm}><div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p style={{color:"#ef4444",fontWeight:700,fontSize:14}}>⚠️ Failed Login Attempts</p>
-          <p style={{color:t.sub,fontSize:11,marginTop:1}}>{failedLogins.length} failed attempt{failedLogins.length!==1?"s":""} recorded</p>
-        </div>
-        <button onClick={()=>ask("Clear all failed login records?",()=>{fbRemove(ref(db,"tas_failed_logins")).catch(()=>{});setFailedLogins([]);notify("Cleared ✓");})}
-          style={{color:"#ef4444",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Clear</button>
-      </div>
-      {failedLogins.slice(0,20).map((l,i)=>(
-        <div key={i} style={{borderBottom:`1px solid ${t.border}`,padding:"7px 0"}} className="last:border-0">
-          <div className="flex items-center justify-between gap-2">
-            <span style={{color:"#ef4444",fontSize:12,fontWeight:600}}>@{l.username||"(unknown)"}</span>
-            <span style={{color:t.sub,fontSize:10}}>{l.ts}</span>
-          </div>
-          <div className="flex gap-x-3 flex-wrap mt-0.5">
-            {l.browser&&<span style={{color:t.sub,fontSize:9}}>🌐 {l.browser}</span>}
-            {l.os&&<span style={{color:t.sub,fontSize:9}}>💻 {l.os}</span>}
-            {l.deviceType&&<span style={{color:t.sub,fontSize:9}}>📱 {l.deviceType}</span>}
-          </div>
-        </div>
-      ))}
-    </div></Card>;
-  }
-
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
@@ -6106,7 +6138,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                     </div>
                     <div style={{display:"flex",gap:6,flexShrink:0}}>
                       {cust?.phone&&<a href={`tel:${cust.phone}`} style={{background:"#10b98115",color:"#10b981",borderRadius:9,padding:"6px 11px",fontSize:12,fontWeight:700,textDecoration:"none"}}>📞</a>}
-                      {can("deliv_markDone")&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered",deliveryDate:today()}:x));addLog("Marked overdue delivered",d.customer);notify(`${d.customer} ✓`);captureGPS("marked_delivered",d.customer);}}
+                      {can("deliv_markDone")&&<button onClick={()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Delivered",deliveryDate:today()}:x));addLog("Marked overdue delivered",d.customer);notify(`${d.customer} ✓`);captureGPS("marked_delivered",d.customer);}}
                         style={{background:"#10b98120",color:"#10b981",border:"none",borderRadius:9,padding:"6px 11px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Done</button>}
                     </div>
                   </div>;
@@ -6173,7 +6205,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 setNbSh(false);
                 setNbF({title:"",body:"",pinned:false});
               }
-              function markRead(id){setNotices(p=>p.map(n=>n.id===id?{...n,readBy:[...(n.readBy||[]),sess.id]}:n));}
+              function markRead(id){setNotices(p=>safeArr(p).map(n=>n.id===id?{...n,readBy:[...(n.readBy||[]),sess.id]}:n));}
               return (<>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6197,7 +6229,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                       </div>
                       <div style={{display:"flex",gap:6,flexShrink:0}}>
                         {!isRead&&<button onClick={()=>markRead(n.id)} style={{background:"#0ea5e920",color:"#0ea5e9",border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Mark read</button>}
-                        {can("dash_delNotice")&&<button onClick={()=>setNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:t.inp,color:t.sub,border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>}
+                        {can("dash_delNotice")&&<button onClick={()=>setNotices(p=>safeArr(p).filter(x=>x.id!==n.id))} style={{background:t.inp,color:t.sub,border:"none",borderRadius:8,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Delete</button>}
                       </div>
                     </div>
                     <p style={{color:t.text,lineHeight:1.6,fontSize:13}}>{n.body}</p>
@@ -6317,7 +6349,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               const revenue=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
               const orderCount=cDelivs.length;
               const avgOrderVal=cDone.length>0?Math.round(revenue/cDone.length):0;
-              const lastD=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const lastD=cDelivs.length>0?[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]:null;
               const daysSinceLast=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):999;
               const joinDays=c.joinDate?Math.max(1,Math.floor((new Date()-new Date(c.joinDate))/86400000)):90;
               const ordersPerMonth=orderCount>0?(orderCount/(joinDays/30)).toFixed(1):0;
@@ -6471,7 +6503,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                   const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                   const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
-                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                   const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
                   const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
                   return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_lastDays:lastDays,_cDelivs:cDelivs,_createdBy:createdByList};
@@ -6482,7 +6514,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                 // Build per-customer delivery breakdown HTML
                 const custBreakdownHtml=enriched.map(c=>{
                   if(!c._cDelivs||c._cDelivs.length===0)return "";
-                  const sorted=[...c._cDelivs].sort((a,b)=>b.date.localeCompare(a.date));
+                  const sorted=[...c._cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
                   return `<div style="margin-top:28px;page-break-inside:avoid">
   <div style="background:#f1f5f9;border-left:4px solid #f59e0b;padding:8px 14px;border-radius:4px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
     <span style="font-weight:800;font-size:13px">${c.name}</span>
@@ -6557,7 +6589,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                   const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                   const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
-                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                   return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||""};
                 });
                 exportTabExcel("Customers",enriched,[
@@ -6595,7 +6627,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                   const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                   const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
-                  const lastD=[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0];
+                  const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                   const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
                   return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_createdBy:createdByList};
                 });
@@ -6670,7 +6702,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               const cCancelled=cDelivs.filter(d=>d.status==="Cancelled");
               const cRepl=cDelivs.filter(d=>d.replacement?.done);
               const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
-              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]:null;
               const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
               const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
               const collPct=(c.paid||0)+(c.pending||0)>0?Math.round((c.paid||0)/((c.paid||0)+(c.pending||0))*100):100;
@@ -6694,7 +6726,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 const lastCol=lastDiffDays===null?"#94a3b8":lastDiffDays>14?"#ef4444":lastDiffDays>7?"#f59e0b":"#10b981";
                 const accentColor=c._cDelivs.length===0?"#6b7280":c.active?"#f59e0b":"#94a3b8";
                 // Get recent deliveries for expanded view
-                const recentDelivs=[...c._cDelivs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+                const recentDelivs=[...c._cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
                 return <div key={c.id} style={{background:t.card,border:`1.5px solid ${isExpanded?"#2563eb40":t.border}`,borderRadius:18,overflow:"hidden",boxShadow:isExpanded?"0 4px 20px rgba(37,99,235,0.12)":"0 1px 4px rgba(0,0,0,0.05)",transition:"all 0.2s"}}>
                   {/* ── COMPACT ROW (always visible) ── */}
                   <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",background:isExpanded?(dm?"rgba(37,99,235,0.1)":"rgba(37,99,235,0.04)"):"transparent"}}
@@ -6753,7 +6785,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* ── EXPANDED DETAIL PANEL ── */}
                   {isExpanded&&(()=>{
                     const cFull=customers.find(x=>x.id===c.id)||c;
-                    const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>b.date.localeCompare(a.date));
+                    const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
                     const cDue=cFull.pending||0;
                     const cPaid=cFull.paid||0;
                     const tStr=today();
@@ -6865,7 +6897,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           <button onClick={()=>{
                             const amt=+custDetailPartialAmt;
                             if(!amt||amt<=0){notify("Enter a valid amount");return;}
-                            setCust(p=>p.map(x=>x.id===cFull.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
+                            setCust(p=>safeArr(p).map(x=>x.id===cFull.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
                             addLog("Partial payment logged",`${cFull.name} — ${inr(amt)}`);
                             notify(`${inr(amt)} recorded ✓`);
                             setCustDetailPartialAmt("");setSelectedCustomer(null);
@@ -6941,7 +6973,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             displayCust=displayCust.map(c=>{
               const cDelivs=deliveries.filter(d=>d.customerId===c.id);
               const cDone=cDelivs.filter(d=>d.status==="Delivered");
-              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+              const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]:null;
               const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
               return {...c,_cDelivs:cDelivs,_cDone:cDone,_lastDeliv:lastDeliv,_cRev:cRev};
             });
@@ -7052,11 +7084,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                 </button>
                                 <div id={`c3dot_${c.id}`} style={{display:"none",position:"absolute",right:0,top:"calc(100% + 6px)",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:100,minWidth:180,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
                                   {[
-                                    can("cust_edit")&&{label:"✏️  Edit",action:()=>{setCsh(c);setCf(c);document.getElementById(`c3dot_${c.id}`).style.display="none";}},
-                                    can("cust_seePrices")&&{label:"🚚  View Deliveries",action:()=>{setTab("Deliveries");setDelivStatusFilter("all");document.getElementById(`c3dot_${c.id}`).style.display="none";}},
-                                    can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(true);setPayAmt(String(c.pending||0));document.getElementById(`c3dot_${c.id}`).style.display="none";}},
-                                    can("cust_deactivate")&&{label:c.active?"🔒  Deactivate":"🔓  Activate",action:()=>{setCust(p=>p.map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(c.active?"Deactivated":"Activated",c.name);document.getElementById(`c3dot_${c.id}`).style.display="none";}},
-                                    can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{if(window.confirm(`Delete ${c.name}?`)){setCust(p=>p.filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);}document.getElementById(`c3dot_${c.id}`).style.display="none";}},
+                                    can("cust_edit")&&{label:"✏️  Edit",action:()=>{setCsh(c);setCf(c);(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("cust_seePrices")&&{label:"🚚  View Deliveries",action:()=>{setTab("Deliveries");setDelivStatusFilter("all");(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(true);setPayAmt(String(c.pending||0));(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("cust_deactivate")&&{label:c.active?"🔒  Deactivate":"🔓  Activate",action:()=>{setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(c.active?"Deactivated":"Activated",c.name);(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);});}},
                                   ].filter(Boolean).map((item,ii)=>(
                                     <button key={ii} onClick={item.action}
                                       style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"10px 16px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
@@ -7106,7 +7138,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ── INLINE CUSTOMER DETAIL PANEL (opens below table on row click) ── */}
             {selectedCustomer&&(()=>{
               const c=customers.find(x=>x.id===selectedCustomer.id)||selectedCustomer;
-              const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>b.date.localeCompare(a.date));
+              const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
               const cDone=allCDelivs.filter(d=>d.status==="Delivered");
               const cPend=allCDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
               const cReturns=allCDelivs.filter(d=>d.status==="Cancelled");
@@ -7241,7 +7273,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <button onClick={()=>{
                           const amt=+custDetailPartialAmt;
                           if(!amt||amt<=0){notify("Enter a valid amount");return;}
-                          setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
+                          setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
                           addLog("Partial payment logged",`${c.name} — ${inr(amt)}`);
                           notify(`${inr(amt)} recorded ✓`);
                           setCustDetailPartialAmt("");
@@ -7336,8 +7368,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <button onClick={e=>{
                               e.stopPropagation();
                               const net=Math.max(0,dTot-dRepl);
-                              setDeliv(p=>p.map(x=>x.id===d.id?{...x,_mergedToCustomer:true}:x));
-                              setCust(p=>p.map(x=>x.id===c.id?{...x,paid:(x.paid||0)+net,pending:Math.max(0,(x.pending||0)-net)}:x));
+                              setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,_mergedToCustomer:true}:x));
+                              setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,paid:(x.paid||0)+net,pending:Math.max(0,(x.pending||0)-net)}:x));
                               addLog("Delivery merged to account",`${c.name} — ${inr(net)}`);
                               notify(`${inr(net)} merged to ${c.name}'s account ✓`);
                             }} style={{marginTop:8,width:"100%",background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"7px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
@@ -7434,8 +7466,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <span style={{color:t.text}} className="text-xs font-bold">{bulkSelected.size} selected</span>
             </div>
             <div className="flex gap-2">
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);captureGPS("marked_delivered",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">✓ Mark Delivered</button>
-              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>p.map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">🚚 Set In Transit</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>safeArr(p).map(d=>bulkSelected.has(d.id)?{...d,status:"Delivered"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries marked Delivered`);notify(`${bulkSelected.size} marked Delivered ✓`);captureGPS("marked_delivered",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-emerald-500 text-white">✓ Mark Delivered</button>
+              <button onClick={()=>{if(bulkSelected.size===0){notify("Select at least one delivery");return;}setDeliv(p=>safeArr(p).map(d=>bulkSelected.has(d.id)?{...d,status:"In Transit"}:d));addLog("Bulk status update",`${bulkSelected.size} deliveries set In Transit`);notify(`${bulkSelected.size} set In Transit ✓`);captureGPS("marked_transit",`Bulk (${bulkSelected.size})`);setBulkSelected(new Set());setBulkSelect(false);}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px] bg-sky-500 text-white">🚚 Set In Transit</button>
             </div>
           </div>}
           {/* View toggle */}
@@ -7516,7 +7548,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       {week.map((day,di)=>{
                         if(!day)return <div key={di} style={{minHeight:62}}/>;
                         const dateStr=`${monthStr}-${String(day).padStart(2,"0")}`;
-                        const dayDelivs=deliveries.filter(d=>d.date===dateStr&&(!srch||d.customer.toLowerCase().includes(srch.toLowerCase())||d.status.toLowerCase().includes(srch.toLowerCase())));
+                        const dayDelivs=deliveries.filter(d=>d.date===dateStr&&(!srch||(d.customer||"").toLowerCase().includes(srch.toLowerCase())||(d.status||"").toLowerCase().includes(srch.toLowerCase())));
                         const isToday=dateStr===todayStr;
                         const isExpanded=calExpandedDay===dateStr;
                         const isPast=dateStr<todayStr;
@@ -7573,7 +7605,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </div>
                 {/* EXPANDED DAY PANEL */}
                 {calExpandedDay&&(()=>{
-                  const expandedDelivs=deliveries.filter(d=>d.date===calExpandedDay&&(!srch||d.customer.toLowerCase().includes(srch.toLowerCase())||d.status.toLowerCase().includes(srch.toLowerCase())));
+                  const expandedDelivs=deliveries.filter(d=>d.date===calExpandedDay&&(!srch||(d.customer||"").toLowerCase().includes(srch.toLowerCase())||(d.status||"").toLowerCase().includes(srch.toLowerCase())));
                   if(expandedDelivs.length===0)return null;
                   const dayTotAmt=expandedDelivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                   const dayTotPaid=expandedDelivs.reduce((s,d)=>s+(d.paid||0),0);
@@ -7644,9 +7676,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             <button onClick={e=>{e.stopPropagation();const _dateMode=d.date===today()?"today":d.date>today()?"future":"past";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
                             <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
-                            {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
+                            {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
                             {can("deliv_markDone")&&(settings?.featureTickRedesign!==false?(
-  <button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
+  <button onClick={e=>{e.stopPropagation();setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
     style={{minHeight:40,padding:"0 14px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:7,transition:"all 0.15s",flexShrink:0,
       background:d.status==="Delivered"?"#10b98118":"#10b981",
       color:d.status==="Delivered"?"#10b981":"#fff",
@@ -7657,7 +7689,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
     {d.status==="Delivered"?"Done":"Mark Done"}
   </button>
 ):(
-  d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>
+  d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>
 ))}
                           </div>
                         </div>;
@@ -7668,7 +7700,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       const pendingToday2=expandedDelivs.filter(d=>d.status==="Pending");
                       if(pendingToday2.length===0) return null;
                       return <button onClick={()=>{
-                        setDeliv(p=>p.map(d=>d.date===todayStr&&d.status==="Pending"?{...d,status:"Delivered",deliveryDate:todayStr}:d));
+                        setDeliv(p=>safeArr(p).map(d=>d.date===todayStr&&d.status==="Pending"?{...d,status:"Delivered",deliveryDate:todayStr}:d));
                         addLog("Bulk delivered",`All pending on ${todayStr} (${pendingToday2.length})`);
                         notify(`${pendingToday2.length} deliveries marked done ✓`);
                         captureGPS("marked_delivered",`Bulk day (${todayStr})`);
@@ -7684,7 +7716,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
           {/* ── DELIVERIES DATA TABLE ── */}
           {!delivCalendar&&(()=>{
-            const sortedDelivs=[...fDeliv].sort((a,b)=>b.date.localeCompare(a.date));
+            const sortedDelivs=[...fDeliv].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
             const totalDelivRows=sortedDelivs.length;
             const DELIV_PAGE_SIZE=15;
             const pagedDelivs=sortedDelivs.slice((delivPage-1)*DELIV_PAGE_SIZE,delivPage*DELIV_PAGE_SIZE);
@@ -7933,13 +7965,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                 <div id={`dot3menu_${d.id}`} style={{display:"none",position:"absolute",right:0,top:"calc(100% + 6px)",background:t.card,border:`1px solid ${t.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:100,minWidth:180,overflow:"hidden"}}
                                   onClick={e=>e.stopPropagation()}>
                                   {[
-                                    can("deliv_edit")&&{label:"✏️  Edit",action:()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    {label:"📄  PDF Invoice",action:()=>{exportPDF(d,products,"delivery",settings);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    can("deliv_dispatch")&&d.status==="Pending"&&{label:"🚚  Dispatch",action:()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    can("deliv_markDone")&&{label:d.status==="Delivered"?"↩️  Mark Pending":"✅  Mark Delivered",action:()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer);notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    (can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&{label:"💰  Collect Payment",action:()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    {label:"📱  Share WhatsApp",action:()=>{shareWhatsApp(d,products,"delivery",settings);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
-                                    can("deliv_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{delD(d);document.getElementById(`dot3menu_${d.id}`).style.display="none";}},
+                                    can("deliv_edit")&&{label:"✏️  Edit",action:()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    {label:"📄  PDF Invoice",action:()=>{exportPDF(d,products,"delivery",settings);(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("deliv_dispatch")&&d.status==="Pending"&&{label:"🚚  Dispatch",action:()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("deliv_markDone")&&{label:d.status==="Delivered"?"↩️  Mark Pending":"✅  Mark Delivered",action:()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer);notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    (can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&{label:"💰  Collect Payment",action:()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    {label:"📱  Share WhatsApp",action:()=>{shareWhatsApp(d,products,"delivery",settings);(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("deliv_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{delD(d);(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
                                   ].filter(Boolean).map((item,ii)=>(
                                     <button key={ii} onClick={item.action}
                                       style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"10px 16px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
@@ -8183,9 +8215,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           {isAdmin&&<button onClick={()=>exportDeliveryInvoice(d,products,settings,getOrCreateInvNo(d.id))} style={{background:"#7c3aed",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>📄 Invoice</button>}
                           {settings?.featurePrintLabels&&<button onClick={()=>exportDeliveryLabel(d,settings)} style={{background:"#0891b2",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🏷️ Label</button>}
                           <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D366",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>WA</button>
-                          {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
+                          {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("Marked In Transit");captureGPS("marked_transit",d.customer);}} style={{background:"#f59e0b",color:"#000",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>🚚 Dispatch</button>}
                           {can("deliv_markDone")&&(settings?.featureTickRedesign!==false?(
-  <button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
+  <button onClick={()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:d.status==="Delivered"?"Pending":"Delivered",deliveryDate:d.status!=="Delivered"?today():""}:x));addLog("Status changed",d.customer+" → "+(d.status==="Delivered"?"Pending":"Delivered"));notify(d.status==="Delivered"?"Marked Pending":"✓ Delivered");}}
     style={{minHeight:44,padding:"0 16px",borderRadius:12,fontSize:13,fontWeight:800,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:8,cursor:"pointer",flexShrink:0,transition:"all 0.15s",
       background:d.status==="Delivered"?"#10b98122":"#10b981",
       color:d.status==="Delivered"?"#10b981":"#fff",
@@ -8197,7 +8229,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
     {d.status==="Delivered"?"Delivered":"Mark Done"}
   </button>
 ):(
-  d.status!=="Delivered"&&<button onClick={()=>{setDeliv(p=>p.map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>✓ Done</button>
+  d.status!=="Delivered"&&<button onClick={()=>{setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Delivered"}:x));addLog("Status changed",d.customer+" → Delivered");notify("Marked Delivered");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>✓ Done</button>
 ))}
                           {(can("cust_markPaid")||can("deliv_markDone"))&&(settings?.agentCollectEnabled!==false)&&d.status!=="Cancelled"&&(!d.partialPayment?.enabled||!d.partialPayment?.amount)&&<button onClick={()=>{setCollectSh(d);const _replAmt=+d.replacement?.amount||0;const _net=Math.max(0,lineTotal(d.orderLines)-_replAmt);setCollectAmt(String(_net>0?_net:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#10b981",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>💰 Collect</button>}
                           {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#dc2626",color:"#fff",minHeight:40,padding:"0 12px",borderRadius:10,fontSize:12,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0}}>Delete</button>}
@@ -8327,7 +8359,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {!srch&&can("sup_add")&&<button onClick={()=>{setSf(blkS());setSsh("add");}} style={{background:"#8b5cf6",color:"#fff",border:"none",borderRadius:12,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Log Supply</button>}
           </div>}
           {fSup.length>0&&(()=>{
-            const sortedSup=[...fSup].sort((a,b)=>b.date.localeCompare(a.date));
+            const sortedSup=[...fSup].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
             return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
               <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
@@ -8456,7 +8488,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               || (e.tags||"").toLowerCase().includes(q)
               || (e.approvedBy||"").toLowerCase().includes(q);
             return inDate && inCat && inSearch;
-          }).sort((a,b) => b.date.localeCompare(a.date));
+          }).sort((a,b) => (b.date||"").localeCompare(a.date||""));
           const filtExpTotal = filteredExp.reduce((s,e) => s+(e.amount||0), 0);
 
           // ── category breakdown ──
@@ -8927,7 +8959,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               note:e.note||"",method:e.method||"Cash",by:e.recordedBy||"—",
               replAmt:0,orderTotal:0,netPayable:0,payStatus:"manual",ts:e.ts||e.date
             })),
-          ].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||"").localeCompare(a.ts||""));
+          ].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||"").localeCompare(a.ts||""));
 
           // ── Filtered entries ──
           const q2=paymentsSearch.toLowerCase();
@@ -9978,7 +10010,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const cPending=c.pending||0;
                   const cPaid=c.paid||0;
                   const avgOrder=cDelivered.length>0?Math.round(cRev/cDelivered.length):0;
-                  const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>b.date.localeCompare(a.date))[0]:null;
+                  const lastDeliv=cDelivs.length>0?[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]:null;
                   const collPct=cPaid+cPending>0?Math.round(cPaid/(cPaid+cPending)*100):100;
                   const revenueSharePct=totalPortfolioRev>0?Math.round(cRev/totalPortfolioRev*100):0;
                   const medalColor=ci===0?"#f59e0b":ci===1?"#9ca3af":ci===2?"#cd7c3f":"#6b7280";
@@ -10036,7 +10068,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           {l:"Delivered",v:cDelivered.length,c:"#10b981"},
                           {l:"Cancelled",v:cDelivs.filter(d=>d.status==="Cancelled").length,c:"#ef4444"},
                           {l:"Highest Order",v:inr(Math.max(...cDelivered.map(d=>lineTotal(d.orderLines)),0)),c:"#8b5cf6"},
-                          {l:"First Order",v:cDelivs.length>0?[...cDelivs].sort((a,b)=>a.date.localeCompare(b.date))[0]?.date:"—",c:t.text},
+                          {l:"First Order",v:cDelivs.length>0?[...cDelivs].sort((a,b)=>(a.date||"").localeCompare(b.date||""))[0]?.date:"—",c:t.text},
                         ].map(x=><div key={x.l} style={{background:t.inp,borderRadius:10,padding:"8px 10px"}}>
                           <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase"}}>{x.l}</p>
                           <p style={{color:x.c,fontWeight:700,fontSize:12}}>{x.v}</p>
@@ -10056,7 +10088,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       {cDelivered.length>0&&<div>
                         <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recent Deliveries</p>
                         <div style={{maxHeight:130,overflowY:"auto"}}>
-                          {[...cDelivered].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8).map((d,di)=>(
+                          {[...cDelivered].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,8).map((d,di)=>(
                             <div key={d.id||di} className="flex justify-between items-center py-1.5" style={{borderBottom:di<Math.min(8,cDelivered.length)-1?`1px solid ${t.border}`:"none",cursor:"pointer"}}
                               onClick={ev=>{ev.stopPropagation();setDetailModal({type:"delivery",data:d});}}
                               onMouseEnter={ev=>{ev.currentTarget.style.background=t.inp+"88";}} onMouseLeave={ev=>{ev.currentTarget.style.background="transparent";}}>
@@ -10085,7 +10117,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {(()=>{
               const now=new Date();
               const aged=customers.filter(c=>c.pending>0).map(c=>{
-                const lastD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const lastD=deliveries.filter(d=>d.customerId===c.id).sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                 const refDate=lastD?.date||c.joinDate||"2026-01-01";
                 const daysDue=Math.floor((now-new Date(refDate))/86400000);
                 const bucket=daysDue<=30?"0–30 days":daysDue<=60?"31–60 days":daysDue<=90?"61–90 days":"90+ days";
@@ -10315,7 +10347,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           // ── Customer retention / activity ──
           const now=new Date();
           const activeRecently=customers.filter(c=>{
-            const last=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").sort((a,b)=>b.date.localeCompare(a.date))[0];
+            const last=deliveries.filter(d=>d.customerId===c.id&&d.status==="Delivered").sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
             if(!last)return false;
             return Math.floor((now-new Date(last.date))/86400000)<=30;
           }).length;
@@ -10664,7 +10696,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* Replacement list if any */}
                   {replInPeriod.length>0&&<div style={{marginBottom:10}}>
                     <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Recent Replacements</p>
-                    {[...replInPeriod].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(d=>(
+                    {[...replInPeriod].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5).map(d=>(
                       <div key={d.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
                         <div style={{flex:1,minWidth:0}}>
                           <p style={{color:t.text,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
@@ -10678,7 +10710,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* Partial payments list */}
                   {partialInPeriod.length>0&&<div>
                     <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Partial Payments</p>
-                    {[...partialInPeriod].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(d=>(
+                    {[...partialInPeriod].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5).map(d=>(
                       <div key={d.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
                         <div style={{flex:1,minWidth:0}}>
                           <p style={{color:t.text,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
@@ -11940,7 +11972,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                         </div>
                         <p style={{color:t.sub}} className="text-xs">📅 {h.date} · by {h.loggedBy}</p>
                       </div>
-                      {can("prod_handover")&&<button onClick={()=>setHandovers(p=>p.filter(x=>x.id!==h.id))} style={{background:t.inp,color:t.sub}} className="text-xs px-2.5 py-1.5 rounded-lg font-semibold">Delete</button>}
+                      {can("prod_handover")&&<button onClick={()=>setHandovers(p=>safeArr(p).filter(x=>x.id!==h.id))} style={{background:t.inp,color:t.sub}} className="text-xs px-2.5 py-1.5 rounded-lg font-semibold">Delete</button>}
                     </div>
                     <div style={{background:t.inp,border:`1px solid ${t.inpB}`,borderRadius:12,padding:"10px 14px",color:t.text}} className="text-sm">{h.note}</div>
                     {h.issues&&<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"8px 12px",marginTop:8}}>
@@ -11986,7 +12018,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             const mS=!ingSearch||l.ingredient.toLowerCase().includes(ingSearch.toLowerCase())||(l.notes||"").toLowerCase().includes(ingSearch.toLowerCase());
             const mD=ingDateFilter==="all"||(ingDateFilter==="today"&&l.date===tStr)||(ingDateFilter==="yesterday"&&l.date===yStr)||(ingDateFilter==="week"&&l.date>=wStr&&l.date<=tStr);
             return mS&&mD;
-          }).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt||"")||b.date.localeCompare(a.date));
+          }).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt||"")||(b.date||"").localeCompare(a.date||""));
           const totalToday=(ingLogs||[]).filter(l=>l.date===tStr).reduce((s,l)=>s+(l.qty||0),0);
           const uniqueIng=[...new Set((ingLogs||[]).map(l=>l.ingredient))].length;
           // Build stock summary: master list minus consumed
@@ -12072,7 +12104,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     </div>
                     {isAdmin&&it.id&&<div style={{display:"flex",gap:6,flexShrink:0}}>
                       <button onClick={()=>{setIngItemF({name:it.name,unit:it.unit,stock:it.stock||""});setIngItemSh(it);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                      <button onClick={()=>ask(`Remove "${it.name}" from master list?`,()=>{setIngItems(p=>p.filter(x=>x.id!==it.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                      <button onClick={()=>ask(`Remove "${it.name}" from master list?`,()=>{setIngItems(p=>safeArr(p).filter(x=>x.id!==it.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
                     </div>}
                   </div>
                 </div>;
@@ -12124,7 +12156,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             const mS=!staffSearch||l.staffName.toLowerCase().includes(staffSearch.toLowerCase());
             const mD=staffDateFilter==="all"||(staffDateFilter==="today"&&l.date===tStr)||(staffDateFilter==="week"&&l.date>=wStr&&l.date<=tStr);
             return mS&&mD;
-          }).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||"").localeCompare(a.createdAt||""));
+          }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.createdAt||"").localeCompare(a.createdAt||""));
           return <>
             <SectionHeader dm={dm} title="Staff" sub="Attendance tracking and staff roster"
               cta={(isAdmin||isFactory)&&<button onClick={()=>{setStaffF({staffId:"",staffName:"",date:today(),shift:settings?.staffDefaultShift||shifts[0]||"Morning",status:(settings?.staffStatuses||["Present"])[0],inTime:"",outTime:"",breakMins:"",department:"",task:"",overtimeReason:"",notes:"",temperature:"",loggedBy:displayName});setStaffSh("add");}}
@@ -12238,7 +12270,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     </div>
                     {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
                       <button onClick={()=>{setStaffMemberF({...m});setStaffMemberSh(m);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                      <button onClick={()=>ask(`Remove "${m.name}" from roster?`,()=>{setStaffList(p=>p.filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                      <button onClick={()=>ask(`Remove "${m.name}" from roster?`,()=>{setStaffList(p=>safeArr(p).filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
                     </div>}
                   </div>
                 </div>;
@@ -12367,9 +12399,9 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         {tab==="Machines"&&(()=>{
           const tStr=today();
           const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
-          const fLogs=(machineLogs||[]).filter(l=>!machSearch||l.machineName.toLowerCase().includes(machSearch.toLowerCase())||(l.issue||"").toLowerCase().includes(machSearch.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+          const fLogs=(machineLogs||[]).filter(l=>!machSearch||l.machineName.toLowerCase().includes(machSearch.toLowerCase())||(l.issue||"").toLowerCase().includes(machSearch.toLowerCase())).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
           const totalCost=(machineLogs||[]).reduce((s,l)=>s+(l.cost||0),0);
-          const overdueMachines=(machineList||[]).filter(m=>{const last=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];return last?.nextDue&&last.nextDue<tStr;});
+          const overdueMachines=(machineList||[]).filter(m=>{const last=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];return last?.nextDue&&last.nextDue<tStr;});
           return <>
             <SectionHeader dm={dm} title="Machines" sub="Maintenance logs and equipment tracker"
               cta={(isAdmin||isFactory)&&<button onClick={()=>{setMachF({machineId:"",machineName:"",date:today(),type:(settings?.machineLogTypes||["Servicing"])[0],severity:"Medium",issue:"",action:"",technician:"",partsReplaced:"",partsCost:"",laborCost:"",cost:"",downtimeHrs:"",nextDue:"",loggedBy:displayName,status:(settings?.machineStatuses||["Operational"])[0]});setMachSh("add");}}
@@ -12450,7 +12482,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {isAdmin&&<Btn dm={dm} v="primary" size="sm" onClick={()=>{setMachItemF({name:"",location:"",notes:""});setMachItemSh("add");}}>+ Add Machine</Btn>}
               {(machineList||[]).length===0?<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"36px 20px",textAlign:"center"}}><p style={{color:t.sub,fontSize:14}}>No machines added yet</p></div>
               :(machineList||[]).map(m=>{
-                const lastLog=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const lastLog=(machineLogs||[]).filter(l=>l.machineName===m.name).sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                 const isOverdue=lastLog?.nextDue&&lastLog.nextDue<tStr;
                 const totalCostM=(machineLogs||[]).filter(l=>l.machineName===m.name).reduce((s,l)=>s+(l.cost||0),0);
                 const logCount=(machineLogs||[]).filter(l=>l.machineName===m.name).length;
@@ -12479,7 +12511,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     </div>
                     {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
                       <button onClick={()=>{setMachItemF({...m});setMachItemSh(m);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                      <button onClick={()=>ask(`Remove "${m.name}"?`,()=>{setMachineList(p=>p.filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                      <button onClick={()=>ask(`Remove "${m.name}"?`,()=>{setMachineList(p=>safeArr(p).filter(x=>x.id!==m.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
                     </div>}
                   </div>
                 </div>;
@@ -12590,7 +12622,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         ═══════════════════════════════════════════════════════ */}
         {tab==="Vehicles"&&(()=>{
           const tStr=today();
-          const fLogs=(vehLogs||[]).filter(l=>!vehSearch||l.vehicleName.toLowerCase().includes(vehSearch.toLowerCase())||(l.driver||"").toLowerCase().includes(vehSearch.toLowerCase())||(l.destination||"").toLowerCase().includes(vehSearch.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+          const fLogs=(vehLogs||[]).filter(l=>!vehSearch||l.vehicleName.toLowerCase().includes(vehSearch.toLowerCase())||(l.driver||"").toLowerCase().includes(vehSearch.toLowerCase())||(l.destination||"").toLowerCase().includes(vehSearch.toLowerCase())).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
           const totalFuel=(vehLogs||[]).reduce((s,l)=>s+(l.fuelCost||0),0);
           const totalMaint=(vehLogs||[]).reduce((s,l)=>s+(l.maintenanceCost||0),0);
           const totalKms=(vehLogs||[]).reduce((s,l)=>s+(l.kms||0),0);
@@ -12679,7 +12711,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 const logs=(vehLogs||[]).filter(l=>l.vehicleName===v.name);
                 const totalV=logs.reduce((s,l)=>s+(l.kms||0),0);
                 const totalFuelV=logs.reduce((s,l)=>s+(l.fuelCost||0),0);
-                const lastLog=logs.sort((a,b)=>b.date.localeCompare(a.date))[0];
+                const lastLog=logs.sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
                 const insuranceExpired=v.insuranceExpiry&&v.insuranceExpiry<tStr;
                 const fitnessExpired=v.fitnessExpiry&&v.fitnessExpiry<tStr;
                 const anyAlert=insuranceExpired||fitnessExpired;
@@ -12711,7 +12743,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     </div>
                     {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0}}>
                       <button onClick={()=>{setVehItemF({...v});setVehItemSh(v);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                      <button onClick={()=>ask(`Remove "${v.name}"?`,()=>{setVehList(p=>p.filter(x=>x.id!==v.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
+                      <button onClick={()=>ask(`Remove "${v.name}"?`,()=>{setVehList(p=>safeArr(p).filter(x=>x.id!==v.id));notify("Removed");})} style={{background:"#ef444410",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Del</button>
                     </div>}
                   </div>
                 </div>;
@@ -13034,7 +13066,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                             </div>
                           </div>
                         </div>
-                        <button onClick={()=>ask(`Clear all GPS logs for ${a.name}?`,()=>{setGpsLogs(p=>p.filter(l=>l.agentId!==a.id));notify(`Logs cleared for ${a.name}`);})}
+                        <button onClick={()=>ask(`Clear all GPS logs for ${a.name}?`,()=>{setGpsLogs(p=>safeArr(p).filter(l=>l.agentId!==a.id));notify(`Logs cleared for ${a.name}`);})}
                           style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:600,cursor:"pointer"}}>Clear</button>
                       </div>
                       {/* stat row */}
@@ -13193,7 +13225,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
                       <a href={mapU("",l.lat,l.lng)} target="_blank" rel="noopener noreferrer"
                         style={{background:"#0ea5e915",color:"#0ea5e9",borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,textDecoration:"none",minHeight:36,display:"flex",alignItems:"center"}}>Maps ↗</a>
-                      <button onClick={()=>ask("Delete this entry?",()=>{setGpsLogs(p=>p.filter(x=>x.id!==l.id));notify("Deleted");})}
+                      <button onClick={()=>ask("Delete this entry?",()=>{setGpsLogs(p=>safeArr(p).filter(x=>x.id!==l.id));notify("Deleted");})}
                         style={{background:"none",border:"none",color:t.sub,fontSize:11,cursor:"pointer",padding:"4px 6px",minHeight:28,WebkitTapHighlightColor:"transparent"}}>✕ remove</button>
                     </div>
                   </div></Card>;
@@ -13685,7 +13717,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                       return <button key={lg.code}
                         onClick={()=>{
                           // Save lang on user object in Firebase + update local session
-                          setUsers(p=>p.map(x=>x.id===u.id?{...x,lang:lg.code}:x));
+                          setUsers(p=>safeArr(p).map(x=>x.id===u.id?{...x,lang:lg.code}:x));
                           // If changing own language, update the session too so UI switches immediately
                           if(isMe) onSessUpdate(s=>s?{...s,lang:lg.code}:s);
                           notify(`Language set to ${lg.label} ✓`);
@@ -14361,7 +14393,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                     <p style={{color:t.sub,fontSize:11}}>{linkable.length > 0 ? `${linkable.length} deliveries can be backfilled` : "✅ All deliveries already assigned"}</p>
                     {linkable.length>0&&<button onClick={()=>ask(`Backfill batch assignments for ${linkable.length} existing deliveries? Each will be assigned to the first matching batch on its date. This cannot be undone.`,()=>{
-                      setDeliv(prev=>prev.map(d=>{
+                      setDeliv(prev=>safeArr(prev).map(d=>{
                         if(d.batchId||d.status==="Cancelled")return d;
                         // Find all batches on this date matching any product in this delivery
                         const matchingBatches=(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
@@ -14999,7 +15031,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           const cv=cView;
           const rows=lineRows(cv.orderLines,products);
           const tot=lineTotal(cv.orderLines);
-          const cDelivs=[...deliveries.filter(d=>d.customerId===cv.id)].sort((a,b)=>b.date.localeCompare(a.date));
+          const cDelivs=[...deliveries.filter(d=>d.customerId===cv.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
           const cDone=cDelivs.filter(d=>d.status==="Delivered");
           const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
           const cCancelled=cDelivs.filter(d=>d.status==="Cancelled");
@@ -15201,7 +15233,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>
               <div style={{flex:"1 1 auto",minWidth:80}}>
                 <Btn dm={dm} v="sky" className="w-full" onClick={()=>{
-                  const cD=deliveries.filter(d=>d.customerId===cv.id).sort((a,b)=>b.date.localeCompare(a.date));
+                  const cD=deliveries.filter(d=>d.customerId===cv.id).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
                   const enriched=cD.map(d=>{
                     const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");
                     return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};
@@ -15527,7 +15559,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           if(!checkPw(changePwF.current,me.password)){notify("Current password is incorrect");return;}
           if(changePwF.next.length<6){notify("New password must be at least 6 characters");return;}
           if(changePwF.next!==changePwF.confirm){notify("Passwords don't match");return;}
-          setUsers(p=>p.map(u=>u.id===sess.id?{...u,password:hashPw(changePwF.next)}:u));
+          setUsers(p=>safeArr(p).map(u=>u.id===sess.id?{...u,password:hashPw(changePwF.next)}:u));
           addLog("Changed password","Own account");
           notify("Password changed ✓");
           setChangePwSh(false);
@@ -16220,8 +16252,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 if(!amt||amt<=0){notify("Enter a valid amount");return;}
                 if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");return;}
                 const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
-                setDeliv(p=>p.map(x=>x.id===d.id?upd:x));
-                if(d.customerId){setCust(p=>p.map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt,pending:Math.max(0,(c.pending||0)-amt)}:c));}
+                setDeliv(p=>safeArr(p).map(x=>x.id===d.id?upd:x));
+                if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt,pending:Math.max(0,(c.pending||0)-amt)}:c));}
                 addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
                 addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
                 notify(`${inr(amt)} collected ✓`);
