@@ -4558,6 +4558,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const computedPendingMap=useMemo(()=>{
     const map={};
     safeArr(rawCustomers).forEach(c=>{ map[c.id]=0; });
+    // Add order amounts from deliveries
     safeArr(deliveries).forEach(d=>{
       if(!d.customerId||d.status==="Cancelled") return;
       const orderAmt=lineTotalWithTax(d.orderLines||{},taxRtGlobal);
@@ -4565,9 +4566,15 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       const partial=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
       map[d.customerId]=(map[d.customerId]||0)+orderAmt-repl-partial;
     });
+    // Subtract manual payments recorded via paymentLedger ("Record Payment" button)
+    // Without this, every recorded payment is ignored and all customers look permanently overdue
+    safeArr(paymentLedger).forEach(e=>{
+      if(!e.customerId) return;
+      map[e.customerId]=(map[e.customerId]||0)-(+e.amount||0);
+    });
     Object.keys(map).forEach(k=>{ map[k]=Math.max(0,map[k]); });
     return map;
-  },[rawCustomers,deliveries,taxRtGlobal]);
+  },[rawCustomers,deliveries,paymentLedger,taxRtGlobal]);
 
   // Enrich customers with computed pending — all c.pending reads get the live value
   const customers=useMemo(()=>safeArr(rawCustomers).map(c=>({
@@ -4790,7 +4797,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [bulkSelected,setBulkSelected]=useState(new Set());
   const [expandedDeliveryCust,setExpandedDeliveryCust]=useState(null);
   const [expandedCustCard,setExpandedCustCard]=useState(null);
-  const [custSortField,setCustSortField]=useState("name");
+  const [custSortField,setCustSortField]=useState("lastOrder");
   const [custStatusFilter,setCustStatusFilter]=useState("all");
   const [custView,setCustView]=useState("expanded"); // "expanded" | "compact"
   const [selectedCustomer,setSelectedCustomer]=useState(null); // for inline split-panel
@@ -5011,7 +5018,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...safeArr(p),{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>safeArr(p).map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
   function togActive(c){setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
-  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}setCust(p=>safeArr(p).map(c=>c.id===paySh.id?{...c,paid:c.paid+a,pending:Math.max(0,c.pending-a)}:c));addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);notify(`${inr(a)} recorded`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
+  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}recordPaymentLedger(paySh.id,paySh.name,a,"","Cash");addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
   function pickCust(id){const c=customers.find(x=>x.id===id);setDf(f=>({...f,customer:c?.name||"",customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
@@ -6676,14 +6683,24 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </button>;
               })}
             </div>
-            {/* View mode toggle */}
-            <div style={{display:"flex",gap:4,flexShrink:0,background:t.inp,borderRadius:99,padding:3,border:`1px solid ${t.border}`}}>
+            {/* Sort + View mode controls */}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0,flexWrap:"nowrap"}}>
+              <select value={custSortField} onChange={e=>setCustSortField(e.target.value)}
+                style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:10,padding:"5px 10px",fontSize:11,fontWeight:700,outline:"none",cursor:"pointer",appearance:"none",WebkitAppearance:"none"}}>
+                <option value="lastOrder">↓ Recent</option>
+                <option value="name">A–Z</option>
+                <option value="pending">Most Owing</option>
+                <option value="revenue">Revenue ↓</option>
+                <option value="orders">Most Orders</option>
+              </select>
+            <div style={{display:"flex",gap:4,background:t.inp,borderRadius:99,padding:3,border:`1px solid ${t.border}`}}>
               {[["expanded","📋",t18n("tableView")],["compact","⚡",t18n("compactView")]].map(([v,icon,lbl])=>(
                 <button key={v} onClick={()=>{setCustView(v);setSelectedCustomer(null);}}
                   style={{background:custView===v?"#2563eb":"transparent",color:custView===v?"#fff":t.sub,border:"none",borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:4}}>
                   <span>{icon}</span><span style={{display:"none"}}>{lbl}</span><span style={{fontSize:10}}>{lbl}</span>
                 </button>
               ))}
+            </div>
             </div>
           </div>
 
@@ -7086,7 +7103,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                   {[
                                     can("cust_edit")&&{label:"✏️  Edit",action:()=>{setCsh(c);setCf(c);(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
                                     can("cust_seePrices")&&{label:"🚚  View Deliveries",action:()=>{setTab("Deliveries");setDelivStatusFilter("all");(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
-                                    can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(true);setPayAmt(String(c.pending||0));(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
+                                    can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(c);setPayAmt(String(c.pending||0));(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
                                     can("cust_deactivate")&&{label:c.active?"🔒  Deactivate":"🔓  Activate",action:()=>{setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(c.active?"Deactivated":"Activated",c.name);(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
                                     can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);});}},
                                   ].filter(Boolean).map((item,ii)=>(
@@ -7273,9 +7290,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <button onClick={()=>{
                           const amt=+custDetailPartialAmt;
                           if(!amt||amt<=0){notify("Enter a valid amount");return;}
-                          setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
+                          recordPaymentLedger(c.id,c.name,amt,"Partial payment","Cash");
                           addLog("Partial payment logged",`${c.name} — ${inr(amt)}`);
-                          notify(`${inr(amt)} recorded ✓`);
                           setCustDetailPartialAmt("");
                           setSelectedCustomer(null);
                         }} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Apply</button>
@@ -7293,6 +7309,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       {can("cust_deactivate")&&<button onClick={()=>{togActive(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>{c.active?"⏸ Pause":"▶ Activate"}</button>}
                       {c.phone&&<a href={`https://wa.me/${c.phone.replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" style={{background:"#25D366",color:"#fff",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center",textDecoration:"none",display:"block"}}>📍 Map</a>}
                     </div>
+                    {can("deliv_add")&&<button onClick={()=>{setDf({...blkD(),customer:c.name,customerId:c.id,address:c.address||"",lat:c.lat||0,lng:c.lng||0,orderLines:c.orderLines?{...c.orderLines}:blkOL()});setDsh("add");setSelectedCustomer(null);}} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:4}}>+ Add Delivery</button>}
                     {can("cust_delete")&&<button onClick={()=>delC(c)} style={{background:"#ef444415",border:"1px solid #ef444430",color:"#ef4444",borderRadius:10,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%"}}>🗑 Delete</button>}
                   </div>
 
@@ -7369,7 +7386,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                               e.stopPropagation();
                               const net=Math.max(0,dTot-dRepl);
                               setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,_mergedToCustomer:true}:x));
-                              setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,paid:(x.paid||0)+net,pending:Math.max(0,(x.pending||0)-net)}:x));
+                              recordPaymentLedger(c.id,c.name,net,"Delivery merged","Cash");
                               addLog("Delivery merged to account",`${c.name} — ${inr(net)}`);
                               notify(`${inr(net)} merged to ${c.name}'s account ✓`);
                             }} style={{marginTop:8,width:"100%",background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"7px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
@@ -7718,7 +7735,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           {!delivCalendar&&(()=>{
             const sortedDelivs=[...fDeliv].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
             const totalDelivRows=sortedDelivs.length;
-            const DELIV_PAGE_SIZE=15;
+            const DELIV_PAGE_SIZE=30;
             const pagedDelivs=sortedDelivs.slice((delivPage-1)*DELIV_PAGE_SIZE,delivPage*DELIV_PAGE_SIZE);
             const statusDot=(status)=>{
               const m={"Delivered":"#10b981","In Transit":"#3b82f6","Pending":"#f59e0b","Cancelled":"#ef4444"};
@@ -7940,9 +7957,24 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           {canSeePrices&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
                             <span style={{color:tot>0?"#059669":t.sub,fontWeight:800,fontSize:13}}>{inr(tot)}</span>
                           </td>}
-                          {/* Actions: eye + 3-dot */}
+                          {/* Actions: quick status + eye + 3-dot */}
                           <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
-                            <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                            <div style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                              {/* Quick inline status buttons — most common actions */}
+                              {can("deliv_markDone")&&d.status!=="Cancelled"&&(
+                                <button onClick={e=>{e.stopPropagation();const ns=d.status==="Delivered"?"Pending":"Delivered";setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns,deliveryDate:ns==="Delivered"?today():""}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify(ns==="Delivered"?"✓ Delivered":"Marked Pending");if(ns==="Delivered")captureGPS("marked_delivered",d.customer);}}
+                                  title={d.status==="Delivered"?"Mark Pending":"Mark Delivered"}
+                                  style={{padding:"5px 9px",borderRadius:7,border:"none",background:d.status==="Delivered"?"#f59e0b18":"#10b98118",color:d.status==="Delivered"?"#d97706":"#059669",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
+                                  {d.status==="Delivered"?"↩":"✓"}
+                                </button>
+                              )}
+                              {can("deliv_dispatch")&&d.status==="Pending"&&(
+                                <button onClick={e=>{e.stopPropagation();setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"In Transit"}:x));addLog("Dispatched",d.customer);notify("🚚 In Transit");captureGPS("marked_transit",d.customer);}}
+                                  title="Dispatch"
+                                  style={{padding:"5px 9px",borderRadius:7,border:"none",background:"#3b82f618",color:"#2563eb",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
+                                  🚚
+                                </button>
+                              )}
                               {/* Eye / View */}
                               <button onClick={e=>{e.stopPropagation();setDetailModal({type:"delivery",data:d});}}
                                 title="View details"
