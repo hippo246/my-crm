@@ -13368,8 +13368,19 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           ];
           return <>
           <SectionHeader dm={dm} title="Settings" sub="Configure your CRM, manage users and customize features"/>
-          {/* Settings layout: sidebar on desktop, pill nav on mobile */}
-          <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+          {/* Settings layout: sidebar on desktop, wrapped pill grid on mobile/tablet */}
+          <div className="lg:flex" style={{display:"flex",flexDirection:"column",gap:12,alignItems:"flex-start"}}>
+            {/* ── PILL NAV (mobile/tablet) — wraps to multiple rows, never scrolls ── */}
+            <div className="lg:hidden w-full" style={{display:"flex",flexWrap:"wrap",gap:"8px 6px",paddingBottom:4}}>
+              {SECS.map(s=>(
+                <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
+                  style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,borderRadius:20,padding:"7px 13px",whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.12s",display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,flexShrink:0}}>
+                  <span style={{fontSize:13}}>{s.icon}</span>{s.label}
+                </button>
+              ))}
+            </div>
+            {/* ── INNER ROW: sidebar + content (desktop) ── */}
+            <div className="w-full" style={{display:"flex",gap:20,alignItems:"flex-start"}}>
             {/* ── SIDEBAR NAV (desktop) ── */}
             <div className="hidden lg:flex" style={{flexDirection:"column",gap:4,width:180,flexShrink:0,position:"sticky",top:80}}>
               {SECS.map(s=>(
@@ -13379,16 +13390,6 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   onMouseLeave={e=>{if(settingsSection!==s.id){e.currentTarget.style.background=t.inp;e.currentTarget.style.color=t.sub;}}}>
                   <span style={{fontSize:16,flexShrink:0}}>{s.icon}</span>
                   <span className="truncate">{s.label}</span>
-                </button>
-              ))}
-            </div>
-            {/* ── PILL NAV (mobile/tablet) ── */}
-            <div className="lg:hidden flex gap-2 overflow-x-auto pb-1 w-full" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
-              {SECS.map(s=>(
-                <button key={s.id} onClick={e=>{e.preventDefault();setSettingsSection(s.id);}}
-                  style={{background:settingsSection===s.id?t.accent:t.inp,color:settingsSection===s.id?t.accentFg:t.sub,border:`1.5px solid ${settingsSection===s.id?t.accent:t.border}`,whiteSpace:"nowrap"}}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0">
-                  <span>{s.icon}</span>{s.label}
                 </button>
               ))}
             </div>
@@ -14895,6 +14896,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div></Card>
           </>}
           </div>{/* end settings content col */}
+          </div>{/* end inner desktop row */}
           </div>{/* end settings flex layout */}
           </>;
         })()}
