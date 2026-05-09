@@ -111,7 +111,7 @@ function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
 
-let _writing = {}; // write counters per key — ignore echoes while counter > 0
+let _writing = {}; // sets of pending write tokens per key — ignore echoes while set is non-empty
 let _lastSyncTs = null;
 const _syncListeners = new Set();
 function _notifySync(){_lastSyncTs=new Date();_syncListeners.forEach(fn=>fn(_lastSyncTs));}
@@ -124,7 +124,7 @@ function useStore(key, def) {
   useEffect(() => {
     const r = ref(db, key);
     const unsub = onValue(r, (snap) => {
-      if (_writing[key] > 0) { setFbLoaded(true); return; }
+      if (_writing[key]?.size > 0) { setFbLoaded(true); return; }
       if (snap.exists()) {
         const raw = snap.val();
         let incoming = (raw && raw.v !== undefined) ? raw.v : raw;
@@ -136,10 +136,14 @@ function useStore(key, def) {
         setRaw(incoming);
       } else {
         const d = defRef.current;
-        _writing[key] = (_writing[key]||0) + 1;
+        if(!_writing[key]) _writing[key]=new Set();
+        const _st=Math.random().toString(36).slice(2);
+        _writing[key].add(_st);
+        const _clrS=()=>{ if(_writing[key]) _writing[key].delete(_st); };
         fbWrite(key, d)
-          .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
-          .catch(e => { console.warn("seed error:", e.message); _writing[key] = Math.max(0,(_writing[key]||1)-1); });
+          .then(()=>_clrS())
+          .catch(e=>{ console.warn("seed error:", e.message); _clrS(); });
+        setTimeout(_clrS,4000);
         setRaw(d);
       }
       setFbLoaded(true);
@@ -155,10 +159,14 @@ function useStore(key, def) {
   const set = useCallback((next) => {
     setRaw(prev => {
       const n = typeof next === "function" ? next(prev ?? defRef.current) : next;
-      _writing[key] = (_writing[key]||0) + 1;
+      if(!_writing[key]) _writing[key]=new Set();
+      const _wtoken=Math.random().toString(36).slice(2);
+      _writing[key].add(_wtoken);
+      const _clearW=()=>{ if(_writing[key]){ _writing[key].delete(_wtoken); } };
       fbWrite(key, n)
-        .then(() => setTimeout(() => { _writing[key] = Math.max(0,(_writing[key]||1)-1); }, 2000))
-        .catch(e => { console.warn("Firebase write error:", e.message); _writing[key] = Math.max(0,(_writing[key]||1)-1); });
+        .then(()=>{ _clearW(); })
+        .catch(e=>{ console.warn("Firebase write error:", e.message); _clearW(); });
+      setTimeout(_clearW, 4000); // safety net: always clear after 4s
       return n;
     });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2537,7 +2545,8 @@ const STAT_ICON_COLORS=[
 ];
 function TabStatCards({cards,dm}){
   const t=T(dm);
-  return <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(cards.length,5)},1fr)`,gap:12,marginBottom:20}}>
+  const cols=Math.min(cards.length,5);
+  return <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fit,minmax(${cols>=4?"140px":"160px"},1fr))`,gap:10,marginBottom:20}}>
     {cards.map((c,i)=>{
       const ic=STAT_ICON_COLORS[i%STAT_ICON_COLORS.length];
       return (
@@ -2546,12 +2555,12 @@ function TabStatCards({cards,dm}){
           onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="none";}}
           onClick={c.onClick}>
           {/* Large soft icon square */}
-          <div style={{width:52,height:52,borderRadius:14,background:ic.bg,border:`1.5px solid ${ic.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+          <div style={{width:44,height:44,borderRadius:12,background:ic.bg,border:`1.5px solid ${ic.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
             {c.icon}
           </div>
           {/* Right side: number + label + sub */}
           <div style={{minWidth:0,flex:1}}>
-            <p style={{color:t.text,fontWeight:900,fontSize:22,letterSpacing:"-0.03em",lineHeight:1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.value}</p>
+            <p style={{color:t.text,fontWeight:900,fontSize:18,letterSpacing:"-0.02em",lineHeight:1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.value}</p>
             <p style={{color:t.sub,fontSize:11,fontWeight:600,marginBottom:c.sub?2:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.label}</p>
             {c.sub&&<p style={{color:c.subColor||ic.color,fontSize:10,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.sub}</p>}
           </div>
@@ -4443,6 +4452,26 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     setTabRaw(newTab);
     try{sessionStorage.setItem("tas_active_tab",newTab);}catch{}
   },[]);
+  // Tab guard: if active tab becomes unavailable (settings load async, permissions change),
+  // auto-correct to first available tab so the UI never shows a blank screen
+  useEffect(()=>{
+    setTabRaw(cur=>{
+      const allowed=(isAdmin?ALL_TABS:ALL_TABS.filter(tb=>userPerms.includes(tb)));
+      const gated=[
+        ...(settings?.featureVanManagement?[]:["Vehicles"]),
+        ...(settings?.featureMachineMaintenance?[]:["Machines"]),
+        ...(settings?.featureStaffAttendance?[]:["Staff"]),
+      ];
+      const visible=allowed.filter(tb=>!gated.includes(tb));
+      if(visible.length>0&&!visible.includes(cur)){
+        const fallback=visible[0]||"Dashboard";
+        try{sessionStorage.setItem("tas_active_tab",fallback);}catch{}
+        return fallback;
+      }
+      return cur;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[settings?.featureVanManagement,settings?.featureMachineMaintenance,settings?.featureStaffAttendance,userPerms,isAdmin]);
   const [srch,setSrch]=useState("");
   const [toast,setToast]=useState(null);
   const [conf,setConf]=useState(null);
@@ -4560,7 +4589,8 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     safeArr(rawCustomers).forEach(c=>{ map[c.id]=0; });
     // Add order amounts from deliveries
     safeArr(deliveries).forEach(d=>{
-      if(!d.customerId||d.status==="Cancelled") return;
+      // Only count Delivered orders as money owed — Pending/In Transit haven't been received yet
+      if(!d.customerId||d.status!=="Delivered") return;
       const orderAmt=lineTotalWithTax(d.orderLines||{},taxRtGlobal);
       const repl=+d.replacement?.amount||0;
       const partial=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
@@ -9091,16 +9121,16 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>}
 
             {/* ══ SUB-TAB NAV ══ */}
-            <div style={{display:"flex",gap:8,background:t.inp,borderRadius:14,padding:4}}>
+            <div style={{display:"flex",gap:4,background:t.inp,borderRadius:14,padding:4}}>
               {SUB_TABS.map(s=>(
                 <button key={s.id} onClick={()=>setPaymentsSubTab(s.id)}
                   style={{flex:1,background:paymentsSubTab===s.id?"#2563eb":"transparent",
                     color:paymentsSubTab===s.id?"#fff":t.sub,
-                    borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:700,border:"none",
+                    borderRadius:10,padding:"10px 6px",fontSize:12,fontWeight:700,border:"none",
                     cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent",
-                    display:"flex",alignItems:"center",justifyContent:"center",gap:6,whiteSpace:"nowrap"}}>
-                  <span style={{fontSize:15}}>{s.icon}</span>
-                  <span>{s.label}</span>
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:4,overflow:"hidden"}}>
+                  <span style={{fontSize:14,flexShrink:0}}>{s.icon}</span>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
                 </button>
               ))}
             </div>
@@ -10471,13 +10501,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>
 
             {/* ── SECTION TABS ── */}
-            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",gap:2,overflowX:"auto"}}>
-              {[["overview","📊 Overview"],["customers","👥 Customers"],["products","📦 Products"],["operations","🏭 Operations"],["financials","💰 Financials"],["trends","📈 Trends"]].map(([k,l])=>(
+            <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:4,display:"flex",flexWrap:"wrap",gap:2}}>
+              {[["overview","📊","Overview"],["customers","👥","Customers"],["products","📦","Products"],["operations","🏭","Operations"],["financials","💰","Financials"],["trends","📈","Trends"]].map(([k,icon,label])=>(
                 <button key={k} onClick={()=>setAnlActiveSection(k)}
                   style={anlActiveSection===k
-                    ?{background:"#2563eb",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
-                    :{background:"transparent",color:t.sub,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}
-                  }>{l}</button>
+                    ?{background:"#2563eb",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}
+                    :{background:"transparent",color:t.sub,borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}
+                  }><span>{icon}</span><span>{label}</span></button>
               ))}
             </div>
 
@@ -12210,8 +12240,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
             {/* Sub-tabs */}
             <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
-              {[["log","📋 Attendance Log"],["roster","👥 Staff Roster"]].map(([k,lbl])=>(
-                <button key={k} onClick={()=>setStaffSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:staffSubTab===k?700:500,background:staffSubTab===k?t.accent:"transparent",color:staffSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              {[["log","📋","Attendance Log"],["roster","👥","Staff Roster"]].map(([k,icon,lbl])=>(
+                <button key={k} onClick={()=>setStaffSubTab(k)} style={{flex:1,padding:"11px 8px",fontSize:13,fontWeight:staffSubTab===k?700:500,background:staffSubTab===k?t.accent:"transparent",color:staffSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center",gap:5,overflow:"hidden"}}><span style={{flexShrink:0}}>{icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lbl}</span></button>
               ))}
             </div>
             {staffSubTab==="log"&&<>
@@ -12459,8 +12489,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>}
             {/* Sub-tabs */}
             <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
-              {[["log","📋 Maintenance Log"],["machines","⚙️ Machines"]].map(([k,lbl])=>(
-                <button key={k} onClick={()=>setMachSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:machSubTab===k?700:500,background:machSubTab===k?t.accent:"transparent",color:machSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              {[["log","📋","Maintenance Log"],["machines","⚙️","Machines"]].map(([k,icon,lbl])=>(
+                <button key={k} onClick={()=>setMachSubTab(k)} style={{flex:1,padding:"11px 8px",fontSize:13,fontWeight:machSubTab===k?700:500,background:machSubTab===k?t.accent:"transparent",color:machSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center",gap:5,overflow:"hidden"}}><span style={{flexShrink:0}}>{icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lbl}</span></button>
               ))}
             </div>
             {machSubTab==="log"&&<>
@@ -12679,8 +12709,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
             {/* Sub-tabs */}
             <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,display:"flex",overflow:"hidden",marginBottom:4}}>
-              {[["log","📋 Trip / Maintenance Log"],["fleet","🚐 Fleet"]].map(([k,lbl])=>(
-                <button key={k} onClick={()=>setVehSubTab(k)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:vehSubTab===k?700:500,background:vehSubTab===k?t.accent:"transparent",color:vehSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
+              {[["log","📋","Trip Log"],["fleet","🚐","Fleet"]].map(([k,icon,lbl])=>(
+                <button key={k} onClick={()=>setVehSubTab(k)} style={{flex:1,padding:"11px 8px",fontSize:13,fontWeight:vehSubTab===k?700:500,background:vehSubTab===k?t.accent:"transparent",color:vehSubTab===k?t.accentFg:t.sub,border:"none",cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center",gap:5,overflow:"hidden"}}><span style={{flexShrink:0}}>{icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lbl}</span></button>
               ))}
             </div>
             {vehSubTab==="log"&&<>
