@@ -5020,13 +5020,6 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   }
 
   // VEHICLE MANAGEMENT
-  function saveVeh(){
-    if(!machF.machineName||!vehF.vehicleName.trim()||!vehF.date){notify("Vehicle and date required");return;}
-    const rec={...vehF,fuelCost:+vehF.fuelCost||0,maintenanceCost:+vehF.maintenanceCost||0,kms:+vehF.kms||0,loggedBy:displayName,id:uid(),createdAt:ts()};
-    if(vehSh==="add"){setVehLogs(p=>[rec,...p]);addLog("Vehicle log added",`${vehF.vehicleName} — ${vehF.type}`);notify("Logged ✓");}
-    else{setVehLogs(p=>safeArr(p).map(x=>x.id===vehSh.id?{...rec,id:x.id,createdAt:x.createdAt}:x));addLog("Edited vehicle log",vehF.vehicleName);notify("Updated ✓");}
-    setVehSh(null);
-  }
   function saveVehFixed(){
     if(!vehF.vehicleName.trim()||!vehF.date){notify("Vehicle and date required");return;}
     const kms=vehF.odometerEnd&&vehF.odometerStart?(+vehF.odometerEnd-(+vehF.odometerStart||0)):+vehF.kms||0;
@@ -8995,7 +8988,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         {tab==="Payments"&&isAdmin&&(()=>{
           const todayStr=today();
           // ── Build comprehensive payment data ──────────────────────────
-          const delivPayments=deliveries.map(d=>{
+          const delivPayments=deliveries.filter(d=>d.status==="Delivered").map(d=>{
             const orderTotal=lineTotal(d.orderLines);
             const replAmt=+(d.replacement?.amount)||0;
             const netPayable=Math.max(0,orderTotal-replAmt);
