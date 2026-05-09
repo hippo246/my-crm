@@ -2514,21 +2514,19 @@ const STAT_ICON_COLORS=[
 ];
 function TabStatCards({cards,dm}){
   const t=T(dm);
-  return <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(cards.length,5)},1fr)`,gap:12,marginBottom:20}}>
+  return <div className="g-auto" style={{marginBottom:20,gap:10}}>
     {cards.map((c,i)=>{
       const ic=STAT_ICON_COLORS[i%STAT_ICON_COLORS.length];
       return (
-        <div key={i} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",cursor:c.onClick?"pointer":"default",transition:"box-shadow 0.15s,transform 0.15s",display:"flex",alignItems:"center",gap:14,minWidth:0,overflow:"hidden"}}
+        <div key={i} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",cursor:c.onClick?"pointer":"default",transition:"box-shadow 0.15s,transform 0.15s",display:"flex",alignItems:"center",gap:12,minWidth:0,overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.09)";e.currentTarget.style.transform="translateY(-1px)";}}
           onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="none";}}
           onClick={c.onClick}>
-          {/* Large soft icon square */}
-          <div style={{width:52,height:52,borderRadius:14,background:ic.bg,border:`1.5px solid ${ic.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+          <div style={{width:44,height:44,borderRadius:12,background:ic.bg,border:`1.5px solid ${ic.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
             {c.icon}
           </div>
-          {/* Right side: number + label + sub */}
           <div style={{minWidth:0,flex:1}}>
-            <p style={{color:t.text,fontWeight:900,fontSize:22,letterSpacing:"-0.03em",lineHeight:1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.value}</p>
+            <p className="crm-stat-val" style={{color:t.text,fontWeight:900,fontSize:20,letterSpacing:"-0.03em",lineHeight:1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.value}</p>
             <p style={{color:t.sub,fontSize:11,fontWeight:600,marginBottom:c.sub?2:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.label}</p>
             {c.sub&&<p style={{color:c.subColor||ic.color,fontSize:10,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.sub}</p>}
           </div>
@@ -2573,7 +2571,7 @@ function FilterBar({search,onSearch,placeholder,filters,activeFilter,onFilter,ac
   return <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
     {/* Row 1: search + actions */}
     {(onSearch!==undefined||actions)&&<div style={{display:"flex",alignItems:"center",gap:10}}>
-      {onSearch!==undefined&&<div style={{position:"relative",flex:"1",minWidth:200}}>
+      {onSearch!==undefined&&<div style={{position:"relative",flex:"1",minWidth:0,maxWidth:"100%"}}>
         <svg style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input value={search||""} onChange={e=>onSearch(e.target.value)} placeholder={placeholder||"Search…"}
           style={{background:t.card,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px 12px 10px 38px",fontSize:13,outline:"none",width:"100%",transition:"border-color 0.15s",boxSizing:"border-box"}}
@@ -2935,7 +2933,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="💸" title={`${e.category} Expense`} sub={`${e.date}${e.vendor?` · ${e.vendor}`:""}`} accent="#ef4444"/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="g2" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Amount" val={inr(e.amount||0)} color="#ef4444"/>
               <Kpi label="Method" val={e.paymentMethod||"Cash"} color="#8b5cf6"/>
             </div>
@@ -3196,7 +3194,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
         <div style={panelStyle}>
           <Header icon="📅" title={`Day Drilldown`} sub={dateStr} accent="#3b82f6"/>
           <div style={scrollStyle}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"16px 0"}}>
+            <div className="g2" style={{gap:8,margin:"16px 0"}}>
               <Kpi label="Revenue" val={inr(dayRev)} color="#10b981"/>
               <Kpi label="Net P&L" val={inr(dayProfit)} color={dayProfit>=0?"#10b981":"#ef4444"}/>
               <Kpi label="Expenses" val={inr(dayExpTotal)} color="#ef4444"/>
@@ -3763,7 +3761,7 @@ function Login({users,onLogin,dm,settings}){
               <p style={{color:MUTED,fontSize:18,margin:0,fontWeight:400,lineHeight:1.6}}>{appSub}</p>
             </div>
             <div className="lfa2" style={{background:"rgba(19,28,46,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))"}}>
                 {featurePills.map((f,i)=>(
                   <>
                     <div key={f.label} style={{textAlign:"center",padding:"8px 10px"}}>
@@ -3788,7 +3786,7 @@ function Login({users,onLogin,dm,settings}){
           <div style={{width:84,height:84,borderRadius:24,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
           <h1 style={{color:TEXT,fontWeight:800,fontSize:30,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
           <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
-          <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
+          <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",backdropFilter:"blur(10px)"}}>
             {featurePills.map((f,i)=>(
               <>
                 <div key={f.label} style={{textAlign:"center",padding:"0 6px"}}>
@@ -5808,7 +5806,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </div>
       )}
 
-      <div className="w-full max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-5 lg:px-8 xl:px-10 py-5 sm:py-6 flex flex-col gap-0 crm-tab-content" key={tab}>
+      <div className="w-full max-w-full lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto crm-tab-content" style={{display:"flex",flexDirection:"column",gap:0}} key={tab}>
 
         {/* DASHBOARD */}
         {tab==="Dashboard"&&(<>
@@ -6171,7 +6169,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {/* ── QUICK ACTIONS ── */}
             {widgets.includes("quickActions")&&(settings?.quickActions||[]).length>0&&<div>
               <p style={{...sectionLabel,marginBottom:10}}>⚡ Quick Actions</p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}} className="crm-quick-grid">
+              <div className="g4" style={{gap:8}} className="crm-quick-grid">
                 {[
                   {key:"newDelivery",icon:"🚚",label:"New Delivery",action:()=>{setDsh("add");setDf(blkD());}},
                   {key:"newCustomer",icon:"👤",label:"New Customer",action:()=>{setCsh("add");setCf(blkC());}},
@@ -6397,7 +6395,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   </div>
                 </div>
                 {/* Summary strip */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="g2" style={{gap:8,marginBottom:12}}>
                   <div style={{background:"#fef3c720",border:"1px solid #fde68a40",borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
                     <p className="font-black text-amber-500 text-sm">{inr(totalCLV)}</p>
                     <p style={{color:t.sub}} className="text-[10px] mt-0.5">Portfolio CLV</p>
@@ -6453,7 +6451,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                         <p style={{color:t.sub}} className="text-[10px] mt-0.5">CLV score</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    <div className="g4" style={{gap:6,marginBottom:8}}>
                       <div style={{background:t.inp,borderRadius:8,padding:"5px 7px",textAlign:"center"}}>
                         <p style={{color:t.text,fontWeight:700,fontSize:11}} className="leading-none">{inr(revenue)}</p>
                         <p style={{color:t.sub,fontSize:9}} className="mt-0.5">Revenue</p>
@@ -6819,7 +6817,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         {/* Financial block */}
                         {canSeePrices&&<div style={{background:t.inp,borderRadius:14,padding:"14px"}}>
                           <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Financials</p>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                          <div className="g2" style={{gap:8}}>
                             {[
                               {label:"TOTAL PAID",val:inr(cPaid),color:"#10b981"},
                               {label:"PENDING DUE",val:cDue>0?inr(cDue):"✓ Clear",color:cDue>0?"#ef4444":"#10b981"},
@@ -6846,7 +6844,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         {/* Delivery stats block */}
                         <div style={{background:t.inp,borderRadius:14,padding:"14px"}}>
                           <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Order Stats</p>
-                          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:10}}>
+                          <div className="g2" style={{gap:8,marginBottom:10}}>
                             {[
                               {label:"TOTAL",val:c._cDelivs.length,color:"#6366f1"},
                               {label:"DELIVERED",val:c._cDone.length,color:"#10b981"},
@@ -7200,7 +7198,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* LEFT COLUMN — stats + actions */}
                   <div style={{flex:"0 0 auto",width:"min(320px,100%)",borderRight:`1px solid ${t.border}`,padding:"16px 18px",display:"flex",flexDirection:"column",gap:12}}>
                     {/* Stat boxes */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div className="g3" style={{gap:8}}>
                       {[
                         {label:"ORDERS",val:allCDelivs.length,color:"#3b82f6"},
                         {label:"DELIVERED",val:cDone.length,color:"#10b981"},
@@ -7212,7 +7210,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         </div>
                       ))}
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div className="g3" style={{gap:8}}>
                       {[
                         {label:"REPLACED",val:cRepl.length,color:"#f97316"},
                         {label:"REPL. DEDUCTED",val:inr(cReplAmt),color:"#f97316"},
@@ -7283,12 +7281,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>}
 
                     {/* Action buttons */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div className="g3" style={{gap:8}}>
                       {can("cust_edit")&&<button onClick={()=>{setCsh(c);setCf(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>✏️ Edit</button>}
                       {can("cust_export")&&<button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📄 PDF</button>}
                       {can("cust_export")&&<button onClick={()=>{const rows=[{...c}];exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📊 XLS</button>}
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div className="g3" style={{gap:8}}>
                       {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(c);setPayAmt(String(cDue));setSelectedCustomer(null);}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>💰 Collect</button>}
                       {can("cust_deactivate")&&<button onClick={()=>{togActive(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>{c.active?"⏸ Pause":"▶ Activate"}</button>}
                       {c.phone&&<a href={`https://wa.me/${c.phone.replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" style={{background:"#25D366",color:"#fff",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center",textDecoration:"none",display:"block"}}>📍 Map</a>}
@@ -7619,7 +7617,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       </div>
                       <button onClick={()=>setCalExpandedDay(null)} style={{color:t.sub,background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:32,WebkitTapHighlightColor:"transparent",flexShrink:0}}>✕ Close</button>
                     </div>
-                    {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,marginBottom:12}}>
+                    {canSeePrices&&<div className="g2" style={{gap:6,marginBottom:12}}>
                       <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
                         <p style={{color:"#10b981",fontWeight:800,fontSize:14}}>{inr(dayTotAmt)}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Orders</p>
@@ -7773,7 +7771,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       </div>}
                     </div>
                     {/* Stats row */}
-                    {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",borderBottom:`1px solid ${t.border}`}}>
+                    {canSeePrices&&<div className="g4" style={{borderBottom:`1px solid ${t.border}`}}>
                       {[["TOTAL BILLED",inr(totalAmt),"#f59e0b"],["REPLACEMENTS",totalRepl>0?inr(totalRepl):"None","#f97316"],["TOTAL PAID",inr(totalPaid),"#10b981"],["ALL CLEAR",totalDue===0?"✓ ALL CLEAR":inr(totalDue),totalDue===0?"#10b981":"#ef4444"]].map(([label,val,color])=>(
                         <div key={label} style={{padding:"10px 14px",borderRight:`1px solid ${t.border}`,textAlign:"center"}}>
                           <p style={{color,fontWeight:800,fontSize:13}}>{val}</p>
@@ -8666,7 +8664,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               )}
 
               {/* ── TWO-COL: CATEGORIES + INSIGHTS ── */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div className="g2" style={{gap:14}}>
 
                 {/* Category breakdown */}
                 <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"14px 16px"}}>
@@ -9622,7 +9620,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ══════════════════════════════════════════════════════
                 CASH FLOW + BURN RATE (side by side)
             ══════════════════════════════════════════════════════ */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div className="g2" style={{gap:12}}>
               {/* Cash Flow */}
               <div style={{background:dm?"linear-gradient(135deg,#041a0a,#04142a)":"linear-gradient(135deg,#f0fdf4,#eff6ff)",border:dm?"1px solid rgba(16,185,129,0.2)":"1px solid #bbf7d0",borderRadius:18,padding:"18px 20px"}}>
                 <p style={{color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>💵 Cash Flow</p>
@@ -9648,7 +9646,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               {/* Burn Rate */}
               <div style={{background:dm?"linear-gradient(135deg,#1a0505,#15100a)":"linear-gradient(135deg,#fff7ed,#fef2f2)",border:dm?"1px solid rgba(239,68,68,0.2)":"1px solid #fecaca",borderRadius:18,padding:"18px 20px"}}>
                 <p style={{color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>🔥 Burn & Efficiency</p>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div className="g2" style={{gap:8}}>
                   {[
                     {label:"Monthly burn",val:inr(burnRate),color:burnRate>avgMonthlyRev?"#ef4444":"#f59e0b"},
                     {label:"Avg rev/mo",val:inr(avgMonthlyRev),color:"#10b981"},
@@ -9776,7 +9774,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {/* ── COST STRUCTURE ── */}
             <Card dm={dm} className="p-4">
               <p style={{color:t.text}} className="font-bold text-sm mb-4">Cost Structure — {periodLabel}</p>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="g3" style={{gap:12,marginBottom:16}}>
                 {[
                   {label:"Supply Costs",val:totSupC,color:"#8b5cf6",pct:totCost>0?Math.round(totSupC/totCost*100):0,sub:"Raw material"},
                   {label:"Operating Expenses",val:totExpC,color:"#ef4444",pct:totCost>0?Math.round(totExpC/totCost*100):0,sub:"Gas, labour, etc."},
@@ -9854,7 +9852,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             return(<div style={{padding:"12px 16px"}}>
                               <p style={{color:"#10b981",fontWeight:800,fontSize:12,marginBottom:10}}>📋 {m.monthFull} — Full Breakdown</p>
                               {/* Mini KPIs */}
-                              <div className="grid grid-cols-4 gap-2 mb-3">
+                              <div className="g4" style={{gap:8,marginBottom:12}}>
                                 {[["Revenue","#10b981",inr(m.revenue),`${m.deliveriesCount} orders`],["Supply","#8b5cf6",inr(m.supplyCost),`${mSups.length} entries`],["Expenses","#ef4444",inr(m.expenses),`${mExps.length} entries`],["Wastage","#f97316",inr(m.wasteCost),`${mWaste.length} records`]].map(([l,c,v,sub])=>(
                                   <div key={l} style={{background:c+"12",border:`1px solid ${c}30`,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
                                     <p style={{color:c,fontWeight:900,fontSize:12}}>{v}</p>
@@ -10048,7 +10046,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <p style={{color:t.sub,fontSize:9}}>{isCustEx?"▲ collapse":"▼ expand"}</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 mb-2">
+                    <div className="g4" style={{gap:8,marginBottom:8}}>
                       {[
                         {label:"Collected",val:inr(cPaid),color:"#10b981",bg:"#10b98112"},
                         {label:"Pending",val:inr(cPending),color:cPending>0?"#ef4444":"#10b981",bg:cPending>0?"#ef444412":"#10b98112"},
@@ -10531,7 +10529,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>💳 Payment Health — All Time</p>
                   <button onClick={()=>setTab("Payments")} style={{background:"#10b98115",color:"#10b981",border:"none",borderRadius:8,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Full Ledger →</button>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr) ",gap:8,marginBottom:10}}>
+                <div className="g2" style={{gap:8,marginBottom:10}}>
                   <div style={{background:dm?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.8)",borderRadius:12,padding:"10px 14px",gridColumn:"1/-1"}}>
                     <div className="flex justify-between mb-2"><span style={{color:"#10b981",fontSize:12,fontWeight:700}}>{inr(totalPaidPH)} collected ({collPct}%)</span><span style={{color:"#ef4444",fontSize:12,fontWeight:700}}>{inr(totalPendingPH)} pending</span></div>
                     <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",background:t.border}}>
@@ -10560,7 +10558,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             {totalScheduled>0&&<Card dm={dm} className="p-4">
               <p style={{color:t.text}} className="font-bold text-sm mb-1">🚚 Delivery Performance</p>
               <p style={{color:t.sub}} className="text-[11px] mb-4">Delivery health for selected period</p>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="g3" style={{gap:12,marginBottom:16}}>
                 {[
                   {label:"On-Time Delivery",val:`${fulfillmentRate}%`,color:fulfillmentRate>=90?"#10b981":fulfillmentRate>=70?"#f59e0b":"#ef4444",sub:`${totalDelivered} of ${totalScheduled}`,bar:fulfillmentRate},
                   {label:"Cancellation Rate",val:`${cancelRate}%`,color:cancelRate<=5?"#10b981":cancelRate<=15?"#f59e0b":"#ef4444",sub:`${cancelCount} cancelled`,bar:cancelRate},
@@ -10827,7 +10825,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               </Card>
               <Card dm={dm} className="p-4">
                 <p style={{color:t.text}} className="font-bold text-sm mb-3">👤 Customer Retention</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="g3" style={{gap:12}}>
                   <div style={{background:t.inp,borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
                     <p style={{color:"#10b981",fontWeight:900,fontSize:22}}>{activeRecently}</p>
                     <p style={{color:t.text,fontSize:11,fontWeight:600,marginTop:4}}>Active (30d)</p>
@@ -11282,7 +11280,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
               <Card dm={dm} className="p-4">
                 <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>🔄 Period Summary Scorecard</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="g2" style={{gap:12}}>
                   {[
                     {label:"Gross Revenue",val:inr(totalGrossRevenue),color:"#10b981",icon:"💰"},
                     {label:"Net Revenue",val:inr(totalNetRevenue),color:"#059669",icon:"✅"},
@@ -11990,7 +11988,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   </div></Card>
                 ))}
                 <Sheet dm={dm} open={hvSh} onClose={()=>setHvSh(false)} title="Log Shift Handover">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="g2" style={{gap:12}}>
                     <Sel dm={dm} label="Current Shift (optional)" value={hvF.shift||""} onChange={e=>setHvF({...hvF,shift:e.target.value})}>
                       <option value="">— None —</option>
                       {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
@@ -12122,7 +12120,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* Ingredient log sheet */}
             <Sheet dm={dm} open={!!ingSh} onClose={()=>setIngSh(null)} title={ingSh==="add"?"🧂 Log Consumption":"✏️ Edit Log"}>
               <Inp dm={dm} label="Ingredient *" value={ingF.ingredient} onChange={e=>setIngF(f=>({...f,ingredient:e.target.value}))} placeholder="e.g. Whole Wheat Flour"/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Quantity *" type="number" value={ingF.qty} onChange={e=>setIngF(f=>({...f,qty:e.target.value}))}/>
                 <Sel dm={dm} label="Unit" value={ingF.unit} onChange={e=>setIngF(f=>({...f,unit:e.target.value}))}>
                   {(settings?.supplyUnits||["kg","g","L","ml","pcs"]).map(u=><option key={u}>{u}</option>)}
@@ -12138,7 +12136,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* Ingredient item sheet */}
             <Sheet dm={dm} open={!!ingItemSh} onClose={()=>setIngItemSh(null)} title={ingItemSh==="add"?"➕ Add Ingredient":"✏️ Edit Ingredient"}>
               <Inp dm={dm} label="Name *" value={ingItemF.name} onChange={e=>setIngItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Whole Wheat Flour"/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Sel dm={dm} label="Unit" value={ingItemF.unit} onChange={e=>setIngItemF(f=>({...f,unit:e.target.value}))}>
                   {(settings?.supplyUnits||["kg","g","L","ml","pcs"]).map(u=><option key={u}>{u}</option>)}
                 </Sel>
@@ -12296,7 +12294,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {staffF.staffName==="__custom__"&&<Inp dm={dm} label="Staff Name *" value={staffF._customName||""} onChange={e=>setStaffF(f=>({...f,_customName:e.target.value,staffName:e.target.value}))} placeholder="Enter name"/>}
 
               {/* Date + Shift */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Date *" type="date" value={staffF.date} onChange={e=>setStaffF(f=>({...f,date:e.target.value}))}/>
                 <Sel dm={dm} label="Shift" value={staffF.shift} onChange={e=>setStaffF(f=>({...f,shift:e.target.value}))}>
                   {shifts.map(s=><option key={s}>{s}</option>)}
@@ -12318,7 +12316,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>
 
               {/* In/Out time */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label={`In Time${settings?.staffRequireInOutTime?" *":""}`} type="time" value={staffF.inTime} onChange={e=>setStaffF(f=>({...f,inTime:e.target.value}))}/>
                 <Inp dm={dm} label={`Out Time${settings?.staffRequireInOutTime?" *":""}`} type="time" value={staffF.outTime} onChange={e=>setStaffF(f=>({...f,outTime:e.target.value}))}/>
               </div>
@@ -12362,7 +12360,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </Sheet>
             {/* Staff member sheet */}
             <Sheet dm={dm} open={!!staffMemberSh} onClose={()=>setStaffMemberSh(null)} title={staffMemberSh==="add"?"➕ Add Staff Member":"✏️ Edit Staff Member"}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Name *" value={staffMemberF.name} onChange={e=>setStaffMemberF(f=>({...f,name:e.target.value}))} placeholder="Full name"/>
                 <Sel dm={dm} label="Role / Designation" value={staffMemberF.role} onChange={e=>setStaffMemberF(f=>({...f,role:e.target.value}))}>
                   <option value="">Select…</option>
@@ -12371,7 +12369,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 </Sel>
               </div>
               {staffMemberF.role==="__other__"&&<Inp dm={dm} label="Custom Role" value={staffMemberF._customRole||""} onChange={e=>setStaffMemberF(f=>({...f,_customRole:e.target.value,role:e.target.value}))} placeholder="Enter role"/>}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Sel dm={dm} label="Department" value={staffMemberF.department||""} onChange={e=>setStaffMemberF(f=>({...f,department:e.target.value}))}>
                   <option value="">Select…</option>
                   {(settings?.staffDepartments||["Production","Delivery","Packaging","Cleaning","Admin","Other"]).map(d=><option key={d}>{d}</option>)}
@@ -12380,12 +12378,12 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   {(settings?.staffEmploymentTypes||["Full-time","Part-time","Contract","Daily Wage"]).map(x=><option key={x}>{x}</option>)}
                 </Sel>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Phone" value={staffMemberF.phone} onChange={e=>setStaffMemberF(f=>({...f,phone:e.target.value}))} placeholder="Mobile number"/>
                 <Inp dm={dm} label="Join Date" type="date" value={staffMemberF.joinDate} onChange={e=>setStaffMemberF(f=>({...f,joinDate:e.target.value}))}/>
               </div>
               <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Emergency Contact</p>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Contact Name" value={staffMemberF.emergencyContact} onChange={e=>setStaffMemberF(f=>({...f,emergencyContact:e.target.value}))} placeholder="e.g. Spouse / Parent"/>
                 <Inp dm={dm} label="Contact Phone" value={staffMemberF.emergencyPhone} onChange={e=>setStaffMemberF(f=>({...f,emergencyPhone:e.target.value}))} placeholder="Emergency number"/>
               </div>
@@ -12537,7 +12535,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {machF.machineName==="__custom__"&&<Inp dm={dm} label="Machine Name *" value={machF._customName||""} onChange={e=>setMachF(f=>({...f,_customName:e.target.value,machineName:e.target.value}))}/>}
 
               {/* Date + Type */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Date *" type="date" value={machF.date} onChange={e=>setMachF(f=>({...f,date:e.target.value}))}/>
                 <Sel dm={dm} label="Event Type" value={machF.type} onChange={e=>setMachF(f=>({...f,type:e.target.value}))}>
                   {(settings?.machineLogTypes||["Servicing","Breakdown","Repair","Inspection","Oil Change","Other"]).map(x=><option key={x}>{x}</option>)}
@@ -12601,18 +12599,18 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </Sheet>
             {/* Machine item sheet */}
             <Sheet dm={dm} open={!!machItemSh} onClose={()=>setMachItemSh(null)} title={machItemSh==="add"?"➕ Add Machine":"✏️ Edit Machine"}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Machine Name *" value={machItemF.name} onChange={e=>setMachItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Roti Press #1"/>
                 <Sel dm={dm} label="Category" value={machItemF.category||""} onChange={e=>setMachItemF(f=>({...f,category:e.target.value}))}>
                   <option value="">Select…</option>
                   {(settings?.machineCategories||["Mixer","Oven","Sealer","Generator","Conveyor","Other"]).map(x=><option key={x}>{x}</option>)}
                 </Sel>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Location / Area" value={machItemF.location} onChange={e=>setMachItemF(f=>({...f,location:e.target.value}))} placeholder="e.g. Production Floor"/>
                 <Inp dm={dm} label="Serial Number" value={machItemF.serialNo} onChange={e=>setMachItemF(f=>({...f,serialNo:e.target.value}))} placeholder="Serial / model no."/>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Purchase Date" type="date" value={machItemF.purchaseDate} onChange={e=>setMachItemF(f=>({...f,purchaseDate:e.target.value}))}/>
                 <Inp dm={dm} label="Purchase Cost ₹" type="number" value={machItemF.purchaseCost} onChange={e=>setMachItemF(f=>({...f,purchaseCost:e.target.value}))} placeholder="0"/>
               </div>
@@ -12769,7 +12767,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {vehF.vehicleName==="__custom__"&&<Inp dm={dm} label="Vehicle Name *" value={vehF._customName||""} onChange={e=>setVehF(f=>({...f,_customName:e.target.value,vehicleName:e.target.value}))}/>}
 
               {/* Date + Type */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Date *" type="date" value={vehF.date} onChange={e=>setVehF(f=>({...f,date:e.target.value}))}/>
                 <Sel dm={dm} label="Event Type" value={vehF.type} onChange={e=>setVehF(f=>({...f,type:e.target.value}))}>
                   {(settings?.vehicleLogTypes||["Trip","Maintenance","Breakdown","Fuel Fill","Insurance","Other"]).map(x=><option key={x}>{x}</option>)}
@@ -12790,7 +12788,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               </div>}
 
               {/* Driver + Destination */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label={`Driver${settings?.vehicleRequireDriver?" *":""}`} value={vehF.driver} onChange={e=>setVehF(f=>({...f,driver:e.target.value}))} placeholder="Driver name"/>
                 <Inp dm={dm} label="Destination / Route" value={vehF.destination} onChange={e=>setVehF(f=>({...f,destination:e.target.value}))} placeholder="Area / route"/>
               </div>
@@ -12801,7 +12799,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {/* Odometer */}
               {settings?.vehicleShowOdometer!==false&&<>
                 <p style={{color:t.sub,fontSize:11,fontWeight:700,marginTop:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Odometer Readings</p>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div className="g3" style={{gap:8}}>
                   <Inp dm={dm} label="Start (km)" type="number" value={vehF.odometerStart} onChange={e=>setVehF(f=>({...f,odometerStart:e.target.value}))} placeholder="0"/>
                   <Inp dm={dm} label="End (km)" type="number" value={vehF.odometerEnd} onChange={e=>setVehF(f=>({...f,odometerEnd:e.target.value}))} placeholder="0"/>
                   <div>
@@ -12849,22 +12847,22 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </Sheet>
             {/* Vehicle fleet sheet */}
             <Sheet dm={dm} open={!!vehItemSh} onClose={()=>setVehItemSh(null)} title={vehItemSh==="add"?"➕ Add Vehicle":"✏️ Edit Vehicle"}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Vehicle Name *" value={vehItemF.name} onChange={e=>setVehItemF(f=>({...f,name:e.target.value}))} placeholder="e.g. Delivery Van 1"/>
                 <Inp dm={dm} label="Reg. Number" value={vehItemF.regNo} onChange={e=>setVehItemF(f=>({...f,regNo:e.target.value}))} placeholder="e.g. GA 01 AB 1234"/>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Sel dm={dm} label="Type" value={vehItemF.type} onChange={e=>setVehItemF(f=>({...f,type:e.target.value}))}>
                   {(settings?.vehicleTypes||["Van","Car","Bike","Truck","Auto","Other"]).map(x=><option key={x}>{x}</option>)}
                 </Sel>
                 <Inp dm={dm} label="Color" value={vehItemF.color} onChange={e=>setVehItemF(f=>({...f,color:e.target.value}))} placeholder="e.g. White"/>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Year" type="number" value={vehItemF.year} onChange={e=>setVehItemF(f=>({...f,year:e.target.value}))} placeholder="e.g. 2021"/>
                 <Inp dm={dm} label="Capacity (kg/seats)" value={vehItemF.capacity} onChange={e=>setVehItemF(f=>({...f,capacity:e.target.value}))} placeholder="e.g. 500kg"/>
               </div>
               <Inp dm={dm} label="Assigned Driver" value={vehItemF.assignedDriver} onChange={e=>setVehItemF(f=>({...f,assignedDriver:e.target.value}))} placeholder="Default driver name"/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="g2" style={{gap:8}}>
                 <Inp dm={dm} label="Insurance Expiry" type="date" value={vehItemF.insuranceExpiry} onChange={e=>setVehItemF(f=>({...f,insuranceExpiry:e.target.value}))}/>
                 <Inp dm={dm} label="Fitness Expiry" type="date" value={vehItemF.fitnessExpiry} onChange={e=>setVehItemF(f=>({...f,fitnessExpiry:e.target.value}))}/>
               </div>
@@ -13037,7 +13035,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* ══ OVERVIEW ══ */}
             {(gpsSection==="overview"||!isAdmin)&&<>
               {/* KPI strip */}
-              {isAdmin&&<div className="grid grid-cols-2 gap-3">
+              {isAdmin&&<div className="g2" style={{gap:12}}>
                 {[
                   {label:"Total GPS Pings",val:allLogs.filter(l=>l.lat&&l.lng).length,sub:"all time",color:"#6366f1",icon:"📡"},
                   {label:"Deliveries Confirmed",val:allLogs.filter(l=>l.action==="marked_delivered").length,sub:"GPS-verified",color:"#10b981",icon:"✅"},
@@ -14619,7 +14617,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <p style={{color:t.text}} className="text-sm font-bold">🌤 Weather Widget Location</p>
               <p style={{color:t.sub}} className="text-[11px]">Set the location for the weather widget on the Dashboard. Latitude and longitude can be found via Google Maps.</p>
               <Inp dm={dm} label="Location Label" value={settings?.weatherLabel||"Goa"} onChange={e=>setSettings(s=>({...s,weatherLabel:e.target.value}))} placeholder="Goa"/>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="g2" style={{gap:12}}>
                 <Inp dm={dm} label="Latitude" value={settings?.weatherLat??15.4909} onChange={e=>setSettings(s=>({...s,weatherLat:+e.target.value||15.4909}))} placeholder="15.4909"/>
                 <Inp dm={dm} label="Longitude" value={settings?.weatherLng??73.8278} onChange={e=>setSettings(s=>({...s,weatherLng:+e.target.value||73.8278}))} placeholder="73.8278"/>
               </div>
@@ -14890,7 +14888,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           {/* More drawer panel */}
           {moreOpen&&<div style={{position:"fixed",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
             <div style={{width:36,height:4,borderRadius:99,background:t.border,margin:"0 auto 16px"}}/>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+            <div className="g4" style={{gap:8}}>
               {moreTabs.map(tb=>{
                 const isA=tab===tb;
                 return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
@@ -14907,22 +14905,22 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           </div>}
           {/* Fixed bottom tab bar */}
           <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,height:"calc(68px + env(safe-area-inset-bottom,0px))",WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
-            <div style={{display:"flex",alignItems:"stretch",height:68}}>
+            <div style={{display:"flex",alignItems:"stretch",height:68,overflowX:"auto",overflowY:"hidden",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
               {bnTabs.map(tb=>{
                 const isA=tab===tb;
                 const hasBadge=tb==="Dashboard"&&pendingD.length>0&&!isA;
                 return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
-                  style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isA?"#2563eb":"transparent"}`,color:isA?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-                  <span style={{fontSize:10,fontWeight:isA?700:500,lineHeight:1,letterSpacing:"0.01em"}}>{TAB_LABELS[tb]||tb}</span>
+                  style={{flex:"0 0 auto",minWidth:64,maxWidth:80,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,background:"transparent",border:"none",borderTop:`2.5px solid ${isA?"#2563eb":"transparent"}`,color:isA?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2,paddingLeft:4,paddingRight:4}}>
+                  <span style={{fontSize:20,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
+                  <span style={{fontSize:9,fontWeight:isA?700:500,lineHeight:1,letterSpacing:"0.01em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{TAB_LABELS[tb]||tb}</span>
                   {hasBadge&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
                 </button>;
               })}
               {/* More tab */}
               <button onClick={()=>setMoreOpen(o=>!o)}
-                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isMoreActive||moreOpen?"#2563eb":"transparent"}`,color:isMoreActive||moreOpen?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                <span style={{fontSize:22,lineHeight:1}}>⋯</span>
-                <span style={{fontSize:10,fontWeight:isMoreActive||moreOpen?700:500,lineHeight:1,letterSpacing:"0.01em"}}>More</span>
+                style={{flex:"0 0 auto",minWidth:64,maxWidth:80,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,background:"transparent",border:"none",borderTop:`2.5px solid ${isMoreActive||moreOpen?"#2563eb":"transparent"}`,color:isMoreActive||moreOpen?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
+                <span style={{fontSize:20,lineHeight:1}}>⋯</span>
+                <span style={{fontSize:9,fontWeight:isMoreActive||moreOpen?700:500,lineHeight:1,letterSpacing:"0.01em"}}>More</span>
                 {isMoreActive&&!moreOpen&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#2563eb",width:6,height:6,borderRadius:"50%",border:`2px solid ${t.card}`}}/>}
               </button>
             </div>
@@ -14947,7 +14945,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
           </div>
           <Inp dm={dm} label="Customer / Business Name *" value={cF.name} onChange={e=>setCf({...cF,name:e.target.value})} placeholder="e.g. Hotel Saffron, Ravi Kumar"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="g2" style={{gap:10}}>
             <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number" inputMode="tel" autoComplete="tel"/>
             <Inp dm={dm} label="Customer Since" type="date" value={cF.joinDate} onChange={e=>setCf({...cF,joinDate:e.target.value})}/>
           </div>
@@ -14976,7 +14974,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
           </div>
           <Inp dm={dm} label="Full Delivery Address" value={cF.address} onChange={e=>setCf({...cF,address:e.target.value})} placeholder="e.g. Shop 4, MG Road, Panaji, Goa"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="g2" style={{gap:10}}>
             <Inp dm={dm} label="GPS Latitude" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989" inputMode="decimal"/>
             <Inp dm={dm} label="GPS Longitude" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278" inputMode="decimal"/>
           </div>
@@ -15005,7 +15003,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <p style={{color:t.sub,fontSize:11}}>Manually set opening balances if needed</p>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="g2" style={{gap:10}}>
             <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
             <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
           </div>
@@ -15299,7 +15297,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">Items{canSeePrices?" — Tap price to select":""}</p>
         <OrderEditor dm={dm} products={products} orderLines={dF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setDf(f=>({...f,orderLines:ol}))}/>
         <Hr dm={dm}/>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <div>
             <div className="flex items-center justify-between mb-1">
               <label style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-widest ml-0.5">Order Date</label>
@@ -15408,7 +15406,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {/* Item name */}
               <Inp dm={dm} label="Item Being Replaced / Returned *" value={dF.replacement?.item||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),item:e.target.value}}))} placeholder="e.g. Roti Pack, Paratha x10…"/>
               {/* Qty + Amount row */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div className="g2" style={{gap:10}}>
                 <Inp dm={dm} label="Quantity" value={dF.replacement?.qty||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),qty:e.target.value}}))} placeholder="e.g. 10 pcs"/>
                 <Inp dm={dm} label="Amount to Deduct (₹)" type="number" value={dF.replacement?.amount||""} onChange={e=>setDf(f=>({...f,replacement:{...(f.replacement||{}),amount:e.target.value}}))} placeholder="0"/>
               </div>
@@ -15461,14 +15459,14 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       {/* Supply Sheet */}
       <Sheet dm={dm} open={!!sSh} onClose={()=>setSsh(null)} title={sSh==="add"?"Log Supply":"Edit Supply"}>
         <Inp dm={dm} label="Item *" value={sF.item} onChange={e=>setSf({...sF,item:e.target.value})} placeholder="e.g. Wheat Flour"/>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Inp dm={dm} label="Quantity" type="number" value={sF.qty} onChange={e=>setSf({...sF,qty:e.target.value})}/>
           <Sel dm={dm} label="Unit" value={sF.unit} onChange={e=>setSf({...sF,unit:e.target.value})}>
             {supUnits.map(u=><option key={u}>{u}</option>)}
           </Sel>
         </div>
         <Inp dm={dm} label="Supplier" value={sF.supplier} onChange={e=>setSf({...sF,supplier:e.target.value})}/>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Inp dm={dm} label="Cost (₹)" type="number" value={sF.cost} onChange={e=>setSf({...sF,cost:e.target.value})}/>
           <Inp dm={dm} label="Date" type="date" value={sF.date} onChange={e=>setSf({...sF,date:e.target.value})}/>
         </div>
@@ -15484,14 +15482,14 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       {/* Expense Sheet */}
       <Sheet dm={dm} open={!!eSh} onClose={()=>setEsh(null)} title={eSh==="add"?"💸 Log Expense":"✏️ Edit Expense"}>
         {/* Category + Amount — most important, top row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="g2" style={{gap:10}}>
           <Sel dm={dm} label="Category *" value={eF.category} onChange={e=>setEf({...eF,category:e.target.value})}>
             {expCats.map(c=><option key={c}>{c}</option>)}
           </Sel>
           <Inp dm={dm} label="Amount (₹) *" type="number" value={eF.amount} onChange={e=>setEf({...eF,amount:e.target.value})} placeholder="0"/>
         </div>
         {/* Date + Payment Method */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="g2" style={{gap:10}}>
           <Inp dm={dm} label="Date *" type="date" value={eF.date} onChange={e=>setEf({...eF,date:e.target.value})}/>
           <Sel dm={dm} label="Payment Method" value={eF.paymentMethod||"Cash"} onChange={e=>setEf({...eF,paymentMethod:e.target.value})}>
             {["Cash","UPI","Card","Bank Transfer","Credit","Cheque","Other"].map(m=><option key={m}>{m}</option>)}
@@ -15509,7 +15507,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,width:"100%",borderRadius:12,padding:"10px 14px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
         </div>
         {/* Approved By + Tags in one row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="g2" style={{gap:10}}>
           <Inp dm={dm} label="Approved By" value={eF.approvedBy||""} onChange={e=>setEf({...eF,approvedBy:e.target.value})} placeholder="Name or role…"/>
           <Inp dm={dm} label="Tags" value={eF.tags||""} onChange={e=>setEf({...eF,tags:e.target.value})} placeholder="e.g. urgent, recurring…"/>
         </div>
@@ -15589,7 +15587,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         {/* Role selector */}
         <div style={{background:t.inp,borderRadius:14,padding:"14px 16px"}}>
           <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-3">Role</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="g3" style={{gap:8}}>
             {[{val:"agent",icon:"🚚",label:"Delivery Agent",desc:"On the road"},{val:"factory",icon:"🏭",label:"Factory Staff",desc:"In the kitchen"},{val:"admin",icon:"🔐",label:"Admin",desc:"Full access"}].map(({val,icon,label,desc})=>(
               <button key={val} onClick={()=>setUf({...uF,role:val,permissions:[...(ROLE_DEF[val]||ROLE_DEF.agent)]})}
                 style={{background:uF.role===val?(val==="admin"?"#f59e0b":val==="factory"?"#a855f7":"#0ea5e9")+"22":t.card,border:`2px solid ${uF.role===val?(val==="admin"?"#f59e0b":val==="factory"?"#a855f7":"#0ea5e9"):t.border}`,borderRadius:12,padding:"10px 6px",textAlign:"center",transition:"all 0.15s"}}>
@@ -15697,7 +15695,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
       {/* Wastage Sheet */}
       <Sheet dm={dm} open={!!wSh} onClose={()=>setWSh(null)} title={wSh==="add"?"Log Wastage":"Edit Wastage Record"}>
         <Inp dm={dm} label="Product / Item *" value={wF.product} onChange={e=>setWF({...wF,product:e.target.value})} placeholder="e.g. Roti, Paratha Pack…"/>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Inp dm={dm} label="Quantity *" type="number" value={wF.qty} onChange={e=>setWF({...wF,qty:e.target.value})} placeholder="e.g. 15"/>
           <Sel dm={dm} label="Unit" value={wF.unit} onChange={e=>setWF({...wF,unit:e.target.value})}>
             {(settings?.supplyUnits||["pcs","kg","pack","L"]).map(u=><option key={u}>{u}</option>)}
@@ -15709,7 +15707,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         <Sel dm={dm} label="Shift" value={wF.shift} onChange={e=>setWF({...wF,shift:e.target.value})}>
           {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
         </Sel>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Inp dm={dm} label="Date" type="date" value={wF.date} onChange={e=>setWF({...wF,date:e.target.value})}/>
           {can("waste_logCost")&& <Inp dm={dm} label="Estimated Cost Loss (₹)" type="number" value={wF.cost} onChange={e=>setWF({...wF,cost:e.target.value})} placeholder="0"/>}
         </div>
@@ -15744,7 +15742,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         {/* Customer status card */}
         {payLedgerCust&&<div style={{background:dm?"rgba(16,185,129,0.08)":"#f0fdf9",border:"1px solid #10b98130",borderRadius:14,padding:"12px 16px"}}>
           <p style={{color:t.text,fontWeight:800,fontSize:14,marginBottom:8}}>{payLedgerCust.name}</p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div className="g2" style={{gap:8}}>
             <div style={{background:dm?"rgba(16,185,129,0.1)":"#fff",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
               <p style={{color:"#10b981",fontWeight:800,fontSize:15}}>{inr(payLedgerCust.paid||0)}</p>
               <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Paid</p>
@@ -15851,7 +15849,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               <p style={{color:tS.sub,fontSize:10}}>What was produced, when, and by which shift</p>
             </div>
             <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div className="g2" style={{gap:10}}>
                 <Inp dm={dm} label="Batch Label *" value={ptF.batchLabel||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,batchLabel:v}));}} placeholder="e.g. Batch 1, Morning Run A"/>
                 <Inp dm={dm} label="Date *" type="date" value={ptF.date||today()} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,date:v}));}}/>
               </div>
@@ -15884,7 +15882,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             </div>
             <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
               {/* Big unit counter */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"end"}}>
+              <div className="g2" style={{gap:10,alignItems:"end"}}>
                 <div>
                   <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Units Produced *</p>
                   <div style={{display:"flex",alignItems:"center",gap:8,background:tS.inp,border:`1.5px solid ${tS.inpB}`,borderRadius:12,padding:"8px 12px"}}>
@@ -15908,7 +15906,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 {/* QC Grade visual picker */}
                 <div>
                   <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>QC Grade *</p>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  <div className="g2" style={{gap:6}}>
                     {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
                       <button key={g} onClick={()=>setPtF(f=>({...f,qcGrade:g}))}
                         style={{background:ptF.qcGrade===g?color+"25":tS.card,border:`2px solid ${ptF.qcGrade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
@@ -16032,7 +16030,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                         {(settings?.supplyUnits||["pcs","kg","g","L","mL","bags","boxes","dozen"]).map(u=><option key={u}>{u}</option>)}
                       </Sel>
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div className="g2" style={{gap:8}}>
                       <Sel dm={dm} label="Type" value={w.type} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,type:e.target.value}:x)}))}>
                         {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t2=><option key={t2}>{t2}</option>)}
                       </Sel>
@@ -16102,7 +16100,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                     <span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>📋 Handover {hi+1}</span>
                     {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).filter((_,i)=>i!==hi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div className="g2" style={{gap:8}}>
                     <Sel dm={dm} label="Current Shift" value={h.shift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,shift:e.target.value}:x)}))}>
                       <option value="">—</option>
                       {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
@@ -16123,7 +16121,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           {/* ── Save Summary & Button ── */}
           <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.06)",border:`1.5px solid rgba(139,92,246,0.3)`,borderRadius:14,padding:"14px 16px",marginTop:4}}>
             <p style={{color:"#8b5cf6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Batch Summary</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,marginBottom:12}}>
+            <div className="g2" style={{gap:6,marginBottom:12}}>
               {[
                 {l:"Product",v:ptF.product==="__custom__"?(ptF.customProduct||"—"):(ptF.product||"—"),c:tS.text},
                 {l:"Units",v:ptF.actual||"0",c:"#8b5cf6"},
@@ -16152,7 +16150,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           <option value="__custom__">Other / Custom</option>
         </Sel>
         {qcF.product==="__custom__"&&<Inp dm={dm} label="Custom Product" value={qcF.customProduct||""} onChange={e=>setQcF({...qcF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Sel dm={dm} label="Shift" value={qcF.shift} onChange={e=>setQcF({...qcF,shift:e.target.value})}>
             {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
           </Sel>
@@ -16160,7 +16158,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         </div>
         <div>
           <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-2 ml-0.5">Quality Grade *</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="g4" style={{gap:8}}>
             {[{g:"A",color:"#10b981",label:"Pass",sub:"Grade A"},{g:"B",color:"#f59e0b",label:"Pass",sub:"Grade B"},{g:"C",color:"#f97316",label:"Marginal",sub:"Grade C"},{g:"F",color:"#ef4444",label:"Fail",sub:"Reject"}].map(({g,color,label,sub})=>(
               <button key={g} onClick={()=>setQcF({...qcF,grade:g})}
                 style={{background:qcF.grade===g?color+"25":T(dm).inp,border:`2px solid ${qcF.grade===g?color:T(dm).inpB}`,borderRadius:14,padding:"12px 6px",textAlign:"center",transition:"all 0.15s"}}>
@@ -16360,7 +16358,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
       <Sheet dm={dm} open={bulkOrderSh} onClose={()=>setBulkOrderSh(false)} title="📋 Bulk Order Entry">
         <p style={{color:t.sub}} className="text-xs">Create delivery orders for multiple customers at once. Toggle on the customers you want, optionally adjust quantities, then save all at once.</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="g2" style={{gap:12}}>
           <Inp dm={dm} label="Order Date *" type="date" value={bulkOrderDate} onChange={e=>setBulkOrderDate(e.target.value)}/>
           <Sel dm={dm} label="Status" value={bulkOrderStatus} onChange={e=>setBulkOrderStatus(e.target.value)}>
             {(settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"]).map(s=><option key={s}>{s}</option>)}
