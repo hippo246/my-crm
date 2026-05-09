@@ -5383,40 +5383,65 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   return (
     <>
     <style>{`
-      /* ── RESPONSIVE GLOBAL LAYOUT ── */
-      html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
-      *{box-sizing:border-box;}
+      /* ══════════════════════════════════════════════════════════
+         COMPREHENSIVE MOBILE-FIRST RESPONSIVE SYSTEM
+         Breakpoints: xs<480  sm<640  md<768  lg<1024  xl<1280
+      ══════════════════════════════════════════════════════════ */
 
-      /* Grid utilities — responsive */
-      .crm-grid-2{display:grid;grid-template-columns:repeat(2,1fr);}
-      .crm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);}
-      .crm-grid-4{display:grid;grid-template-columns:repeat(4,1fr);}
-      @media(max-width:640px){
-        .crm-grid-3{grid-template-columns:repeat(2,1fr)!important;}
-        .crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}
+      html,body{
+        -webkit-text-size-adjust:100%;text-size-adjust:100%;
+        overscroll-behavior:none;
       }
+      *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+      /* ── GRID UTILITIES (fully responsive) ─────────────────── */
+      /* 2-col: stays 2 on all sizes */
+      .crm-grid-2{display:grid;grid-template-columns:repeat(2,1fr);}
+      /* 3-col: 3→2→1 */
+      .crm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);}
+      @media(max-width:640px){.crm-grid-3{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(max-width:400px){.crm-grid-3{grid-template-columns:1fr!important;}}
+      /* 4-col: 4→2→1 */
+      .crm-grid-4{display:grid;grid-template-columns:repeat(4,1fr);}
+      @media(max-width:900px){.crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(max-width:400px){.crm-grid-4{grid-template-columns:1fr!important;}}
+      /* universal xs override */
       @media(max-width:360px){
         .crm-grid-2,.crm-grid-3,.crm-grid-4{grid-template-columns:1fr!important;}
       }
 
-      /* Bottom nav only on small screens */
+      /* ── inline 2-col grids used throughout JSX ─────────────── */
+      /* gives these the same responsive collapse as crm-grid-2 */
+      .crm-2col{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      @media(max-width:480px){.crm-2col{grid-template-columns:1fr!important;}}
+
+      /* ── BOTTOM NAV (mobile/tablet only) ───────────────────── */
       .crm-nav-bottom{display:none;}
       @media(max-width:1023px){
-        .crm-nav-bottom{display:flex!important;position:fixed;bottom:0;left:0;right:0;z-index:100;background:#0d1b2a;border-top:1px solid #1e2d3d;padding-bottom:env(safe-area-inset-bottom,0px);}
+        .crm-nav-bottom{
+          display:flex!important;position:fixed;bottom:0;left:0;right:0;
+          z-index:100;background:#0d1b2a;border-top:1px solid #1e2d3d;
+          padding-bottom:env(safe-area-inset-bottom,0px);
+          overflow-x:auto;-webkit-overflow-scrolling:touch;
+          scrollbar-width:none;
+        }
+        .crm-nav-bottom::-webkit-scrollbar{display:none;}
       }
 
-      /* Main content area safe-area + bottom nav clearance */
+      /* ── MAIN CONTENT CLEARANCE ─────────────────────────────── */
       @media(max-width:1023px){
         .crm-main-content{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!important;}
       }
 
-      /* Mobile-first content padding */
-      .crm-tab-content{padding:12px 12px 0;}
-      @media(min-width:640px){.crm-tab-content{padding:16px 16px 0;}}
-      @media(min-width:1024px){.crm-tab-content{padding:22px 24px 0;}}
+      /* ── TAB CONTENT PADDING ────────────────────────────────── */
+      .crm-tab-content{padding:10px 10px 0;}
+      @media(min-width:480px){.crm-tab-content{padding:12px 14px 0;}}
+      @media(min-width:640px){.crm-tab-content{padding:16px 18px 0;}}
+      @media(min-width:768px){.crm-tab-content{padding:18px 22px 0;}}
+      @media(min-width:1024px){.crm-tab-content{padding:22px 26px 0;}}
       @media(min-width:1280px){.crm-tab-content{padding:28px 32px 0;}}
 
-      /* Sheets — full bottom sheet on mobile, centered modal on sm+ */
+      /* ── SHEETS / MODALS ────────────────────────────────────── */
       .crm-sheet-panel-mobile{border-radius:20px 20px 0 0;}
       @media(min-width:640px){
         .crm-sheet-panel-desktop{border-radius:18px!important;max-width:520px;margin:auto;}
@@ -5425,53 +5450,174 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         .crm-sheet-panel-desktop{max-width:580px;}
       }
 
-      /* Touch-friendly tap targets */
-      @media(max-width:1023px){
-        button{min-height:40px;}
-      }
-      @media(max-width:640px){
-        button{min-height:44px;}
-      }
+      /* ── TOUCH-FRIENDLY TAP TARGETS ────────────────────────── */
+      @media(max-width:1023px){button{min-height:40px;}}
+      @media(max-width:640px){button{min-height:44px;}}
+      /* But don't blow up icon-only tiny buttons */
+      button.crm-icon-btn{min-height:unset!important;min-width:unset!important;}
 
-      /* Overflow tables on small screens */
+      /* ── TABLES ─────────────────────────────────────────────── */
       .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-      .crm-table-wrap table{min-width:600px;}
-
-      /* Typography scaling */
+      .crm-table-wrap table{min-width:520px;}
       @media(max-width:640px){
-        .crm-stat-val{font-size:20px!important;}
+        /* shrink table font on phones */
+        .crm-table-wrap table{font-size:11px;}
+        .crm-table-wrap th,.crm-table-wrap td{padding:7px 8px!important;}
       }
 
-      /* Desktop sidebar — wider on large displays */
-      @media(min-width:1440px){
-        .crm-sidebar{width:240px!important;}
+      /* ── TYPOGRAPHY SCALING ─────────────────────────────────── */
+      @media(max-width:640px){
+        .crm-stat-val{font-size:18px!important;}
+        .crm-heading{font-size:16px!important;}
+        .crm-subheading{font-size:12px!important;}
+      }
+      @media(max-width:400px){
+        .crm-stat-val{font-size:15px!important;}
       }
 
-      /* Scrollbar styling — desktop */
+      /* ── SIDEBAR ────────────────────────────────────────────── */
+      @media(min-width:1440px){.crm-sidebar{width:240px!important;}}
+
+      /* ── CARD / STAT CARDS ──────────────────────────────────── */
+      /* StatBar (the horizontal icon-stat strip) wraps nicely */
+      .crm-stat-bar{
+        display:grid;
+        grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+        gap:8px;
+      }
+      @media(max-width:480px){
+        .crm-stat-bar{grid-template-columns:repeat(2,1fr);}
+      }
+
+      /* ── SETTINGS PANEL ─────────────────────────────────────── */
+      .crm-settings-cols{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:10px;
+      }
+      @media(max-width:600px){
+        .crm-settings-cols{grid-template-columns:1fr!important;}
+      }
+
+      /* ── INLINE CUSTOMER / DELIVERY DETAIL SPLIT ────────────── */
+      .crm-detail-split{
+        display:grid;
+        grid-template-columns:280px 1fr;
+        gap:0;
+      }
+      @media(max-width:860px){
+        .crm-detail-split{grid-template-columns:1fr!important;}
+      }
+
+      /* ── COMPACT CARD ROWS ──────────────────────────────────── */
+      /* stats strip inside compact customer/delivery cards */
+      .crm-card-stats{
+        display:flex;gap:12px;align-items:center;flex-shrink:0;flex-wrap:wrap;
+      }
+      @media(max-width:480px){
+        .crm-card-stats{gap:8px;}
+        .crm-card-stats .crm-stat-hide-xs{display:none!important;}
+      }
+
+      /* ── DASHBOARD STATS ROW ────────────────────────────────── */
+      .crm-dash-stats{
+        display:grid;
+        grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+        gap:10px;
+      }
+      @media(max-width:480px){
+        .crm-dash-stats{grid-template-columns:repeat(2,1fr);gap:8px;}
+      }
+
+      /* ── P&L / ANALYTICS CHARTS ─────────────────────────────── */
+      .crm-chart-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+      .crm-chart-wrap>*{min-width:280px;}
+
+      /* ── FORM INPUTS ─────────────────────────────────────────── */
+      .crm-form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+      @media(max-width:500px){.crm-form-row{grid-template-columns:1fr!important;}}
+
+      /* ── FILTER PILL ROWS ────────────────────────────────────── */
+      .crm-pill-row{
+        display:flex;gap:6px;flex-wrap:nowrap;
+        overflow-x:auto;-webkit-overflow-scrolling:touch;
+        scrollbar-width:none;padding-bottom:2px;
+      }
+      .crm-pill-row::-webkit-scrollbar{display:none;}
+
+      /* ── SCROLLBAR ──────────────────────────────────────────── */
       @media(min-width:1024px){
         ::-webkit-scrollbar{width:6px;height:6px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:99px;}
         ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.5);}
       }
-
-      /* Hide scrollbar utility */
       .no-scrollbar::-webkit-scrollbar{display:none;}
       .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
 
-      /* Animations */
+      /* ── ANIMATIONS ─────────────────────────────────────────── */
       @keyframes fadeSlideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
       .crm-fade-in{animation:fadeSlideUp 0.22s ease both;}
 
-      /* Card hover — desktop only */
+      /* ── HOVER (desktop only) ───────────────────────────────── */
       @media(min-width:1024px){
         .crm-hover-card{transition:box-shadow 0.18s,transform 0.18s;}
         .crm-hover-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.12)!important;transform:translateY(-1px);}
       }
 
+      /* ── OVERFLOW UTILITIES ─────────────────────────────────── */
+      .crm-overflow-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+      /* ── FULLWIDTH ON PHONE ─────────────────────────────────── */
+      @media(max-width:480px){
+        .crm-full-xs{width:100%!important;min-width:0!important;}
+      }
+
+      /* ── MIN-WIDTH GUARDS ───────────────────────────────────── */
+      /* Prevent any card from going below 280px before wrapping */
+      .crm-min-card{min-width:0;}
+
+      /* ── SAFE-AREA HELPERS ──────────────────────────────────── */
+      .crm-safe-bottom{padding-bottom:env(safe-area-inset-bottom,0px);}
+      .crm-safe-top{padding-top:env(safe-area-inset-top,0px);}
+
+      /* ── INLINE grids that appear throughout JSX as style props ─
+         We provide utility classes so replacing a handful of the
+         most common patterns doesn't need 200 individual edits.   */
+
+      /* 2-col form pairs */
+      .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+      @media(max-width:500px){.g2{grid-template-columns:1fr!important;}}
+
+      /* 3-col inside cards */
+      .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+      @media(max-width:640px){.g3{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(max-width:400px){.g3{grid-template-columns:1fr!important;}}
+
+      /* 4-col inside cards */
+      .g4{display:grid;grid-template-columns:repeat(4,1fr);}
+      @media(max-width:900px){.g4{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(max-width:400px){.g4{grid-template-columns:1fr!important;}}
+
+      /* Auto-fill stat grids */
+      .g-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;}
+      @media(max-width:400px){.g-auto{grid-template-columns:repeat(2,1fr)!important;}}
+
+      /* Split: left panel + right content */
+      .g-split{display:grid;grid-template-columns:260px 1fr;gap:0;}
+      @media(max-width:800px){.g-split{grid-template-columns:1fr!important;}}
+
       /* Tablet layout adjustments */
       @media(min-width:640px) and (max-width:1023px){
         .crm-tab-content{padding:16px 20px 0;}
+      }
+
+      /* ── MOBILE TEXT / SPACING OVERRIDES ────────────────────── */
+      @media(max-width:480px){
+        /* Prevent very long words breaking layouts */
+        .crm-word-break{word-break:break-word;overflow-wrap:anywhere;}
+        /* Reduce heavy padding on cards on tiny screens */
+        .crm-card-pad{padding:12px!important;}
       }
     `}</style>
     <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
