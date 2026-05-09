@@ -3457,7 +3457,7 @@ function Sheet({open,title,onClose,children,dm}){
   },[open]);
   if(!open)return null;
   return ReactDOM.createPortal(<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:t.card,maxHeight:"min(94dvh,94svh,94vh)",overflow:"hidden",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"env(safe-area-inset-bottom,0px)",WebkitTransform:"translateZ(0)",transform:"translateZ(0)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
+    <div style={{background:t.card,maxHeight:"94vh",overflow:"hidden",border:`1px solid ${t.border}`,boxShadow:"0 -4px 40px rgba(0,0,0,0.4)",borderRadius:"24px 24px 0 0",width:"100%",paddingBottom:"0px",paddingBottom:"env(safe-area-inset-bottom,0px)",WebkitTransform:"translateZ(0)",transform:"translateZ(0)"}} className="sm:rounded-2xl sm:max-w-lg sm:w-full sm:mx-4 flex flex-col crm-sheet-panel-mobile sm:crm-sheet-panel-desktop" onClick={e=>e.stopPropagation()}>
       {/* Drag handle — mobile only */}
       <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
         <div style={{width:40,height:4,borderRadius:99,background:t.border}}/>
@@ -3469,14 +3469,14 @@ function Sheet({open,title,onClose,children,dm}){
         <button onClick={onClose} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.inpB}`,width:40,height:40,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>✕</button>
       </div>
       {/* Content */}
-      <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",touchAction:"pan-y",flex:1,minHeight:0,paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
+      <div className="px-5 py-5 flex flex-col gap-4 crm-sheet-scroll" style={{overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",touchAction:"pan-y",flex:1,minHeight:0,paddingBottom:"1.5rem",paddingBottom:"max(1.5rem, env(safe-area-inset-bottom,0px))"}}>{children}</div>
     </div>
   </div>, document.body);
 }
 function Toast({msg,onDone}){
   // Fix: empty dep array so the timer only starts once, not on every re-render
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);},[]);
-  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(76px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
+  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(76px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);const t18n=useLang();if(!msg)return null;
@@ -3656,13 +3656,12 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
 
   const overlayStyle = {
     position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.72)",
-    backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",
     display:"flex",alignItems:"flex-end",justifyContent:"center"
   };
   const panelStyle = {
     background:t.card,border:`1px solid ${t.border}`,borderRadius:"24px 24px 0 0",
-    width:"100%",maxWidth:560,height:"auto",maxHeight:"min(92dvh,92svh,92vh)",display:"flex",flexDirection:"column",
-    boxShadow:"0 -8px 60px rgba(0,0,0,0.5)",paddingBottom:"env(safe-area-inset-bottom,12px)",overflow:"hidden"
+    width:"100%",maxWidth:560,height:"auto",maxHeight:"92vh",display:"flex",flexDirection:"column",
+    boxShadow:"0 -8px 60px rgba(0,0,0,0.5)",paddingBottom:"12px",paddingBottom:"env(safe-area-inset-bottom,12px)",overflow:"hidden"
   };
   const Header = ({icon,title,sub,accent})=>(
     <div style={{padding:"20px 22px 16px",borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
@@ -4408,7 +4407,7 @@ function Login({users,onLogin,dm,settings}){
   // PIN screen
   if(pinMode&&pinTarget){
     return(
-      <div style={{background:BG,minHeight:"100svh",position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{background:BG,minHeight:"100svh",minHeight:"100vh",position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
         <div style={glowBg}/><div style={dotsBg}/>
         <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:340,textAlign:"center"}}>
           <div style={{width:76,height:76,borderRadius:22,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
@@ -4441,7 +4440,7 @@ function Login({users,onLogin,dm,settings}){
   // Staff picker mode
   if(mode==="picker"&&!showAdminForm){
     return(
-      <div style={{background:BG,minHeight:"100svh",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px"}}>
+      <div style={{background:BG,minHeight:"100svh",minHeight:"100vh",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px"}}>
         <div style={glowBg}/><div style={dotsBg}/>
         <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:420}}>
           <div style={{textAlign:"center",marginBottom:32}}>
@@ -4491,7 +4490,7 @@ function Login({users,onLogin,dm,settings}){
 
   // Main login — responsive: mobile stacked, tablet/desktop split
   return(
-    <div style={{background:BG,minHeight:"100svh",fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{background:BG,minHeight:"100svh",minHeight:"100vh",fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif",position:"relative",overflow:"hidden"}}>
       <style>{`
         @keyframes lspin{to{transform:rotate(360deg)}}
         @keyframes lfadeup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -4509,7 +4508,7 @@ function Login({users,onLogin,dm,settings}){
       `}</style>
       <div style={glowBg}/><div style={dotsBg}/>
 
-      <div style={{minHeight:"100svh",display:"flex",position:"relative",zIndex:1}}>
+      <div style={{minHeight:"100svh",minHeight:"100vh",display:"flex",position:"relative",zIndex:1}}>
         <style>{`
           @media(min-width:860px){
             .lsplit-left{display:flex!important}
@@ -4526,11 +4525,11 @@ function Login({users,onLogin,dm,settings}){
           <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 80% 60% at 45% 50%, rgba(59,110,246,0.07) 0%, transparent 70%)"}}/>
           <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:400}}>
             <div className="lfa" style={{marginBottom:36}}>
-              <div style={{width:96,height:96,borderRadius:26,background:"rgba(59,110,246,0.1)",border:"2px solid rgba(59,110,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,userSelect:"none",marginBottom:26,backdropFilter:"blur(8px)"}}>{appEmoji}</div>
+              <div style={{width:96,height:96,borderRadius:26,background:"rgba(59,110,246,0.15)",border:"2px solid rgba(59,110,246,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,userSelect:"none",marginBottom:26}}>{appEmoji}</div>
               <h1 style={{color:TEXT,fontWeight:800,fontSize:38,lineHeight:1.15,margin:"0 0 12px",letterSpacing:"-0.02em"}}>{appName}</h1>
               <p style={{color:MUTED,fontSize:18,margin:0,fontWeight:400,lineHeight:1.6}}>{appSub}</p>
             </div>
-            <div className="lfa2" style={{background:"rgba(19,28,46,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
+            <div className="lfa2" style={{background:"rgba(19,28,46,0.94)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32}}>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))"}}>
                 {featurePills.map((f,i)=>(
                   <>
@@ -4556,7 +4555,7 @@ function Login({users,onLogin,dm,settings}){
           <div style={{width:84,height:84,borderRadius:24,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
           <h1 style={{color:TEXT,fontWeight:800,fontSize:30,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
           <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
-          <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",backdropFilter:"blur(10px)"}}>
+          <div style={{background:"rgba(19,28,46,0.94)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))"}}>
             {featurePills.map((f,i)=>(
               <>
                 <div key={f.label} style={{textAlign:"center",padding:"0 6px"}}>
@@ -4589,6 +4588,42 @@ function Login({users,onLogin,dm,settings}){
 }
 
 export default function Root(){
+  // ── COMPATIBILITY BOOTSTRAP (runs once before anything renders) ──
+  // Polyfills for old Android WebView / iOS Safari / ancient browsers
+  useEffect(()=>{
+    // 1. env() CSS variable polyfill for browsers that don't support it
+    //    (Android 5/6, iOS < 11.1)
+    if(!CSS?.supports?.("padding","env(safe-area-inset-bottom)")){
+      const style=document.createElement("style");
+      style.textContent=`
+        .crm-nav-bottom{padding-bottom:0px!important;}
+        .crm-main-content{padding-bottom:64px!important;}
+      `;
+      document.head.appendChild(style);
+    }
+    // 2. Ensure viewport meta is correct (in case public/index.html is missing it)
+    let vp=document.querySelector("meta[name=viewport]");
+    if(!vp){
+      vp=document.createElement("meta");
+      vp.name="viewport";
+      document.head.appendChild(vp);
+    }
+    vp.content="width=device-width,initial-scale=1,viewport-fit=cover,minimum-scale=1,maximum-scale=1";
+    // 3. Force background color immediately so there's never a white flash
+    document.documentElement.style.background=
+      window.matchMedia?.("(prefers-color-scheme:dark)").matches?"#0c0c10":"#f2f2ed";
+    document.body.style.background="inherit";
+    // 4. Prevent double-tap zoom on old iOS/Android (causes layout jump)
+    let lastTap=0;
+    function preventDblTapZoom(e){
+      const now=Date.now();
+      if(now-lastTap<300){e.preventDefault();}
+      lastTap=now;
+    }
+    document.addEventListener("touchend",preventDblTapZoom,{passive:false});
+    return()=>document.removeEventListener("touchend",preventDblTapZoom);
+  },[]);
+
   const [dm,setDm]=useStore("tas_pref_dm",false);
   const [users,setUsers,usersLoaded]=useStore("tas9_users",D_USERS);
   const [settings,setSettings,settingsLoaded]=useStore("tas10_settings",D_SETTINGS);
@@ -4616,7 +4651,7 @@ export default function Root(){
   },[]);
 
   useEffect(()=>{if(!sess)return;const t=setInterval(()=>{if(Date.now()-sess.loginAt>SESSION_TTL)setSess(null);},30000);return()=>clearInterval(t);},[sess]);
-  const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+  const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
     <p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Connecting to cloud…</p>
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -6074,7 +6109,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const delivStats=settings?.deliveryStatuses||["Pending",t18n("inTransit")||"In Transit","Delivered",t18n("cancelled")||"Cancelled"];
   const TAB_LABELS = {"Dashboard":t18n("dashboard"),"Customers":t18n("customers"),"Deliveries":t18n("deliveries"),"Payments":t18n("payments"),"Supplies":t18n("supplies"),"Expenses":t18n("expenses"),"P&L":t18n("pandl"),"Analytics":t18n("analytics"),"Production":t18n("production"),"Ingredients":t18n("ingredients"),"Staff":t18n("staff"),"Machines":t18n("machines"),"Vehicles":t18n("vehicles"),"GPS":t18n("gps"),"Settings":t18n("settings"),"Wastage":t18n("wastage")};
 
-  if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   // ─────────────────────────────────────────────────────────────
   // SecuritySessions — proper component so hooks are legal
@@ -6306,8 +6341,33 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       html,body{
         -webkit-text-size-adjust:100%;text-size-adjust:100%;
         overscroll-behavior:none;
+        /* Ensure the app fills the screen on ALL devices */
+        min-height:100%;
+        min-height:-webkit-fill-available;
       }
+      /* iOS Safari 100vh fix */
+      html{ height:-webkit-fill-available; }
+
+      /* Graceful backdropFilter degradation for old Android/iOS */
+      .crm-sheet-backdrop{
+        background:rgba(0,0,0,0.72) !important;
+      }
+      @supports(backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+        .crm-sheet-backdrop{
+          background:rgba(0,0,0,0.55) !important;
+          -webkit-backdrop-filter:blur(6px);
+          backdrop-filter:blur(6px);
+        }
+      }
+
+      /* env() fallback for browsers that don't support it */
+      .crm-safe-bottom{ padding-bottom:0px; padding-bottom:0px;padding-bottom:env(safe-area-inset-bottom,0px); }
+      .crm-safe-top{ padding-top:0px; padding-top:env(safe-area-inset-top,0px); }
       *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+      /* ── CRITICAL: prevent invisible content on old WebViews ── */
+      /* Some Android 5/6 WebViews need explicit display on flex containers */
+      #root{ display:flex; flex-direction:column; min-height:100vh; }
 
       /* ── GRID UTILITIES (fully responsive) ─────────────────── */
       /* 2-col: stays 2 on all sizes */
@@ -6336,7 +6396,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         .crm-nav-bottom{
           display:flex!important;position:fixed;bottom:0;left:0;right:0;
           z-index:100;background:#0d1b2a;border-top:1px solid #1e2d3d;
-          padding-bottom:env(safe-area-inset-bottom,0px);
+          padding-bottom:0px;padding-bottom:env(safe-area-inset-bottom,0px);
           overflow-x:auto;-webkit-overflow-scrolling:touch;
           scrollbar-width:none;
         }
@@ -6493,7 +6553,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       .crm-min-card{min-width:0;}
 
       /* ── SAFE-AREA HELPERS ──────────────────────────────────── */
-      .crm-safe-bottom{padding-bottom:env(safe-area-inset-bottom,0px);}
+      .crm-safe-bottom{padding-bottom:0px;padding-bottom:env(safe-area-inset-bottom,0px);}
       .crm-safe-top{padding-top:env(safe-area-inset-top,0px);}
 
       /* ── INLINE grids that appear throughout JSX as style props ─
@@ -6535,10 +6595,10 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         .crm-card-pad{padding:12px!important;}
       }
     `}</style>
-    <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
+    <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh",minHeight:"100vh"}} className="flex flex-col lg:flex-row">
 
       {/* ── DESKTOP SIDEBAR (lg+) — Phase 5: dark navy #0d1b2a, blue filled pill active ─── */}
-      <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh"}} className="crm-sidebar hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
+      <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh",minHeight:"100vh"}} className="crm-sidebar hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
         {/* Logo */}
         <div style={{borderBottom:"1px solid #1e2d3d",padding:"22px 18px 20px"}} className="flex items-center gap-3">
           <div style={{background:"rgba(37,99,235,0.18)",border:"1.5px solid rgba(37,99,235,0.3)",borderRadius:12,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,userSelect:"none",flexShrink:0,boxShadow:"0 2px 8px rgba(37,99,235,0.25)"}}>{settings?.appEmoji||"🫓"}</div>
@@ -15844,9 +15904,9 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         const moreOpen=showMoreNav; const setMoreOpen=setShowMoreNav;
         return <>
           {/* More drawer backdrop */}
-          {moreOpen&&<div onClick={()=>setMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:48,background:"rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} className="lg:hidden"/>}
+          {moreOpen&&<div onClick={()=>setMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:48,background:"rgba(0,0,0,0.6)"}} className="lg:hidden"/>}
           {/* More drawer panel */}
-          {moreOpen&&<div style={{position:"fixed",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
+          {moreOpen&&<div style={{position:"fixed",bottom:"68px",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
             <div style={{width:36,height:4,borderRadius:99,background:t.border,margin:"0 auto 16px"}}/>
             <div className="g4" style={{gap:8}}>
               {moreTabs.map(tb=>{
