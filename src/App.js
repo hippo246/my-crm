@@ -5067,18 +5067,15 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const partialAmt = dF.partialPayment?.enabled ? (+dF.partialPayment?.amount||0) : 0;
 
     if(dSh==="add"){
-      // ── NEW DELIVERY: add order total to customer pending, then apply deductions ──
+      // ── NEW DELIVERY: computedPendingMap derives pending from deliveries automatically.
+      // Only update c.paid here when a partial payment is collected on delivery.
       if(dF.customerId){
-        setCust(p=>safeArr(p).map(c=>{
-          if(c.id!==dF.customerId) return c;
-          let newPending=(c.pending||0)+newOrderTotal;
-          let newPaid=c.paid||0;
-          // Replacement deduction
-          if(replAmt>0) newPending=Math.max(0,newPending-replAmt);
-          // Partial payment collected on delivery
-          if(partialAmt>0){ newPaid+=partialAmt; newPending=Math.max(0,newPending-partialAmt); }
-          return {...c,paid:newPaid,pending:newPending};
-        }));
+        if(partialAmt>0){
+          setCust(p=>safeArr(p).map(c=>{
+            if(c.id!==dF.customerId) return c;
+            return {...c,paid:(c.paid||0)+partialAmt};
+          }));
+        }
         if(replAmt>0) addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
         if(partialAmt>0) addLog("Partial payment on delivery",`${dF.customer} — ${inr(partialAmt)} collected`);
       }
@@ -5120,42 +5117,34 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       captureGPS("delivery_saved",dF.customer);
     }
     else{
-      // ── EDIT DELIVERY: reverse old balance impact, apply new ──
+      // ── EDIT DELIVERY: computedPendingMap derives pending from deliveries automatically.
+      // Only update c.paid to reflect the change in partial payments collected.
       if(dF.customerId){
         const oldD=deliveries.find(d=>d.id===dSh.id)||dSh;
-        const oldOrderTotal=lineTotalWithTax(oldD.orderLines||{},taxRt);
-        const oldReplAmt=+oldD.replacement?.amount||0;
         const oldPartialAmt=oldD.partialPayment?.enabled?(+oldD.partialPayment?.amount||0):0;
-        // Customer may have changed — handle both old and new customer
         const custIdChanged=dF.customerId!==oldD.customerId;
         if(custIdChanged && oldD.customerId){
-          // Reverse everything on old customer
+          // Reverse old partial payment on old customer
           setCust(p=>safeArr(p).map(c=>{
             if(c.id!==oldD.customerId) return c;
-            let newPending=(c.pending||0)-oldOrderTotal+oldReplAmt+oldPartialAmt;
-            const newPaid=Math.max(0,(c.paid||0)-oldPartialAmt);
-            return {...c,pending:Math.max(0,newPending),paid:newPaid};
+            return {...c,paid:Math.max(0,(c.paid||0)-oldPartialAmt)};
           }));
-        }
-        setCust(p=>safeArr(p).map(c=>{
-          if(custIdChanged){
-            // Apply new amounts to new customer
+          // Apply new partial payment on new customer
+          setCust(p=>safeArr(p).map(c=>{
             if(c.id!==dF.customerId) return c;
-            let newPending=(c.pending||0)+newOrderTotal-replAmt-partialAmt;
-            const newPaid=(c.paid||0)+partialAmt;
-            return {...c,pending:Math.max(0,newPending),paid:newPaid};
-          } else {
-            // Same customer: reverse old, apply new
-            if(c.id!==dF.customerId) return c;
-            const delta=newOrderTotal-oldOrderTotal;
-            const replDelta=replAmt-oldReplAmt;
-            const partialDelta=partialAmt-oldPartialAmt;
-            let newPending=(c.pending||0)+delta-replDelta-partialDelta;
-            const newPaid=(c.paid||0)+partialDelta;
-            return {...c,pending:Math.max(0,newPending),paid:Math.max(0,newPaid)};
+            return {...c,paid:(c.paid||0)+partialAmt};
+          }));
+        } else {
+          // Same customer: update paid by the delta in partial payments
+          const partialDelta=partialAmt-oldPartialAmt;
+          if(partialDelta!==0){
+            setCust(p=>safeArr(p).map(c=>{
+              if(c.id!==dF.customerId) return c;
+              return {...c,paid:Math.max(0,(c.paid||0)+partialDelta)};
+            }));
           }
-        }));
-        if(replAmt!==oldReplAmt&&replAmt>0) addLog("Replacement deduction (edit)",`${dF.customer} — ${inr(replAmt)} off pending`);
+        }
+        if(replAmt!==+(oldD.replacement?.amount||0)&&replAmt>0) addLog("Replacement deduction (edit)",`${dF.customer} — ${inr(replAmt)} off pending`);
         if(partialAmt!==oldPartialAmt&&partialAmt>0) addLog("Partial payment updated (edit)",`${dF.customer} — ${inr(partialAmt)} collected`);
       }
       setDeliv(p=>safeArr(p).map(d=>d.id===dSh.id?{...dF,id:d.id}:d));
@@ -5163,21 +5152,18 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     }
     setDsh(null);
   }
-  function tglD(d){const ns=d.status==="Pending"?"Delivered":"Pending";setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
+  function tglD(d){const ns=(d.status==="Pending"||d.status==="In Transit")?"Delivered":"Pending";setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{
-    // ── Reverse the customer balance impact when a delivery is deleted ──
+    // ── Only reverse c.paid impact when a delivery is deleted.
+    // computedPendingMap will automatically recalculate pending from remaining deliveries.
     if(d.customerId){
-      const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
-      const orderTotal=lineTotalWithTax(d.orderLines||{},taxRt);
-      const replAmt=+d.replacement?.amount||0;
       const partialAmt=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-      setCust(p=>safeArr(p).map(c=>{
-        if(c.id!==d.customerId) return c;
-        // Reverse: remove order total from pending, restore replacement & partial
-        const newPending=Math.max(0,(c.pending||0)-orderTotal+replAmt+partialAmt);
-        const newPaid=Math.max(0,(c.paid||0)-partialAmt);
-        return {...c,pending:newPending,paid:newPaid};
-      }));
+      if(partialAmt>0){
+        setCust(p=>safeArr(p).map(c=>{
+          if(c.id!==d.customerId) return c;
+          return {...c,paid:Math.max(0,(c.paid||0)-partialAmt)};
+        }));
+      }
     }
     setDeliv(p=>safeArr(p).filter(x=>x.id!==d.id));addLog("Deleted delivery",d.customer);notify("Deleted");
   });}
@@ -5208,14 +5194,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     });
     setInvRegistry(prev=>({seq,issued:{...(prev.issued||{}),...newIssuedMap}}));
     setDeliv(p=>[...safeArr(p),...newDelivs]);
-    // ── Update customer pending balances for each bulk order ──
-    const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
-    setCust(p=>safeArr(p).map(c=>{
-      const custDelivs=newDelivs.filter(d=>d.customerId===c.id);
-      if(!custDelivs.length) return c;
-      const addedPending=custDelivs.reduce((s,d)=>s+lineTotalWithTax(d.orderLines||{},taxRt),0);
-      return {...c,pending:(c.pending||0)+addedPending};
-    }));
+    // computedPendingMap derives pending automatically from deliveries — no manual setCust update needed
     addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate} · ${newDelivs[0]?.invNo}…`);
     notify(`${newDelivs.length} orders created ✓`);
     setBulkOrderSh(false);
@@ -6937,9 +6916,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                           <button onClick={()=>{
                             const amt=+custDetailPartialAmt;
                             if(!amt||amt<=0){notify("Enter a valid amount");return;}
-                            setCust(p=>safeArr(p).map(x=>x.id===cFull.id?{...x,paid:(x.paid||0)+amt,pending:Math.max(0,(x.pending||0)-amt)}:x));
-                            addLog("Partial payment logged",`${cFull.name} — ${inr(amt)}`);
-                            notify(`${inr(amt)} recorded ✓`);
+                            recordPaymentLedger(cFull.id,cFull.name,amt,"","Cash");
                             setCustDetailPartialAmt("");setSelectedCustomer(null);
                           }} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Apply</button>
                         </div>
@@ -16299,8 +16276,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
               {+collectAmt>=(netAmt||orderTotal)&&<p style={{color:"#10b981",fontSize:11,marginTop:4,fontWeight:600}}>✓ Full amount — account will be settled</p>}
             </div>}
 
-            {/* Note field (admin can make required) */}
-            {(settings?.agentCollectRequireNote||true)&&<Inp dm={dm} label={`Collection Note${settings?.agentCollectRequireNote?" *":""}`} value={collectNote} onChange={e=>setCollectNote(e.target.value)} placeholder="e.g. Paid in cash at gate, UPI ref #12345…"/>}
+            {/* Note field (shown always, required only if setting is on) */}
+            <Inp dm={dm} label={`Collection Note${settings?.agentCollectRequireNote?" *":""}`} value={collectNote} onChange={e=>setCollectNote(e.target.value)} placeholder="e.g. Paid in cash at gate, UPI ref #12345…"/>
 
             <div className="flex gap-2">
               <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}}>Cancel</Btn>
@@ -16310,7 +16287,8 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                 if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");return;}
                 const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
                 setDeliv(p=>safeArr(p).map(x=>x.id===d.id?upd:x));
-                if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt,pending:Math.max(0,(c.pending||0)-amt)}:c));}
+                // Only update c.paid — computedPendingMap will re-derive pending from the updated delivery
+                if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt}:c));}
                 addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
                 addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
                 notify(`${inr(amt)} collected ✓`);
