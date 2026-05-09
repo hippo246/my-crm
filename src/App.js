@@ -258,8 +258,15 @@ const I18N_LANGS = {
 };
 // Global lang ref — updated when settings load
 let _currentLang = "en";
-function t18n(key){ return (I18N_LANGS[_currentLang]||I18N_LANGS.en)[key] || I18N_LANGS.en[key] || key; }
-function setAppLang(lang){ _currentLang = I18N_LANGS[lang] ? lang : "en"; }
+// t18n uses the full TRANSLATIONS dict (defined later) so ALL keys are available everywhere.
+// TRANSLATIONS is assigned after its declaration; this closure captures the reference correctly.
+function t18n(key){
+  // TRANSLATIONS may not be defined yet at module-parse time; safe fallback
+  const dict = (typeof TRANSLATIONS !== "undefined" ? TRANSLATIONS : null);
+  if(dict) return dict[_currentLang]?.[key] ?? dict["en"]?.[key] ?? key;
+  return (I18N_LANGS[_currentLang]||I18N_LANGS.en)[key] || I18N_LANGS.en[key] || key;
+}
+function setAppLang(lang){ _currentLang = (typeof TRANSLATIONS !== "undefined" ? TRANSLATIONS : I18N_LANGS)[lang] ? lang : "en"; }
 // ═══════════════════════════════════════════════════════════════
 //  ROLE SYSTEM
 // ═══════════════════════════════════════════════════════════════
@@ -861,30 +868,271 @@ ${collected>0?`<div class="collected-box"><div><div style="font-size:10px;font-w
 // ═══════════════════════════════════════════════════════════════
 const TRANSLATIONS = {
   en: {
+    // Nav tabs
     dashboard:"Dashboard", customers:"Customers", deliveries:"Deliveries",
     payments:"Payments", supplies:"Supplies", expenses:"Expenses",
     production:"Production", ingredients:"Ingredients", staff:"Staff",
     machines:"Machines", vehicles:"Vehicles", gps:"GPS", settings:"Settings",
     analytics:"Analytics", wastage:"Wastage", pandl:"P&L",
-    newOrder:"New Order", today:"Today", thisWeek:"This Week", thisMonth:"This Month",
-    totalDue:"Total Due", revenue:"Revenue", pending:"Pending", delivered:"Delivered",
-    inTransit:"In Transit", cancelled:"Cancelled", noDeliveries:"No deliveries scheduled for today",
+    // Time
+    today:"Today", thisWeek:"This Week", thisMonth:"This Month", yesterday:"Yesterday",
+    // Greetings
     goodMorning:"Good morning", goodAfternoon:"Good afternoon", goodEvening:"Good evening",
-    viewAll:"View all", configure:"Configure", save:"Save", cancel:"Cancel",
+    // Status words
+    pending:"Pending", delivered:"Delivered", inTransit:"In Transit", cancelled:"Cancelled",
+    active:"Active", inactive:"Inactive", approved:"Approved",
+    paid:"Paid", due:"Due", collected:"Collected", balance:"Balance",
+    settled:"Settled", partial:"Partial", overdue:"Overdue", low:"Low",
+    // Finance
+    revenue:"Revenue", totalDue:"Total Due", totalPaid:"Total Paid",
+    netProfit:"Net Profit", grossRevenue:"Gross Revenue", expenses2:"Expenses",
+    supplyCost:"Supply Cost", profit:"Profit", loss:"Loss", margin:"Margin",
+    orderTotal:"Order Total", netPayable:"Net Payable", replacement:"Replacement",
+    amountCollected:"Amount Collected", balanceDue:"Balance Due",
+    // Actions
+    save:"Save", cancel:"Cancel", delete:"Delete", edit:"Edit", add:"Add", close:"Close",
+    search:"Search", filter:"Filter", export:"Export", print:"Print",
+    viewAll:"View all", configure:"Configure", confirm:"Confirm", yes:"Yes", no:"No",
+    markDone:"Mark Done", dispatch:"Dispatch", collect:"Collect", record:"Record",
+    addCustomer:"Add Customer", addDelivery:"Add Delivery",
+    addExpense:"Add Expense", addSupply:"Add Supply",
+    newOrder:"New Order", bulkOrder:"Bulk Order",
+    // Fields
+    customer:"Customer", phone:"Phone", address:"Address", notes:"Notes",
+    date:"Date", status:"Status", amount:"Amount", quantity:"Quantity",
     invoice:"Invoice", receipt:"Receipt", label:"Label",
+    item:"Item", product:"Product", category:"Category", supplier:"Supplier",
+    name:"Name", role:"Role", username:"Username", password:"Password",
+    description:"Description", reason:"Reason", shift:"Shift",
+    // Messages
+    noDeliveries:"No deliveries scheduled for today",
+    noCustomers:"No customers found",
+    noExpenses:"No expenses found",
+    noSupplies:"No supplies found",
+    deleteConfirm:"Are you sure you want to delete this?",
+    savedSuccess:"Saved successfully",
+    deletedSuccess:"Deleted successfully",
+    // Dashboard
+    todaysBriefing:"Today's Briefing", pendingDeliveries:"Pending Deliveries",
+    overdueDeliveries:"Overdue Deliveries", lowStock:"Low Stock",
+    outstandingBalance:"Outstanding Balance", todayRevenue:"Today's Revenue",
+    // Customers
+    allCustomers:"All Customers", activeCustomers:"Active Customers",
+    inactiveCustomers:"Inactive Customers", owing:"Owing",
+    creditLimit:"Credit Limit", joinDate:"Join Date", lastOrder:"Last Order",
+    orderHistory:"Order History", paymentHistory:"Payment History",
+    // Deliveries
+    allDeliveries:"All Deliveries", createDelivery:"Create Delivery",
+    deliveryDate:"Delivery Date", orderDate:"Order Date",
+    markDelivered:"Mark Delivered", markPending:"Mark Pending",
+    // Payments
+    recordPayment:"Record Payment", paymentMethod:"Payment Method",
+    cash:"Cash", upi:"UPI", bank:"Bank Transfer", cheque:"Cheque",
+    paymentLedger:"Payment Ledger", outstandingPayments:"Outstanding Payments",
+    dailySummary:"Daily Summary",
+    // Settings
+    account:"Account", security:"Security", notifications:"Notifications",
+    language:"Language", theme:"Theme", backup:"Backup",
+    lightMode:"Light Mode", darkMode:"Dark Mode",
+    // Misc
+    loading:"Loading", connecting:"Connecting", offline:"Offline",
+    signIn:"Sign In", signOut:"Sign Out", welcome:"Welcome back",
+    more:"More", expand:"Expand", collapse:"Collapse",
+    noData:"No data", total:"Total", average:"Average", count:"Count",
+    // Customer tab UI
+    tableView:"Table", compactView:"Compact", profile:"Profile",
+    financials:"Financials", orderStats:"Order Stats", actions:"Actions",
+    logPartialPayment:"Log Partial Payment", apply:"Apply",
+    deliveries2:"Deliveries", all:"All", thisWeek2:"This Week",
+    noDeliveriesFilter:"No deliveries match this filter.",
+    clickToExpand:"Click any row to expand", clickDelivery:"Click any delivery to open full detail",
+    fullProfile:"Full Profile", whatsapp:"WhatsApp", activate:"Activate",
+    pause:"Pause", paidUp:"Paid Up", sortBy:"Sort by",
+    nameAZ:"Name A–Z", mostOwing:"Most Owing", mostOrders:"Most Orders",
+    revenueDesc:"Revenue ↓",
+    // Stats labels
+    orders:"Orders", last:"Last", totalBilled:"Total Billed",
+    replacements:"Replacements", deliveryRate:"Delivery Rate",
+    collection:"Collection", collectionPct:"Collection %",
+    // Table headers
+    contact:"Contact", ordersCount:"Orders", lastOrderH:"Last Order",
+    // Delivery tab
+    createNew:"Create New", allDelivery:"All", pendingH:"Pending",
+    inTransitH:"In Transit", deliveredH:"Delivered", cancelledH:"Cancelled",
+    invoiceNo:"Invoice No", customer2:"Customer", items:"Items",
+    netAmt:"Net Amt", agent:"Agent", expanded:"Expanded", compact:"Compact",
+    markDeliveredBtn:"Mark Delivered", dispatchBtn:"Dispatch",
+    collectPayment:"Collect Payment", viewDetails:"View Details",
+    replacement2:"Replacement", noOrdersToday:"No deliveries for today",
+    // Expenses / Supplies
+    addEntry:"Add Entry", vendor:"Vendor", totalExpenses:"Total Expenses",
+    thisMonthExp:"This Month", netCost:"Net Cost",
+    // Production
+    logProduction:"Log Production", target:"Target", actual:"Actual",
+    handover:"Handover", qcCheck:"QC Check",
+    // Staff / Machines / Vehicles
+    addStaff:"Add Staff", addMachine:"Add Machine", addVehicle:"Add Vehicle",
+    maintenance:"Maintenance", service:"Service", operational:"Operational",
+    // Settings sections
+    appBranding:"App Branding", companyDetails:"Company Details",
+    usersRoles:"Users & Roles", featureFlags:"Features",
+    invoiceNum:"Invoice Numbering", dataBackup:"Data & Backup",
+    // Misc UI
+    showing:"Showing", of:"of", to:"to",
+    signedInAs:"Signed in as", lightDark:"Light / Dark",
+    syncedAt:"Synced at", connecting2:"Connecting…",
+    noData2:"No data available", lastSeen:"Last seen",
+    never:"Never", daysAgo:"d ago", hoursAgo:"h ago",
+    today2:"Today", yesterday2:"Yesterday",
+    // Confirmation
+    areYouSure:"Are you sure?", cannotUndo:"This cannot be undone.",
+    // Passkey
+    registerPasskey:"Register Passkey", removePasskey:"Remove Passkey",
+    passkeyRegistered:"Passkey registered on this device",
+    noPasskey:"No passkey on this device",
+    // GPS
+    liveLocation:"Live Location", shareLocation:"Share Location",
+    agentLocations:"Agent Locations",
+    // P&L
+    grossRevPL:"Gross Revenue", totalExpPL:"Total Expenses",
+    netProfitPL:"Net Profit", supplyCostPL:"Supply Cost",
+    // Notices
+    postNotice:"Post Notice", deleteNotice:"Delete Notice",
+    noNotices:"No notices posted yet",
   },
   hi: {
+    // Nav tabs
     dashboard:"डैशबोर्ड", customers:"ग्राहक", deliveries:"डिलीवरी",
     payments:"भुगतान", supplies:"आपूर्ति", expenses:"खर्च",
     production:"उत्पादन", ingredients:"सामग्री", staff:"स्टाफ",
-    machines:"मशीनें", vehicles:"वाहन", gps:"जीपीएस", settings:"सेटिंग",
-    analytics:"विश्लेषण", wastage:"बर्बादी", pandl:"लाभ और हानि",
-    newOrder:"नया ऑर्डर", today:"आज", thisWeek:"इस सप्ताह", thisMonth:"इस महीने",
-    totalDue:"कुल बकाया", revenue:"राजस्व", pending:"लंबित", delivered:"डिलीवर",
-    inTransit:"रास्ते में", cancelled:"रद्द", noDeliveries:"आज कोई डिलीवरी निर्धारित नहीं है",
+    machines:"मशीनें", vehicles:"वाहन", gps:"जीपीएस", settings:"सेटिंग्स",
+    analytics:"विश्लेषण", wastage:"बर्बादी", pandl:"लाभ-हानि",
+    // Time
+    today:"आज", thisWeek:"इस सप्ताह", thisMonth:"इस महीने", yesterday:"कल",
+    // Greetings
     goodMorning:"सुप्रभात", goodAfternoon:"नमस्कार", goodEvening:"शुभ संध्या",
-    viewAll:"सब देखें", configure:"कॉन्फ़िगर करें", save:"सहेजें", cancel:"रद्द करें",
+    // Status words
+    pending:"लंबित", delivered:"डिलीवर", inTransit:"रास्ते में", cancelled:"रद्द",
+    active:"सक्रिय", inactive:"निष्क्रिय", approved:"स्वीकृत",
+    paid:"भुगतान हुआ", due:"बकाया", collected:"एकत्रित", balance:"शेष",
+    settled:"निपटाया", partial:"आंशिक", overdue:"अतिदेय", low:"कम",
+    // Finance
+    revenue:"राजस्व", totalDue:"कुल बकाया", totalPaid:"कुल भुगतान",
+    netProfit:"शुद्ध लाभ", grossRevenue:"कुल राजस्व", expenses2:"खर्चे",
+    supplyCost:"आपूर्ति लागत", profit:"लाभ", loss:"हानि", margin:"मार्जिन",
+    orderTotal:"ऑर्डर कुल", netPayable:"शुद्ध देय", replacement:"प्रतिस्थापन",
+    amountCollected:"एकत्रित राशि", balanceDue:"बकाया राशि",
+    // Actions
+    save:"सहेजें", cancel:"रद्द करें", delete:"हटाएं", edit:"संपादित करें",
+    add:"जोड़ें", close:"बंद करें", search:"खोजें", filter:"फ़िल्टर",
+    export:"निर्यात", print:"प्रिंट", viewAll:"सब देखें",
+    configure:"कॉन्फ़िगर करें", confirm:"पुष्टि करें", yes:"हाँ", no:"नहीं",
+    markDone:"पूर्ण करें", dispatch:"भेजें", collect:"एकत्र करें", record:"दर्ज करें",
+    addCustomer:"ग्राहक जोड़ें", addDelivery:"डिलीवरी जोड़ें",
+    addExpense:"खर्च जोड़ें", addSupply:"आपूर्ति जोड़ें",
+    newOrder:"नया ऑर्डर", bulkOrder:"बल्क ऑर्डर",
+    // Fields
+    customer:"ग्राहक", phone:"फ़ोन", address:"पता", notes:"नोट्स",
+    date:"तारीख", status:"स्थिति", amount:"राशि", quantity:"मात्रा",
     invoice:"चालान", receipt:"रसीद", label:"लेबल",
+    item:"वस्तु", product:"उत्पाद", category:"श्रेणी", supplier:"आपूर्तिकर्ता",
+    name:"नाम", role:"भूमिका", username:"उपयोगकर्ता नाम", password:"पासवर्ड",
+    description:"विवरण", reason:"कारण", shift:"पाली",
+    // Messages
+    noDeliveries:"आज कोई डिलीवरी निर्धारित नहीं है",
+    noCustomers:"कोई ग्राहक नहीं मिला",
+    noExpenses:"कोई खर्च नहीं मिला",
+    noSupplies:"कोई आपूर्ति नहीं मिली",
+    deleteConfirm:"क्या आप वाकई इसे हटाना चाहते हैं?",
+    savedSuccess:"सफलतापूर्वक सहेजा गया",
+    deletedSuccess:"सफलतापूर्वक हटाया गया",
+    // Dashboard
+    todaysBriefing:"आज की जानकारी", pendingDeliveries:"लंबित डिलीवरी",
+    overdueDeliveries:"अतिदेय डिलीवरी", lowStock:"कम स्टॉक",
+    outstandingBalance:"बकाया राशि", todayRevenue:"आज का राजस्व",
+    // Customers
+    allCustomers:"सभी ग्राहक", activeCustomers:"सक्रिय ग्राहक",
+    inactiveCustomers:"निष्क्रिय ग्राहक", owing:"बकायेदार",
+    creditLimit:"क्रेडिट सीमा", joinDate:"शामिल तारीख", lastOrder:"अंतिम ऑर्डर",
+    orderHistory:"ऑर्डर इतिहास", paymentHistory:"भुगतान इतिहास",
+    // Deliveries
+    allDeliveries:"सभी डिलीवरी", createDelivery:"डिलीवरी बनाएं",
+    deliveryDate:"डिलीवरी तारीख", orderDate:"ऑर्डर तारीख",
+    markDelivered:"डिलीवर किया", markPending:"लंबित करें",
+    // Payments
+    recordPayment:"भुगतान दर्ज करें", paymentMethod:"भुगतान विधि",
+    cash:"नकद", upi:"UPI", bank:"बैंक ट्रांसफर", cheque:"चेक",
+    paymentLedger:"भुगतान बही", outstandingPayments:"बकाया भुगतान",
+    dailySummary:"दैनिक सारांश",
+    // Settings
+    account:"खाता", security:"सुरक्षा", notifications:"सूचनाएं",
+    language:"भाषा", theme:"थीम", backup:"बैकअप",
+    lightMode:"लाइट मोड", darkMode:"डार्क मोड",
+    // Misc
+    loading:"लोड हो रहा है", connecting:"कनेक्ट हो रहा है", offline:"ऑफ़लाइन",
+    signIn:"साइन इन", signOut:"साइन आउट", welcome:"वापस स्वागत है",
+    more:"अधिक", expand:"विस्तार करें", collapse:"संकुचित करें",
+    noData:"कोई डेटा नहीं", total:"कुल", average:"औसत", count:"संख्या",
+    // Customer tab UI
+    tableView:"तालिका", compactView:"संक्षिप्त", profile:"प्रोफ़ाइल",
+    financials:"वित्तीय", orderStats:"ऑर्डर आँकड़े", actions:"कार्य",
+    logPartialPayment:"आंशिक भुगतान दर्ज करें", apply:"लागू करें",
+    deliveries2:"डिलीवरी", all:"सभी", thisWeek2:"इस सप्ताह",
+    noDeliveriesFilter:"कोई डिलीवरी नहीं मिली।",
+    clickToExpand:"विस्तार के लिए क्लिक करें", clickDelivery:"पूरी जानकारी देखने के लिए क्लिक करें",
+    fullProfile:"पूरी प्रोफ़ाइल", whatsapp:"व्हाट्सएप", activate:"सक्रिय करें",
+    pause:"रोकें", paidUp:"भुगतान हो गया", sortBy:"क्रमबद्ध करें",
+    nameAZ:"नाम A–Z", mostOwing:"सबसे अधिक बकाया", mostOrders:"सबसे अधिक ऑर्डर",
+    revenueDesc:"राजस्व ↓",
+    // Stats labels
+    orders:"ऑर्डर", last:"अंतिम", totalBilled:"कुल बिल", 
+    replacements:"प्रतिस्थापन", deliveryRate:"डिलीवरी दर",
+    collection:"संग्रह", collectionPct:"संग्रह %",
+    // Table headers
+    contact:"संपर्क", ordersCount:"ऑर्डर", lastOrderH:"अंतिम ऑर्डर",
+    // Delivery tab
+    createNew:"नया बनाएं", allDelivery:"सभी", pendingH:"लंबित",
+    inTransitH:"रास्ते में", deliveredH:"डिलीवर", cancelledH:"रद्द",
+    invoiceNo:"चालान नं.", customer2:"ग्राहक", items:"वस्तुएं",
+    netAmt:"शुद्ध राशि", agent:"एजेंट", expanded:"विस्तृत", compact:"संक्षिप्त",
+    markDeliveredBtn:"डिलीवर किया", dispatchBtn:"भेजें",
+    collectPayment:"भुगतान लें", viewDetails:"विवरण देखें",
+    replacement2:"बदलाव", noOrdersToday:"आज कोई डिलीवरी नहीं",
+    // Expenses / Supplies
+    addEntry:"प्रविष्टि जोड़ें", vendor:"विक्रेता", totalExpenses:"कुल खर्च",
+    thisMonthExp:"इस महीने", netCost:"शुद्ध लागत",
+    // Production
+    logProduction:"उत्पादन दर्ज करें", target:"लक्ष्य", actual:"वास्तविक",
+    handover:"हस्तांतरण", qcCheck:"गुणवत्ता जांच",
+    // Staff / Machines / Vehicles
+    addStaff:"स्टाफ जोड़ें", addMachine:"मशीन जोड़ें", addVehicle:"वाहन जोड़ें",
+    maintenance:"रखरखाव", service:"सेवा", operational:"चालू",
+    // Settings sections
+    appBranding:"ऐप पहचान", companyDetails:"कंपनी विवरण",
+    usersRoles:"उपयोगकर्ता और भूमिकाएं", featureFlags:"सुविधाएं",
+    invoiceNum:"चालान क्रमांक", dataBackup:"डेटा और बैकअप",
+    // Misc UI
+    showing:"दिखा रहा है", of:"में से", to:"तक",
+    signedInAs:"साइन इन किया", lightDark:"लाइट / डार्क",
+    syncedAt:"सिंक हुआ", connecting2:"कनेक्ट हो रहा है…",
+    noData2:"कोई डेटा उपलब्ध नहीं", lastSeen:"अंतिम बार देखा",
+    never:"कभी नहीं", daysAgo:"दिन पहले", hoursAgo:"घंटे पहले",
+    today2:"आज", yesterday2:"कल",
+    // Confirmation
+    areYouSure:"क्या आप निश्चित हैं?", cannotUndo:"यह पूर्ववत नहीं किया जा सकता।",
+    // Passkey
+    registerPasskey:"पासकी पंजीकृत करें", removePasskey:"पासकी हटाएं",
+    passkeyRegistered:"इस डिवाइस पर पासकी पंजीकृत है",
+    noPasskey:"इस डिवाइस पर कोई पासकी नहीं",
+    // GPS
+    liveLocation:"लाइव स्थान", shareLocation:"स्थान शेयर करें",
+    agentLocations:"एजेंट स्थान",
+    // P&L
+    grossRevPL:"कुल राजस्व", totalExpPL:"कुल खर्च",
+    netProfitPL:"शुद्ध लाभ", supplyCostPL:"आपूर्ति लागत",
+    // Notices
+    postNotice:"नोटिस पोस्ट करें", deleteNotice:"नोटिस हटाएं",
+    noNotices:"अभी तक कोई नोटिस नहीं",
   },
   mr: {
     dashboard:"डॅशबोर्ड", customers:"ग्राहक", deliveries:"डिलिव्हरी",
@@ -892,19 +1140,135 @@ const TRANSLATIONS = {
     production:"उत्पादन", ingredients:"घटक", staff:"कर्मचारी",
     machines:"यंत्रे", vehicles:"वाहने", gps:"जीपीएस", settings:"सेटिंग्ज",
     analytics:"विश्लेषण", wastage:"नुकसान", pandl:"नफा-तोटा",
-    newOrder:"नवीन ऑर्डर", today:"आज", thisWeek:"या आठवड्यात", thisMonth:"या महिन्यात",
-    totalDue:"एकूण थकबाकी", revenue:"उत्पन्न", pending:"प्रलंबित", delivered:"डिलिव्हर झाले",
-    inTransit:"रस्त्यात", cancelled:"रद्द", noDeliveries:"आज कोणतीही डिलिव्हरी नाही",
+    today:"आज", thisWeek:"या आठवड्यात", thisMonth:"या महिन्यात", yesterday:"काल",
     goodMorning:"सुप्रभात", goodAfternoon:"नमस्कार", goodEvening:"शुभ संध्याकाळ",
-    viewAll:"सर्व पहा", configure:"सेट करा", save:"जतन करा", cancel:"रद्द करा",
+    pending:"प्रलंबित", delivered:"डिलिव्हर झाले", inTransit:"रस्त्यात", cancelled:"रद्द",
+    active:"सक्रिय", inactive:"निष्क्रिय", approved:"मंजूर",
+    paid:"भरले", due:"थकबाकी", collected:"गोळा केले", balance:"शिल्लक",
+    settled:"निपटारा", partial:"आंशिक", overdue:"थकीत", low:"कमी",
+    revenue:"उत्पन्न", totalDue:"एकूण थकबाकी", totalPaid:"एकूण भरले",
+    netProfit:"निव्वळ नफा", profit:"नफा", loss:"तोटा", margin:"मार्जिन",
+    orderTotal:"ऑर्डर एकूण", netPayable:"निव्वळ देय", replacement:"बदली",
+    amountCollected:"एकत्रित रक्कम", balanceDue:"थकीत रक्कम",
+    save:"जतन करा", cancel:"रद्द करा", delete:"हटवा", edit:"संपादित करा",
+    add:"जोडा", close:"बंद करा", search:"शोधा", filter:"फिल्टर",
+    export:"निर्यात", print:"प्रिंट", viewAll:"सर्व पहा",
+    configure:"सेट करा", confirm:"पुष्टी करा", yes:"होय", no:"नाही",
+    markDone:"पूर्ण करा", dispatch:"पाठवा", collect:"गोळा करा", record:"नोंदवा",
+    addCustomer:"ग्राहक जोडा", addDelivery:"डिलिव्हरी जोडा",
+    addExpense:"खर्च जोडा", addSupply:"पुरवठा जोडा",
+    newOrder:"नवीन ऑर्डर", bulkOrder:"बल्क ऑर्डर",
+    customer:"ग्राहक", phone:"फोन", address:"पत्ता", notes:"नोट्स",
+    date:"तारीख", status:"स्थिती", amount:"रक्कम", quantity:"प्रमाण",
     invoice:"इनव्हॉइस", receipt:"पावती", label:"लेबल",
-  }
+    item:"वस्तू", product:"उत्पादन", category:"श्रेणी", supplier:"पुरवठादार",
+    name:"नाव", role:"भूमिका", username:"वापरकर्ता नाव", password:"पासवर्ड",
+    description:"वर्णन", reason:"कारण", shift:"पाळी",
+    noDeliveries:"आज कोणतीही डिलिव्हरी नाही",
+    noCustomers:"कोणताही ग्राहक सापडला नाही",
+    deleteConfirm:"तुम्हाला हे हटवायचे आहे का?",
+    savedSuccess:"यशस्वीरित्या जतन केले",
+    deletedSuccess:"यशस्वीरित्या हटवले",
+    todaysBriefing:"आजची माहिती", pendingDeliveries:"प्रलंबित डिलिव्हरी",
+    overdueDeliveries:"थकीत डिलिव्हरी", lowStock:"कमी स्टॉक",
+    outstandingBalance:"थकबाकी रक्कम", todayRevenue:"आजचे उत्पन्न",
+    allCustomers:"सर्व ग्राहक", activeCustomers:"सक्रिय ग्राहक",
+    inactiveCustomers:"निष्क्रिय ग्राहक", owing:"थकबाकीदार",
+    recordPayment:"पेमेंट नोंदवा", paymentMethod:"पेमेंट पद्धत",
+    cash:"रोख", upi:"UPI", bank:"बँक ट्रान्सफर", cheque:"चेक",
+    paymentLedger:"पेमेंट खतावणी", dailySummary:"दैनिक सारांश",
+    account:"खाते", security:"सुरक्षा", notifications:"सूचना",
+    language:"भाषा", theme:"थीम", backup:"बॅकअप",
+    lightMode:"लाइट मोड", darkMode:"डार्क मोड",
+    loading:"लोड होत आहे", connecting:"कनेक्ट होत आहे", offline:"ऑफलाइन",
+    signIn:"साइन इन", signOut:"साइन आउट", welcome:"पुन्हा स्वागत आहे",
+    more:"अधिक", noData:"डेटा नाही", total:"एकूण", average:"सरासरी", count:"संख्या",
+    tableView:"तक्ता", compactView:"संक्षिप्त", profile:"प्रोफाइल",
+    financials:"आर्थिक", orderStats:"ऑर्डर आकडे", actions:"कृती",
+    logPartialPayment:"आंशिक पेमेंट नोंदवा", apply:"लागू करा",
+    deliveries2:"डिलिव्हरी", all:"सर्व", thisWeek2:"या आठवड्यात",
+    noDeliveriesFilter:"कोणतीही डिलिव्हरी आढळली नाही.",
+    fullProfile:"पूर्ण प्रोफाइल", whatsapp:"व्हॉट्सअॅप", activate:"सक्रिय करा",
+    pause:"थांबवा", paidUp:"भरले", sortBy:"क्रमवारी",
+    nameAZ:"नाव A–Z", mostOwing:"सर्वाधिक थकबाकी", mostOrders:"सर्वाधिक ऑर्डर",
+    revenueDesc:"उत्पन्न ↓", orders:"ऑर्डर", last:"शेवटचे",
+    totalBilled:"एकूण बिल", replacements:"बदल्या", deliveryRate:"डिलिव्हरी दर",
+    collection:"संकलन", showing:"दाखवत आहे", of:"पैकी", to:"पर्यंत",
+    never:"कधीच नाही", today2:"आज", yesterday2:"काल",
+    noNotices:"अजून कोणतेही नोटीस नाही",
+  },
+  ml: {
+    dashboard:"ഡാഷ്ബോർഡ്", customers:"ഉപഭോക്താക്കൾ", deliveries:"ഡെലിവറി",
+    payments:"പേയ്മെന്റ്", supplies:"സാധനങ്ങൾ", expenses:"ചെലവ്",
+    production:"ഉൽപ്പാദനം", ingredients:"ചേരുവകൾ", staff:"ജീവനക്കാർ",
+    machines:"യന്ത്രങ്ങൾ", vehicles:"വാഹനങ്ങൾ", gps:"ജിപിഎസ്", settings:"ക്രമീകരണം",
+    analytics:"വിശകലനം", wastage:"പാഴ്‌വസ്തു", pandl:"ലാഭ-നഷ്ടം",
+    today:"ഇന്ന്", thisWeek:"ഈ ആഴ്ച", thisMonth:"ഈ മാസം", yesterday:"ഇന്നലെ",
+    goodMorning:"സുപ്രഭാതം", goodAfternoon:"ശുഭ ഉച്ചയ്ക്ക്", goodEvening:"ശുഭ സന്ധ്യ",
+    pending:"തീർപ്പാകാത്ത", delivered:"ഡെലിവർ ചെയ്തു", inTransit:"വഴിയിൽ", cancelled:"റദ്ദ്",
+    active:"സജീവം", inactive:"നിഷ്‌ക്രിയം", approved:"അംഗീകൃതം",
+    paid:"അടച്ചു", due:"കുടിശ്ശിക", collected:"ശേഖരിച്ചു", balance:"ബാലൻസ്",
+    settled:"തീർന്നു", partial:"ഭാഗിക", overdue:"കാലഹരണപ്പെട്ട", low:"കുറവ്",
+    revenue:"വരുമാനം", totalDue:"ആകെ കുടിശ്ശിക", totalPaid:"ആകെ അടച്ചത്",
+    netProfit:"അറ്റ ലാഭം", profit:"ലാഭം", loss:"നഷ്ടം", margin:"മാർജിൻ",
+    orderTotal:"ഓർഡർ ആകെ", netPayable:"അടയ്‌ക്കേണ്ടത്", replacement:"മാറ്റിവയ്ക്കൽ",
+    amountCollected:"ശേഖരിച്ച തുക", balanceDue:"ബാക്കി തുക",
+    save:"സേവ് ചെയ്യുക", cancel:"റദ്ദ് ചെയ്യുക", delete:"ഇല്ലാതാക്കുക",
+    edit:"എഡിറ്റ് ചെയ്യുക", add:"ചേർക്കുക", close:"അടയ്ക്കുക",
+    search:"തിരയുക", filter:"ഫിൽറ്റർ", export:"എക്സ്പോർട്ട്", print:"പ്രിന്റ്",
+    viewAll:"എല്ലാം കാണുക", configure:"ക്രമീകരിക്കുക",
+    confirm:"സ്ഥിരീകരിക്കുക", yes:"അതെ", no:"ഇല്ല",
+    markDone:"പൂർത്തിയായി", dispatch:"അയയ്ക്കുക", collect:"ശേഖരിക്കുക", record:"രേഖപ്പെടുത്തുക",
+    addCustomer:"ഉപഭോക്താവിനെ ചേർക്കുക", addDelivery:"ഡെലിവറി ചേർക്കുക",
+    addExpense:"ചെലവ് ചേർക്കുക", addSupply:"സാധനം ചേർക്കുക",
+    newOrder:"പുതിയ ഓർഡർ", bulkOrder:"ബൾക്ക് ഓർഡർ",
+    customer:"ഉപഭോക്താവ്", phone:"ഫോൺ", address:"വിലാസം", notes:"കുറിപ്പുകൾ",
+    date:"തീയതി", status:"സ്ഥിതി", amount:"തുക", quantity:"അളവ്",
+    invoice:"ഇൻവോയ്‌സ്", receipt:"രസീത്", label:"ലേബൽ",
+    item:"ഇനം", product:"ഉൽപ്പന്നം", category:"വിഭാഗം", supplier:"വിതരണക്കാരൻ",
+    name:"പേര്", role:"റോൾ", username:"ഉപയോക്തൃ നാമം", password:"പാസ്‌വേഡ്",
+    description:"വിവരണം", reason:"കാരണം", shift:"ഷിഫ്റ്റ്",
+    noDeliveries:"ഇന്ന് ഡെലിവറി ഇല്ല",
+    noCustomers:"ഉപഭോക്താക്കളെ കണ്ടെത്തിയില്ല",
+    deleteConfirm:"ഇത് ഇല്ലാതാക്കണോ?",
+    savedSuccess:"വിജയകരമായി സേവ് ചെയ്തു",
+    deletedSuccess:"വിജയകരമായി ഇല്ലാതാക്കി",
+    todaysBriefing:"ഇന്നത്തെ വിവരം", pendingDeliveries:"തീർപ്പാകാത്ത ഡെലിവറി",
+    overdueDeliveries:"കാലഹരണ ഡെലിവറി", lowStock:"കുറഞ്ഞ സ്റ്റോക്ക്",
+    outstandingBalance:"കുടിശ്ശിക ബാലൻസ്", todayRevenue:"ഇന്നത്തെ വരുമാനം",
+    allCustomers:"എല്ലാ ഉപഭോക്താക്കളും", activeCustomers:"സജീവ ഉപഭോക്താക്കൾ",
+    inactiveCustomers:"നിഷ്‌ക്രിയ ഉപഭോക്താക്കൾ", owing:"കുടിശ്ശിക",
+    recordPayment:"പേയ്മെന്റ് രേഖപ്പെടുത്തുക", paymentMethod:"പേയ്മെന്റ് രീതി",
+    cash:"നണ്ടൻ", upi:"UPI", bank:"ബാങ്ക് ട്രാൻസ്ഫർ", cheque:"ചെക്ക്",
+    paymentLedger:"പേയ്മെന്റ് ലെഡ്ജർ", dailySummary:"ദൈനിക സംഗ്രഹം",
+    account:"അക്കൗണ്ട്", security:"സുരക്ഷ", notifications:"അറിയിപ്പുകൾ",
+    language:"ഭാഷ", theme:"തീം", backup:"ബാക്കപ്പ്",
+    lightMode:"ലൈറ്റ് മോഡ്", darkMode:"ഡാർക്ക് മോഡ്",
+    loading:"ലോഡ് ചെയ്യുന്നു", connecting:"കണക്ട് ചെയ്യുന്നു", offline:"ഓഫ്‌ലൈൻ",
+    signIn:"സൈൻ ഇൻ", signOut:"സൈൻ ഔട്ട്", welcome:"തിരിച്ചു സ്വാഗതം",
+    more:"കൂടുതൽ", noData:"ഡേറ്റ ഇല്ല", total:"ആകെ", average:"ശരാശരി", count:"എണ്ണം",
+    tableView:"പട്ടിക", compactView:"ചുരുക്കം", profile:"പ്രൊഫൈൽ",
+    financials:"സാമ്പത്തിക", orderStats:"ഓർഡർ കണക്ക്", actions:"നടപടികൾ",
+    logPartialPayment:"ഭാഗിക പേയ്മെന്റ് രേഖപ്പെടുത്തുക", apply:"പ്രയോഗിക്കുക",
+    deliveries2:"ഡെലിവറി", all:"എല്ലാം", thisWeek2:"ഈ ആഴ്ച",
+    noDeliveriesFilter:"ഡെലിവറി ഒന്നും കണ്ടെത്തിയില്ല.",
+    fullProfile:"പൂർണ്ണ പ്രൊഫൈൽ", whatsapp:"വാട്ട്‌സ്ആപ്പ്", activate:"സജീവമാക്കുക",
+    pause:"നിർത്തുക", paidUp:"അടച്ചു", sortBy:"ക്രമീകരിക്കുക",
+    nameAZ:"പേര് A–Z", mostOwing:"ഏറ്റവും കൂടുതൽ കുടിശ്ശിക", mostOrders:"ഏറ്റവും കൂടുതൽ ഓർഡർ",
+    revenueDesc:"വരുമാനം ↓", orders:"ഓർഡർ", last:"അവസാനം",
+    totalBilled:"ആകെ ബിൽ", replacements:"മാറ്റിവയ്ക്കലുകൾ", deliveryRate:"ഡെലിവറി നിരക്ക്",
+    collection:"ശേഖരണം", showing:"കാണിക്കുന്നു", of:"ൽ നിന്ന്", to:"വരെ",
+    never:"ഒരിക്കലും ഇല്ല", today2:"ഇന്ന്", yesterday2:"ഇന്നലെ",
+    noNotices:"ഇതുവരെ അറിയിപ്പുകൾ ഒന്നുമില്ല",
+  },
 };
 // useT(settings, userLang?) → t(key) translation function
-// userLang (from user object in Firebase) always wins over global settings default
+// userLang (from user object in Firebase) always wins over global settings default.
+// Translation is ALWAYS active — not gated by featureMultiLanguage flag.
 function useT(settings, userLang) {
-  const lang = userLang || (settings?.featureMultiLanguage ? (settings?.defaultLanguage||"en") : "en");
-  return (key) => TRANSLATIONS[lang]?.[key] ?? TRANSLATIONS["en"]?.[key] ?? key;
+  const lang = userLang || settings?.defaultLanguage || settings?.language || "en";
+  const resolved = TRANSLATIONS[lang] ? lang : "en";
+  return (key) => TRANSLATIONS[resolved]?.[key] ?? TRANSLATIONS["en"]?.[key] ?? key;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3645,6 +4009,9 @@ function PasskeyManager({dm,t,sess,notify,ask,addLog}){
       if(cred){
         const credId=btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
         localStorage.setItem("__crm_pk__",JSON.stringify({credId,userId:sess.id,registeredAt:Date.now()}));
+        // Write to Firebase so admin can see all passkey-registered devices
+        const dev=getDeviceInfo();
+        fbWrite("tas_passkey_devices/"+DEVICE_ID,{credId,userId:sess.id,userName:sess.name||sess.username,deviceId:DEVICE_ID,deviceLabel:`${dev.deviceType} · ${dev.browser} on ${dev.os}`,browser:dev.browser,os:dev.os,deviceType:dev.deviceType,screenRes:dev.screenRes,registeredAt:Date.now()}).catch(()=>{});
         setPkStatus("registered");
         addLog("Passkey registered","Biometric login enabled for this device");
         notify("✓ Passkey registered! You can now use Face ID / fingerprint to sign in.");
@@ -3657,6 +4024,7 @@ function PasskeyManager({dm,t,sess,notify,ask,addLog}){
   function removePasskey(){
     ask("Remove passkey from this device? You will need to use password login.",()=>{
       localStorage.removeItem("__crm_pk__");
+      fbRemove(ref(db,"tas_passkey_devices/"+DEVICE_ID)).catch(()=>{});
       setPkStatus("none");
       addLog("Passkey removed","Biometric login disabled for this device");
       notify("Passkey removed");
@@ -4130,6 +4498,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [bulkSelect,setBulkSelect]=useState(false);
   const [bulkSelected,setBulkSelected]=useState(new Set());
   const [expandedDeliveryCust,setExpandedDeliveryCust]=useState(null);
+  const [expandedDelivRow,setExpandedDelivRow]=useState(null); // for compact delivery row expand-on-click
   const [expandedCustCard,setExpandedCustCard]=useState(null);
   const [custSortField,setCustSortField]=useState("name");
   const [custStatusFilter,setCustStatusFilter]=useState("all");
@@ -4797,6 +5166,35 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   // ─────────────────────────────────────────────────────────────
   function SecuritySessions({dm,t,ask,addLog,notify}){
     const [liveSessions,setLiveSessions]=useState([]);
+    const [passkeyDevices,setPasskeyDevices]=useState([]);
+    const [locMap,setLocMap]=useState({});
+
+    // Load passkey registrations from Firebase
+    useEffect(()=>{
+      const r=ref(db,"tas_passkey_devices");
+      const unsub=onValue(r,(snap)=>{
+        if(!snap.exists()){setPasskeyDevices([]);return;}
+        const raw=snap.val()||{};
+        const list=Object.values(raw).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
+        setPasskeyDevices(list);
+      });
+      return()=>unsub();
+    },[]);
+
+    // Reverse-geocode a lat/lng to a human readable address
+    async function reverseGeocode(lat,lng,key){
+      if(!lat||!lng)return;
+      try{
+        const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{"Accept-Language":"en"}});
+        const j=await res.json();
+        const addr=j.address||{};
+        const parts=[addr.suburb||addr.neighbourhood||addr.village,addr.city||addr.town||addr.county,addr.state,addr.country].filter(Boolean);
+        setLocMap(m=>({...m,[key]:parts.slice(0,3).join(", ")||`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
+      }catch{
+        setLocMap(m=>({...m,[key]:`${lat.toFixed(4)}, ${lng.toFixed(4)}`}));
+      }
+    }
+
     useEffect(()=>{
       const r=ref(db);
       const unsub=onValue(r,(snap)=>{
@@ -4821,17 +5219,32 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               deviceType:s.deviceType||"Desktop",
               screenRes:s.screenRes||"—",
               tz:s.tz||"—",
+              lang:s.lang||"—",
+              ua:s.ua||"",
+              passkeyLogin:s.passkeyLogin||false,
+              lat:s.lat||null,
+              lng:s.lng||null,
+              locationLabel:s.locationLabel||null,
               loginAt:s.loginAt,
-              loginAtLabel:new Date(s.loginAt).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}),
+              loginAtLabel:new Date(s.loginAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}),
               lastSeen:age<60000?"Just now":age<3600000?`${Math.floor(age/60000)}m ago`:`${Math.floor(age/3600000)}h ago`,
             };
           }).filter(Boolean).sort((a,b)=>b.loginAt-a.loginAt);
         setLiveSessions(sessions);
+        // Reverse-geocode any sessions with lat/lng
+        sessions.forEach(s=>{
+          if(s.lat&&s.lng&&!locMap[s.deviceKey]){
+            reverseGeocode(s.lat,s.lng,s.deviceKey);
+          }
+        });
       });
       return()=>unsub();
     },[]);
+
     const deviceIcon=(d)=>d==="Mobile"?"📱":d==="Tablet"?"📟":"💻";
     const browserIcon=(b)=>b==="Chrome"?"🟡":b==="Firefox"?"🦊":b==="Safari"?"🧭":b==="Edge"?"🔵":b==="Opera"?"🔴":b==="Brave"?"🦁":"🌐";
+    const osIcon=(o)=>o==="Android"?"🤖":o==="iOS"||o==="iPadOS"?"🍎":o==="Windows"?"🪟":o==="macOS"?"🍎":o==="Linux"?"🐧":"💻";
+
     return<Card dm={dm}><div className="p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
@@ -4851,36 +5264,80 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         </button>
       </div>
       {liveSessions.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"20px 0"}}>No active sessions found.</p>
-      :liveSessions.map(s=>(
-        <div key={s.deviceKey} style={{background:s.isMe?(dm?"rgba(16,185,129,0.08)":"rgba(16,185,129,0.05)"):t.inp,border:`1.5px solid ${s.isMe?"#10b98140":t.border}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+      :liveSessions.map(s=>{
+        const locLabel=s.locationLabel||(s.lat&&s.lng?locMap[s.deviceKey]||`${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`:"Location not available");
+        const mapsUrl=s.lat&&s.lng?`https://maps.google.com/?q=${s.lat},${s.lng}`:`https://maps.google.com/?q=${encodeURIComponent(locLabel||"")}`;
+        return(
+        <div key={s.deviceKey} style={{background:s.isMe?(dm?"rgba(16,185,129,0.08)":"rgba(16,185,129,0.05)"):t.inp,border:`1.5px solid ${s.isMe?"#10b98140":t.border}`,borderRadius:14,padding:"14px 16px",marginBottom:10}}>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div style={{fontSize:28,flexShrink:0}}>{deviceIcon(s.deviceType)}</div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span style={{color:t.text,fontWeight:700,fontSize:13}}>{s.name}</span>
-                  {s.isMe&&<span style={{background:"#10b98120",color:"#10b981",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99}}>● THIS DEVICE</span>}
-                  <span style={{background:s.role==="admin"?"#f59e0b20":s.role==="factory"?"#8b5cf620":"#0ea5e920",color:s.role==="admin"?"#f59e0b":s.role==="factory"?"#8b5cf6":"#0ea5e9",fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:99,textTransform:"uppercase"}}>{s.role}</span>
+            <div style={{display:"flex",gap:12,flex:1,minWidth:0}}>
+              <div style={{fontSize:32,flexShrink:0,lineHeight:1,marginTop:2}}>{deviceIcon(s.deviceType)}</div>
+              <div style={{flex:1,minWidth:0}}>
+                {/* Row 1: Name + badges */}
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                  <span style={{color:t.text,fontWeight:700,fontSize:14}}>{s.name}</span>
+                  {s.isMe&&<span style={{background:"#10b98120",color:"#10b981",fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:99}}>● THIS DEVICE</span>}
+                  <span style={{background:s.role==="admin"?"#f59e0b20":s.role==="factory"?"#8b5cf620":"#0ea5e920",color:s.role==="admin"?"#f59e0b":s.role==="factory"?"#8b5cf6":"#0ea5e9",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,textTransform:"uppercase"}}>{s.role}</span>
+                  {s.passkeyLogin&&<span style={{background:"#3b82f620",color:"#3b82f6",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99}}>🔑 Passkey</span>}
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span style={{color:t.sub,fontSize:11}}>{browserIcon(s.browser)} {s.browser} · {s.os}</span>
+                {/* Row 2: Username */}
+                <p style={{color:t.sub,fontSize:11,marginBottom:4}}>@{s.username}</p>
+                {/* Row 3: Browser + OS */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:3}}>
+                  <span style={{color:t.sub,fontSize:11}}>{browserIcon(s.browser)} {s.browser}</span>
+                  <span style={{color:t.sub,fontSize:11}}>{osIcon(s.os)} {s.os} · {s.deviceType}</span>
                   <span style={{color:t.sub,fontSize:11}}>🖥 {s.screenRes}</span>
-                  <span style={{color:t.sub,fontSize:11}}>🕐 {s.loginAtLabel}</span>
+                  <span style={{color:t.sub,fontSize:11}}>🌍 {s.tz}</span>
+                  {s.lang&&s.lang!=="—"&&<span style={{color:t.sub,fontSize:11}}>🗣 {s.lang}</span>}
+                </div>
+                {/* Row 4: Login time + last seen */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",marginBottom:4}}>
+                  <span style={{color:t.sub,fontSize:11}}>🕐 Logged in: {s.loginAtLabel}</span>
                   <span style={{color:t.sub,fontSize:11}}>⏱ {s.lastSeen}</span>
                 </div>
-                {s.tz&&s.tz!=="—"&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>🌍 {s.tz} · @{s.username}</p>}
+                {/* Row 5: Location */}
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:s.lat?t.text:t.sub}}>📍 {locLabel}</span>
+                  {s.lat&&s.lng&&<a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                    style={{fontSize:10,color:"#3b82f6",fontWeight:700,background:"#3b82f615",padding:"2px 8px",borderRadius:99,textDecoration:"none"}}>Open Map</a>}
+                </div>
+                {/* UA string (collapsed) */}
+                {s.ua&&<p style={{color:t.sub,fontSize:9,marginTop:4,opacity:0.6,wordBreak:"break-all",fontFamily:"monospace"}}>{s.ua.slice(0,100)}{s.ua.length>100?"…":""}</p>}
               </div>
             </div>
             {!s.isMe&&<button onClick={()=>ask(`Log out ${s.name}'s session on ${s.os}?`,async()=>{
               await fbRemove(ref(db,s.deviceKey)).catch(()=>{});
               addLog("Force-logged out session",`${s.name} (${s.os} ${s.browser})`);
               notify("Session terminated ✓");
-            })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+            })} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:9,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,marginTop:4}}>
               Log Out
             </button>}
           </div>
         </div>
-      ))}
+      );})}
+
+      {/* Passkey-registered devices */}
+      {passkeyDevices.length>0&&<>
+        <div style={{borderTop:`1.5px solid ${t.border}`,margin:"16px 0 12px"}}/>
+        <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:8}}>🔑 Devices with Passkey Registered ({passkeyDevices.length})</p>
+        {passkeyDevices.map((pk,i)=>(
+          <div key={i} style={{background:t.inp,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"10px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:20}}>🔑</span>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{color:t.text,fontWeight:700,fontSize:12}}>{pk.userName||pk.userId||"Unknown User"}</span>
+                {pk.deviceLabel&&<span style={{color:t.sub,fontSize:11}}>{pk.deviceLabel}</span>}
+                <span style={{background:"#8b5cf620",color:"#8b5cf6",fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:99}}>Passkey</span>
+              </div>
+              <p style={{color:t.sub,fontSize:10,marginTop:2}}>
+                {pk.browser&&<span>{browserIcon(pk.browser)} {pk.browser} · </span>}
+                {pk.os&&<span>{pk.os} · </span>}
+                Registered: {pk.registeredAt?new Date(pk.registeredAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"Unknown"}
+              </p>
+            </div>
+          </div>
+        ))}
+      </>}
     </div></Card>;
   }
 
@@ -4925,10 +5382,102 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   // ═══════════════════════════════════════════════════════════════
   return (
     <>
+    <style>{`
+      /* ── RESPONSIVE GLOBAL LAYOUT ── */
+      html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+      *{box-sizing:border-box;}
+
+      /* Grid utilities — responsive */
+      .crm-grid-2{display:grid;grid-template-columns:repeat(2,1fr);}
+      .crm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);}
+      .crm-grid-4{display:grid;grid-template-columns:repeat(4,1fr);}
+      @media(max-width:640px){
+        .crm-grid-3{grid-template-columns:repeat(2,1fr)!important;}
+        .crm-grid-4{grid-template-columns:repeat(2,1fr)!important;}
+      }
+      @media(max-width:360px){
+        .crm-grid-2,.crm-grid-3,.crm-grid-4{grid-template-columns:1fr!important;}
+      }
+
+      /* Bottom nav only on small screens */
+      .crm-nav-bottom{display:none;}
+      @media(max-width:1023px){
+        .crm-nav-bottom{display:flex!important;position:fixed;bottom:0;left:0;right:0;z-index:100;background:#0d1b2a;border-top:1px solid #1e2d3d;padding-bottom:env(safe-area-inset-bottom,0px);}
+      }
+
+      /* Main content area safe-area + bottom nav clearance */
+      @media(max-width:1023px){
+        .crm-main-content{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!important;}
+      }
+
+      /* Mobile-first content padding */
+      .crm-tab-content{padding:12px 12px 0;}
+      @media(min-width:640px){.crm-tab-content{padding:16px 16px 0;}}
+      @media(min-width:1024px){.crm-tab-content{padding:22px 24px 0;}}
+      @media(min-width:1280px){.crm-tab-content{padding:28px 32px 0;}}
+
+      /* Sheets — full bottom sheet on mobile, centered modal on sm+ */
+      .crm-sheet-panel-mobile{border-radius:20px 20px 0 0;}
+      @media(min-width:640px){
+        .crm-sheet-panel-desktop{border-radius:18px!important;max-width:520px;margin:auto;}
+      }
+      @media(min-width:1024px){
+        .crm-sheet-panel-desktop{max-width:580px;}
+      }
+
+      /* Touch-friendly tap targets */
+      @media(max-width:1023px){
+        button{min-height:40px;}
+      }
+      @media(max-width:640px){
+        button{min-height:44px;}
+      }
+
+      /* Overflow tables on small screens */
+      .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+      .crm-table-wrap table{min-width:600px;}
+
+      /* Typography scaling */
+      @media(max-width:640px){
+        .crm-stat-val{font-size:20px!important;}
+      }
+
+      /* Desktop sidebar — wider on large displays */
+      @media(min-width:1440px){
+        .crm-sidebar{width:240px!important;}
+      }
+
+      /* Scrollbar styling — desktop */
+      @media(min-width:1024px){
+        ::-webkit-scrollbar{width:6px;height:6px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:99px;}
+        ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.5);}
+      }
+
+      /* Hide scrollbar utility */
+      .no-scrollbar::-webkit-scrollbar{display:none;}
+      .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+
+      /* Animations */
+      @keyframes fadeSlideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      .crm-fade-in{animation:fadeSlideUp 0.22s ease both;}
+
+      /* Card hover — desktop only */
+      @media(min-width:1024px){
+        .crm-hover-card{transition:box-shadow 0.18s,transform 0.18s;}
+        .crm-hover-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.12)!important;transform:translateY(-1px);}
+      }
+
+      /* Tablet layout adjustments */
+      @media(min-width:640px) and (max-width:1023px){
+        .crm-tab-content{padding:16px 20px 0;}
+      }
+    `}</style>
     <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
 
       {/* ── DESKTOP SIDEBAR (lg+) — Phase 5: dark navy #0d1b2a, blue filled pill active ─── */}
-      <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh"}} className="hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
+      <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh"}} className="crm-sidebar hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
         {/* Logo */}
         <div style={{borderBottom:"1px solid #1e2d3d",padding:"22px 18px 20px"}} className="flex items-center gap-3">
           <div style={{background:"rgba(37,99,235,0.18)",border:"1.5px solid rgba(37,99,235,0.3)",borderRadius:12,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,userSelect:"none",flexShrink:0,boxShadow:"0 2px 8px rgba(37,99,235,0.25)"}}>{settings?.appEmoji||"🫓"}</div>
@@ -4988,7 +5537,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div style={{flex:1,minWidth:0,paddingBottom:"calc(68px + env(safe-area-inset-bottom,0px))"}}>
+      <div className="crm-main-content" style={{flex:1,minWidth:0,paddingBottom:"calc(68px + env(safe-area-inset-bottom,0px))"}}>
 
       {/* HEADER — full topbar, sticky, white/card bg */}
       <header style={{background:t.topbar,borderBottom:`1px solid ${t.topbarBorder}`,boxShadow:dm?"0 1px 0 rgba(255,255,255,0.03)":"0 1px 3px rgba(0,0,0,0.05)"}} className="sticky top-0 z-30">
@@ -5014,7 +5563,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <input
               value={srch}
               onChange={e=>setSrch(e.target.value)}
-              placeholder={tab==="Customers"?"Search name, phone, address…":tab==="Deliveries"?"Search customer, date, status, invoice…":tab==="Supplies"?"Search item, supplier, date…":tab==="Expenses"?"Search expense, vendor, category…":tab==="Payments"?"Search customer, invoice, reference…":`Search ${TAB_LABELS[tab]||tab}…`}
+              placeholder={tab==="Customers"?`${t18n("search")||"Search"} ${t18n("name")||"name"}, ${t18n("phone")||"phone"}, ${t18n("address")||"address"}…`:tab==="Deliveries"?`${t18n("search")||"Search"} ${t18n("customer")||"customer"}, ${t18n("date")||"date"}, ${t18n("status")||"status"}…`:tab==="Supplies"?`${t18n("search")||"Search"} ${t18n("item")||"item"}, ${t18n("supplier")||"supplier"}…`:tab==="Expenses"?`${t18n("search")||"Search"} ${t18n("expenses")||"expense"}, ${t18n("vendor")||"vendor"}…`:tab==="Payments"?`${t18n("search")||"Search"} ${t18n("customer")||"customer"}, ${t18n("invoice")||"invoice"}…`:`${t18n("search")||"Search"} ${TAB_LABELS[tab]||tab}…`}
               style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"9px 36px 9px 38px",fontSize:14,outline:"none",width:"100%",transition:"border-color 0.15s,box-shadow 0.15s"}}
               onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}}
               onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}
@@ -5789,11 +6338,11 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <select value={custSortField} onChange={e=>setCustSortField(e.target.value)}
               style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer",flexShrink:0,minWidth:130}}>
-              <option value="name">Name A–Z</option>
-              <option value="lastOrder">Last Order</option>
-              <option value="pending">Most Owing</option>
-              <option value="orders">Most Orders</option>
-              <option value="revenue">Revenue ↓</option>
+              <option value="name">{t18n("nameAZ")||"Name A–Z"}</option>
+              <option value="lastOrder">{t18n("last")||"Last Order"}</option>
+              <option value="pending">{t18n("mostOwing")||"Most Owing"}</option>
+              <option value="orders">{t18n("mostOrders")||"Most Orders"}</option>
+              <option value="revenue">{t18n("revenueDesc")||"Revenue ↓"}</option>
             </select>
             <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",alignItems:"center"}}>
             <div className="flex gap-3 flex-wrap">
@@ -5960,7 +6509,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {label:"Notes",key:"notes"}
                 ]);
               }}>CSV</Btn>}
-              <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ Customer</Btn>
+              <Btn dm={dm} size="sm" onClick={()=>{setCf(blkC());setCsh("add");}}>+ {t18n("addCustomer")||"Add Customer"}</Btn>
             </div>
             </div>
           </div>
@@ -5968,11 +6517,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
             <div className="flex gap-3 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",flex:1}}>
               {[
-                {key:"all",    label:`All (${fCust.length})`,         accent:"#6b7280"},
-                {key:"active", label:`Active (${fCust.filter(c=>c.active).length})`,   accent:"#10b981"},
-                {key:"inactive",label:`Inactive (${fCust.filter(c=>!c.active).length})`,accent:"#6b7280"},
-                {key:"owing",  label:`Owing (${fCust.filter(c=>(c.pending||0)>0).length})`, accent:"#ef4444"},
-                {key:"clear",  label:`Paid Up (${fCust.filter(c=>!(c.pending||0)).length})`, accent:"#10b981"},
+                {key:"all",    label:`${t18n("all")||"All"} (${fCust.length})`,         accent:"#6b7280"},
+                {key:"active", label:`${t18n("active")||"Active"} (${fCust.filter(c=>c.active).length})`,   accent:"#10b981"},
+                {key:"inactive",label:`${t18n("inactive")||"Inactive"} (${fCust.filter(c=>!c.active).length})`,accent:"#6b7280"},
+                {key:"owing",  label:`${t18n("owing")||"Owing"} (${fCust.filter(c=>(c.pending||0)>0).length})`, accent:"#ef4444"},
+                {key:"clear",  label:`${t18n("paidUp")||"Paid Up"} (${fCust.filter(c=>!(c.pending||0)).length})`, accent:"#10b981"},
               ].map(({key,label,accent})=>{
                 const active=custStatusFilter===key;
                 return <button key={key} onClick={()=>setCustStatusFilter(key)}
@@ -5983,7 +6532,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>
             {/* View mode toggle */}
             <div style={{display:"flex",gap:4,flexShrink:0,background:t.inp,borderRadius:99,padding:3,border:`1px solid ${t.border}`}}>
-              {[["expanded","📋","Table"],["compact","⚡","Compact"]].map(([v,icon,lbl])=>(
+              {[["expanded","📋",t18n("tableView")],["compact","⚡",t18n("compactView")]].map(([v,icon,lbl])=>(
                 <button key={v} onClick={()=>{setCustView(v);setSelectedCustomer(null);}}
                   style={{background:custView===v?"#2563eb":"transparent",color:custView===v?"#fff":t.sub,border:"none",borderRadius:99,padding:"5px 13px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:4}}>
                   <span>{icon}</span><span style={{display:"none"}}>{lbl}</span><span style={{fontSize:10}}>{lbl}</span>
@@ -6018,11 +6567,11 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             else if(custSortField==="pending") displayCust.sort((a,b)=>(b.pending||0)-(a.pending||0));
             else if(custSortField==="orders") displayCust.sort((a,b)=>b._cDelivs.length-a._cDelivs.length);
             else if(custSortField==="revenue") displayCust.sort((a,b)=>b._cRev-a._cRev);
-            const CPAGE=15;
+            const CPAGE=200; // show all in compact mode — cards are small enough
             const totalCustRows=displayCust.length;
             const pagedCust=displayCust.slice((custPage-1)*CPAGE,custPage*CPAGE);
             const totalPages=Math.ceil(totalCustRows/CPAGE);
-            if(displayCust.length===0) return <p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>No customers found.</p>;
+            if(displayCust.length===0) return <p style={{color:t.sub,textAlign:"center",padding:"40px 0",fontSize:13}}>{t18n("noCustomers")}</p>;
             return <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {pagedCust.map((c)=>{
                 const isExpanded=selectedCustomer?.id===c.id;
@@ -6046,7 +6595,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                         <p style={{color:t.text,fontWeight:800,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{c.name}</p>
                         <span style={{background:c.active?"#10b98115":"#6b728015",color:c.active?"#059669":"#6b7280",border:`1px solid ${c.active?"#10b98125":"#6b728025"}`,borderRadius:99,padding:"2px 8px",fontSize:9,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
-                          {c.active?"ACTIVE":"INACTIVE"}
+                          {c.active?t18n("active").toUpperCase():t18n("inactive").toUpperCase()}
                         </span>
                         {(c.pending||0)>0&&<span style={{background:"#ef444415",color:"#dc2626",border:"1px solid #ef444425",borderRadius:99,padding:"2px 8px",fontSize:9,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>DUE</span>}
                       </div>
@@ -6059,19 +6608,19 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     <div style={{display:"flex",gap:16,alignItems:"center",flexShrink:0}}>
                       <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
                         <span style={{color:"#3b82f6",fontWeight:800,fontSize:15,lineHeight:1}}>{c._cDelivs.length}</span>
-                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Orders</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{t18n("orders")}</span>
                       </div>
                       <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
                         <span style={{color:lastCol,fontWeight:700,fontSize:12,lineHeight:1}}>{lastLabel}</span>
-                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Last</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{t18n("last")}</span>
                       </div>
                       {canSeePrices&&<div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
                         <span style={{color:"#10b981",fontWeight:800,fontSize:13,lineHeight:1}}>{inr(c.paid||0)}</span>
-                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Paid</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{t18n("paid")}</span>
                       </div>}
                       {canSeeFinancials&&<div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
                         <span style={{color:(c.pending||0)>0?"#ef4444":"#10b981",fontWeight:800,fontSize:13,lineHeight:1}}>{(c.pending||0)>0?inr(c.pending):"✓"}</span>
-                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>Due</span>
+                        <span style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:2}}>{t18n("due")}</span>
                       </div>}
                       {/* Expand chevron */}
                       <div style={{width:28,height:28,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:t.sub,fontSize:13,fontWeight:700,transform:isExpanded?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
@@ -6213,9 +6762,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       {/* ── DELIVERIES LIST ── */}
                       <div style={{padding:"14px 18px"}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
-                          <p style={{color:t.text,fontWeight:700,fontSize:12}}>DELIVERIES ({allCDelivs.length})</p>
+                          <p style={{color:t.text,fontWeight:700,fontSize:12}}>{t18n("deliveries2")||"DELIVERIES"} ({allCDelivs.length})</p>
                           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                            {[["all","All"],["today","Today"],["yesterday","Yesterday"],["week","This Week"]].map(([k,l])=>(
+                            {[["all",t18n("all")||"All"],["today",t18n("today2")||"Today"],["yesterday",t18n("yesterday2")||"Yesterday"],["week",t18n("thisWeek2")||"This Week"]].map(([k,l])=>(
                               <button key={k} onClick={()=>setCustDetailDelivFilter(k)}
                                 style={{background:custDetailDelivFilter===k?"#2563eb":t.inp,color:custDetailDelivFilter===k?"#fff":t.sub,border:`1px solid ${custDetailDelivFilter===k?"#2563eb":t.border}`,borderRadius:99,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
                                 {l}
@@ -6223,7 +6772,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             ))}
                           </div>
                         </div>
-                        {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"16px 0"}}>No deliveries match this filter.</p>}
+                        {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"16px 0"}}>{t18n("noDeliveriesFilter")||"No deliveries match this filter."}</p>}
                         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
                           {filtDelivs.map((d,di)=>{
                             const tot=lineTotal(d.orderLines);
@@ -6242,9 +6791,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                 <span style={{color:"#6366f1",fontSize:9,fontFamily:"monospace"}}>{invNo}</span>
                               </div>
                               {rows.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                                {rows.map(([prod,l])=><span key={prod} style={{background:t.card,borderRadius:6,padding:"2px 8px",fontSize:10,color:t.sub,border:`1px solid ${t.border}`}}>
-                                  {prod}: {l.qty} {canSeePrices&&l.price?`× ${inr(l.price)}`:""}
-                                </span>)}
+                                {rows.map(([pid,l])=>{const pName=products.find(p=>p.id===pid)?.name||l.name||pid;return <span key={pid} style={{background:t.card,borderRadius:6,padding:"2px 8px",fontSize:10,color:t.sub,border:`1px solid ${t.border}`}}>
+                                  {l.qty}× {pName}{canSeePrices&&(l.priceAmount||l.price)?` · ${inr(l.priceAmount||l.price)}`:""}
+                                </span>;})}
                               </div>}
                               {d.notes&&<p style={{color:t.sub,fontSize:10,marginTop:4}}>📝 {d.notes}</p>}
                             </div>;
@@ -6258,7 +6807,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               })}
               {/* Pagination */}
               {totalPages>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 4px"}}>
-                <span style={{color:t.sub,fontSize:11}}>Showing {Math.min((custPage-1)*CPAGE+1,totalCustRows)}–{Math.min(custPage*CPAGE,totalCustRows)} of {totalCustRows}</span>
+                <span style={{color:t.sub,fontSize:11}}>{t18n("showing")||"Showing"} {Math.min((custPage-1)*CPAGE+1,totalCustRows)}–{Math.min(custPage*CPAGE,totalCustRows)} {t18n("of")||"of"} {totalCustRows}</span>
                 <div style={{display:"flex",gap:4}}>
                   <button onClick={()=>{if(custPage>1){setCustPage(custPage-1);window.scrollTo({top:0,behavior:"smooth"});setSelectedCustomer(null);}}} disabled={custPage===1}
                     style={{background:t.inp,border:`1px solid ${t.border}`,color:custPage===1?t.sub:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:custPage===1?"default":"pointer",opacity:custPage===1?0.5:1}}>← Prev</button>
@@ -6289,10 +6838,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             else if(custSortField==="revenue") displayCust.sort((a,b)=>b._cRev-a._cRev);
 
             return <>
-            {displayCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">No customers found.</p>}
+            {displayCust.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-8">{t18n("noCustomers")||"No customers found."}</p>}
             {/* ── CUSTOMERS DATA TABLE ── */}
             {displayCust.length>0&&(()=>{
-              const CUST_PAGE_SIZE=15;
+              const CUST_PAGE_SIZE=50;
               const totalCustRows=displayCust.length;
               const pagedCust=displayCust.slice((custPage-1)*CUST_PAGE_SIZE,custPage*CUST_PAGE_SIZE);
               return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
@@ -6414,7 +6963,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 {/* Table Pagination Footer */}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
                   <p style={{color:t.sub,fontSize:12,fontWeight:500,flexShrink:0}}>
-                    Showing <b style={{color:t.text}}>{Math.min((custPage-1)*CUST_PAGE_SIZE+1,totalCustRows)}</b> to <b style={{color:t.text}}>{Math.min(custPage*CUST_PAGE_SIZE,totalCustRows)}</b> of <b style={{color:t.text}}>{totalCustRows}</b> customers
+                    Showing <b style={{color:t.text}}>{Math.min((custPage-1)*CUST_PAGE_SIZE+1,totalCustRows)}</b> {t18n("to")||"to"} <b style={{color:t.text}}>{Math.min(custPage*CUST_PAGE_SIZE,totalCustRows)}</b> {t18n("of")||"of"} <b style={{color:t.text}}>{totalCustRows}</b> {t18n("customers")||"customers"}
                   </p>
                   {totalCustRows>CUST_PAGE_SIZE&&(()=>{
                     const totalPages=Math.ceil(totalCustRows/CUST_PAGE_SIZE);
@@ -6604,9 +7153,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {/* RIGHT COLUMN — deliveries list */}
                   <div style={{flex:1,minWidth:280,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>DELIVERIES ({allCDelivs.length} total)</p>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{t18n("deliveries2")||"DELIVERIES"} ({allCDelivs.length} total)</p>
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {[["all","All"],["today","Today"],["yesterday","Yesterday"],["week","This Week"]].map(([k,l])=>(
+                        {[["all",t18n("all")||"All"],["today",t18n("today2")||"Today"],["yesterday",t18n("yesterday2")||"Yesterday"],["week",t18n("thisWeek2")||"This Week"]].map(([k,l])=>(
                           <button key={k} onClick={()=>setCustDetailDelivFilter(k)}
                             style={{background:custDetailDelivFilter===k?"#2563eb":t.inp,color:custDetailDelivFilter===k?"#fff":t.sub,border:`1px solid ${custDetailDelivFilter===k?"#2563eb":t.border}`,borderRadius:99,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                             {l}
@@ -6615,7 +7164,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       </div>
                     </div>
 
-                    {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"24px 0"}}>No deliveries in this period.</p>}
+                    {filtDelivs.length===0&&<p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"24px 0"}}>{t18n("noDeliveriesFilter")||"No deliveries in this period."}</p>}
                     <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:520,overflowY:"auto"}}>
                       {filtDelivs.map(d=>{
                         const dInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||`TAS-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
@@ -6699,7 +7248,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           <SectionHeader dm={dm} title="Deliveries" sub="Track and manage all your deliveries"
             cta={can("deliv_add")&&<button onClick={()=>{setDf(blkD());setDsh("add");}}
               style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Delivery
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> {t18n("addDelivery")||"Add Delivery"}
             </button>}/>
           <TabStatCards dm={dm} cards={[
             {icon:"🚚",label:"Total Deliveries",value:deliveries.length,sub:`${delivStatusCounts.Delivered} delivered`,iconBg:t.statIcon1},
@@ -6711,10 +7260,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           {/* Top summary pills — now tappable as filters */}
           <div className="flex items-center gap-2 flex-wrap">
             {[
-              {key:"all",label:`All (${deliveries.length})`,c:"stone"},
-              {key:"Pending",label:`${delivStatusCounts.Pending} Pending`,c:"amber"},
-              {key:"In Transit",label:`${delivStatusCounts["In Transit"]} Transit`,c:"blue"},
-              {key:"Delivered",label:`${delivStatusCounts.Delivered} Done`,c:"green"},
+              {key:"all",label:`${t18n("all")||"All"} (${deliveries.length})`,c:"stone"},
+              {key:"Pending",label:`${delivStatusCounts.Pending} ${t18n("pending")||"Pending"}`,c:"amber"},
+              {key:"In Transit",label:`${delivStatusCounts["In Transit"]} ${t18n("inTransit")||"Transit"}`,c:"blue"},
+              {key:"Delivered",label:`${delivStatusCounts.Delivered} ${t18n("delivered")||"Done"}`,c:"green"},
             ].map(({key,label,c})=>(
               <button key={key} onClick={()=>setDelivStatusFilter(key)}
                 style={{border:`1.5px solid ${delivStatusFilter===key?(c==="amber"?"#f59e0b":c==="blue"?"#3b82f6":c==="green"?"#10b981":"#6b7280"):"transparent"}`,borderRadius:99,padding:"0",background:"transparent",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
@@ -6725,10 +7274,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           {/* ── DATE FILTER ROW ── */}
           <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none"}}>
             {[
-              {key:"all",label:"All Dates"},
-              {key:"today",label:"Today"},
-              {key:"yesterday",label:"Yesterday"},
-              {key:"week",label:"This Week"},
+              {key:"all",label:t18n("all")||"All Dates"},
+              {key:"today",label:t18n("today2")||"Today"},
+              {key:"yesterday",label:t18n("yesterday2")||"Yesterday"},
+              {key:"week",label:t18n("thisWeek2")||"This Week"},
               {key:"custom",label:"Custom"},
             ].map(({key,label})=>(
               <button key={key} onClick={()=>setDelivDateFilter(key)}
@@ -6777,9 +7326,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           </div>}
           {/* View toggle */}
           <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
-            <span style={{color:t.sub,fontSize:11,fontWeight:600}}>View:</span>
-            {[["expanded","📋 Expanded"],["compact","⚡ Compact"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setDelivView(v)}
+            <span style={{color:t.sub,fontSize:11,fontWeight:600}}>{t18n("tableView")||"View"}:</span>
+            {[["expanded",`📋 ${t18n("expanded")||"Expanded"}`],["compact",`⚡ ${t18n("compact")||"Compact"}`]].map(([v,l])=>(
+              <button key={v} onClick={()=>{setDelivView(v);setExpandedDelivRow(null);}}
                 style={{background:delivView===v?"#2563eb":t.inp,color:delivView===v?"#fff":t.sub,border:`1.5px solid ${delivView===v?"#2563eb":t.border}`,borderRadius:99,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                 {l}
               </button>
@@ -7039,7 +7588,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             };
             if(totalDelivRows===0) return <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:"48px 24px",textAlign:"center"}}>
               <p style={{fontSize:32,marginBottom:8}}>📭</p>
-              <p style={{color:t.sub,fontSize:14,fontWeight:500}}>No deliveries found.{delivStatusFilter!=="all"?` (filter: ${delivStatusFilter})`:""}</p>
+              <p style={{color:t.sub,fontSize:14,fontWeight:500}}>{t18n("noDeliveries")||"No deliveries found."}{delivStatusFilter!=="all"?` (${t18n("filter")||"filter"}: ${delivStatusFilter})`:""}</p>
             </div>;
 
             // ── COMPACT CARD VIEW (grouped by customer, like image 2) ──
@@ -7099,62 +7648,71 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
                         const rows=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0);
                         const batchLabel=d.batches?.map(b=>b.name||b).join(", ")||d.batch||"";
-                        return <div key={d.id||di} style={{borderTop:di>0?`1px solid ${t.border}`:"none",padding:"14px 16px"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
-                            <span style={{color:t.text,fontWeight:700,fontSize:13}}>{d.date}</span>
-                            {d.deliveryDate&&d.deliveryDate!==d.date&&<><span style={{color:t.sub,fontSize:11}}>→ deliver by {d.deliveryDate}</span></>}
-                            <span style={{display:"inline-flex",alignItems:"center",gap:4,background:d.status==="Delivered"?"#10b98118":d.status==="Cancelled"?"#ef444418":"#f59e0b18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 10px",fontSize:11,fontWeight:700}}>{d.status}</span>
-                            {settled&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ Settled</span>}
+                        const isRowExpanded=expandedDelivRow===d.id;
+                        return <div key={d.id||di} style={{borderTop:di>0?`1px solid ${t.border}`:"none"}}>
+                          {/* ── COLLAPSED ROW (always visible, click to expand) ── */}
+                          <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",background:isRowExpanded?(dm?"rgba(37,99,235,0.08)":"rgba(37,99,235,0.04)"):"transparent",flexWrap:"wrap"}}
+                            onClick={()=>setExpandedDelivRow(isRowExpanded?null:d.id)}>
+                            <span style={{color:t.text,fontWeight:700,fontSize:13,flexShrink:0}}>{d.date}</span>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4,background:d.status==="Delivered"?"#10b98118":d.status==="Cancelled"?"#ef444418":"#f59e0b18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{d.status}</span>
+                            {settled&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓</span>}
+                            <span style={{flex:1,minWidth:0,color:t.sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rows.slice(0,2).map(([pid,l])=>{const pn=products.find(p=>p.id===pid)?.name||l.name||pid;return`${l.qty}× ${pn}`;}).join(", ")}{rows.length>2?` +${rows.length-2}`:" "}</span>
+                            {canSeePrices&&tot>0&&<span style={{color:"#f59e0b",fontWeight:800,fontSize:13,flexShrink:0}}>{inr(tot)}</span>}
+                            <div style={{width:24,height:24,borderRadius:7,background:t.inp,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,color:t.sub,transform:isRowExpanded?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.18s"}}>∨</div>
                           </div>
+                          {/* ── EXPANDED DETAIL (only when clicked) ── */}
+                          {isRowExpanded&&<div style={{padding:"0 16px 14px",background:dm?"rgba(37,99,235,0.04)":"rgba(37,99,235,0.02)"}}>
                           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
                             {d.createdBy&&<span style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</span>}
-                            <span style={{color:"#2563eb",fontSize:10,fontFamily:"monospace",cursor:"pointer"}} onClick={()=>setDetailModal({type:"delivery",data:d})}>{invNo}</span>
+                            <span style={{color:"#2563eb",fontSize:10,fontFamily:"monospace",cursor:"pointer"}} onClick={e=>{e.stopPropagation();setDetailModal({type:"delivery",data:d});}}>{invNo}</span>
                             <span style={{color:"#7c3aed",fontSize:10,fontFamily:"monospace"}}>{rcptNo}</span>
                             {batchLabel&&<span style={{color:"#f59e0b",fontSize:10}}>⚡ {batchLabel}</span>}
+                            {d.deliveryDate&&d.deliveryDate!==d.date&&<span style={{color:t.sub,fontSize:10}}>→ deliver by {d.deliveryDate}</span>}
                           </div>
                           <div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Items Ordered</p>
-                            {rows.map(([pid,l])=>(
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{t18n("items")}</p>
+                            {rows.map(([pid,l])=>{const pn=products.find(p=>p.id===pid)?.name||l.name||pid;return(
                               <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                                <span style={{color:t.text,fontSize:12}}>{l.qty} × <b>{l.name||pid}</b> @ ₹{l.priceAmount||0}</span>
+                                <span style={{color:t.text,fontSize:12}}>{l.qty} × <b>{pn}</b>{canSeePrices?` @ ₹${l.priceAmount||0}`:""}</span>
                                 {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:12}}>{inr((l.qty||0)*(l.priceAmount||0))}</span>}
                               </div>
-                            ))}
+                            );})}
                             {canSeePrices&&<div style={{borderTop:`1px solid ${t.border}`,marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
-                              <span style={{color:t.sub,fontSize:12}}>Order Total</span>
+                              <span style={{color:t.sub,fontSize:12}}>{t18n("orderTotal")}</span>
                               <span style={{color:"#f59e0b",fontWeight:800,fontSize:13}}>{inr(tot)}</span>
                             </div>}
                           </div>
                           {canSeePrices&&<div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Payment Summary</p>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{t18n("amountCollected")}</p>
                             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                              <span style={{color:t.sub,fontSize:12}}>Order total</span>
+                              <span style={{color:t.sub,fontSize:12}}>{t18n("orderTotal")}</span>
                               <span style={{color:t.text,fontSize:12,fontWeight:600}}>{inr(tot)}</span>
                             </div>
                             {dRepl>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                              <span style={{color:"#f97316",fontSize:12}}>Replacement deducted</span>
+                              <span style={{color:"#f97316",fontSize:12}}>{t18n("replacement")}</span>
                               <span style={{color:"#f97316",fontSize:12,fontWeight:700}}>−{inr(dRepl)}</span>
                             </div>}
                             {d.partialPayment?.enabled&&(+d.partialPayment.amount||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                              <span style={{color:"#10b981",fontSize:12}}>💰 Collected</span>
+                              <span style={{color:"#10b981",fontSize:12}}>{t18n("collected")}</span>
                               <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>−{inr(+d.partialPayment.amount)}</span>
                             </div>}
                             <div style={{borderTop:`1px solid ${t.border}`,marginTop:4,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
-                              <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"✓ Fully settled":"Balance due"}</span>
+                              <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?t18n("settled"):t18n("balanceDue")}</span>
                               <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"—":inr(dBal)}</span>
                             </div>
                           </div>}
                           {/* Action buttons */}
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             {(d.address||groupCust?.address)&&<button onClick={()=>window.open(mapU(d.address||groupCust?.address,d.lat||groupCust?.lat,d.lng||groupCust?.lng),"_blank")} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📍 Nav</button>}
-                            {can("deliv_edit")&&<button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Edit</button>}
+                            {can("deliv_edit")&&<button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t18n("edit")}</button>}
                             <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed30",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>PDF</button>
-                            {settings?.receiptEnabled!==false&&<button onClick={()=>exportPDF(d,products,"receipt",settings)} style={{background:"#2563eb15",color:"#2563eb",border:"1px solid #2563eb30",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Receipt</button>}
-                            {settings?.agentInvoiceEnabled!==false&&<button onClick={()=>exportPDF(d,products,"invoice",settings)} style={{background:"#059669 15",color:"#059669",border:"1px solid #05996930",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 Invoice</button>}
-                            <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D36615",color:"#25D366",border:"1px solid #25D36630",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>WA</button>
-                            {(can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&<button onClick={()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
-                            {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Delete</button>}
+                            {settings?.receiptEnabled!==false&&<button onClick={()=>exportPDF(d,products,"receipt",settings)} style={{background:"#2563eb15",color:"#2563eb",border:"1px solid #2563eb30",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 {t18n("receipt")}</button>}
+                            {settings?.agentInvoiceEnabled!==false&&<button onClick={()=>exportPDF(d,products,"invoice",settings)} style={{background:"#05996915",color:"#059669",border:"1px solid #05996930",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 {t18n("invoice")}</button>}
+                            <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D36615",color:"#25D366",border:"1px solid #25D36630",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💬 WA</button>
+                            {(can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&<button onClick={()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 {t18n("collect")}</button>}
+                            {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t18n("delete")}</button>}
                           </div>
+                          </div>}
                         </div>;
                       })}
                     </div>
@@ -7299,7 +7857,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:10,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
                   {/* Left: showing X to Y of Z */}
                   <p style={{color:t.sub,fontSize:12,fontWeight:500,flexShrink:0}}>
-                    Showing <b style={{color:t.text}}>{Math.min((delivPage-1)*DELIV_PAGE_SIZE+1,totalDelivRows)}</b> to <b style={{color:t.text}}>{Math.min(delivPage*DELIV_PAGE_SIZE,totalDelivRows)}</b> of <b style={{color:t.text}}>{totalDelivRows}</b> deliveries
+                    Showing <b style={{color:t.text}}>{Math.min((delivPage-1)*DELIV_PAGE_SIZE+1,totalDelivRows)}</b> {t18n("to")||"to"} <b style={{color:t.text}}>{Math.min(delivPage*DELIV_PAGE_SIZE,totalDelivRows)}</b> {t18n("of")||"of"} <b style={{color:t.text}}>{totalDelivRows}</b> {t18n("deliveries")||"deliveries"}
                   </p>
                   {/* Center: page buttons */}
                   {totalDelivRows>DELIV_PAGE_SIZE&&(()=>{
@@ -7648,7 +8206,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 <button onClick={()=>exportTabExcel("Supplies",supplies,[{label:"Item",key:"item"},{label:"Qty",key:"qty",num:true},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost",num:true},{label:"Min Stock",key:"minStock"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}],settings)} style={{background:t.inp,color:t.sub,border:`1px solid ${t.border}`,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>XLS</button>
               </div>}
               {can("sup_add")&&<button onClick={()=>{setSf(blkS());setSsh("add");}} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,minHeight:40,boxShadow:"0 2px 8px rgba(37,99,235,0.35)"}}>
-                <span style={{fontSize:16,lineHeight:1}}>+</span> Add Supply
+                <span style={{fontSize:16,lineHeight:1}}>+</span> {t18n("addSupply")||"Add Supply"}
               </button>}
             </div>
           </div>
@@ -7856,7 +8414,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               <SectionHeader dm={dm} title="Expenses" sub={`${filterLabel} · ${filteredExp.length} entries`}
                 cta={<button onClick={()=>{setEsh("add");setEf(blkE());}}
                     style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Expense
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> {t18n("addExpense")||"Add Expense"}
                   </button>}/>
               {/* ── DATE FILTER PILLS ── */}
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -12888,17 +13446,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                   <p style={{color:"#059669",fontSize:11,fontWeight:700}}>✓ Web App URL configured — 📊 Push to Sheets buttons now appear on Deliveries and Expenses tabs</p>
                 </div>}
               </div>}
-              {settings?.featureMultiLanguage&&<div className="flex flex-col gap-2 mt-4 pt-4" style={{borderTop:`1.5px solid ${t.border}`}}>
-                <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em"}}>Default Language</p>
-                <div className="flex gap-3 flex-wrap">
-                  {[{code:"en",label:"English"},{code:"hi",label:"हिंदी"},{code:"mr",label:"मराठी"}].map(lang=>(
-                    <button key={lang.code} onClick={()=>setSettings(s=>({...s,defaultLanguage:lang.code}))}
-                      style={{background:(settings?.defaultLanguage||"en")===lang.code?t.accent:t.inp,color:(settings?.defaultLanguage||"en")===lang.code?t.accentFg:t.sub,border:`1.5px solid ${(settings?.defaultLanguage||"en")===lang.code?t.accent:t.border}`,borderRadius:10,padding:"7px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                      {lang.label}
-                    </button>
-                  ))}
-                </div>
-              </div>}
+
             </div></Card>
           </>}
 
@@ -13843,12 +14391,16 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
             {/* Language selector */}
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
               <p style={{color:t.text}} className="text-sm font-bold">🌐 Language</p>
-              <p style={{color:t.sub,fontSize:11}}>Changes tab labels, status strings, and UI text across the app.</p>
-              <Sel dm={dm} label="App Language" value={settings?.language||"en"} onChange={e=>{setSettings(s=>({...s,language:e.target.value}));setAppLang(e.target.value);}}>
-                <option value="en">🇬🇧 English</option>
-                <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
-                <option value="ml">🇮🇳 മലയാളം (Malayalam)</option>
-              </Sel>
+              <p style={{color:t.sub,fontSize:11}}>Changes tab labels, status strings, and UI text across the entire app for all users.</p>
+              <div className="flex gap-2 flex-wrap">
+                {[{code:"en",label:"🇬🇧 English"},{code:"hi",label:"🇮🇳 हिन्दी"},{code:"mr",label:"🇮🇳 मराठी"},{code:"ml",label:"🇮🇳 മലയാളം"}].map(lang=>(
+                  <button key={lang.code} onClick={()=>{setSettings(s=>({...s,defaultLanguage:lang.code,language:lang.code}));setAppLang(lang.code);}}
+                    style={{background:(settings?.defaultLanguage||"en")===lang.code?t.accent:t.inp,color:(settings?.defaultLanguage||"en")===lang.code?t.accentFg:t.sub,border:`1.5px solid ${(settings?.defaultLanguage||"en")===lang.code?t.accent:t.border}`,borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+              <p style={{color:t.sub,fontSize:10}}>Selected: <b style={{color:t.text}}>{({en:"English",hi:"हिन्दी (Hindi)",mr:"मराठी (Marathi)",ml:"മലയാളം (Malayalam)"})[settings?.defaultLanguage||"en"]}</b> — applies everywhere immediately</p>
             </div></Card>
 
             <Card dm={dm}><div className="p-4 flex flex-col gap-3">
