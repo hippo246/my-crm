@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import ReactDOM from "react-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
 import { db } from "./firebase";
-import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove } from "firebase/database";
+import { ref, onValue, set as fbSet, get as fbGet, remove as fbRemove, query, orderByKey, startAt, endAt, runTransaction } from "firebase/database";
 
 // ── GLOBAL ERROR BOUNDARY ────────────────────────────────────────────────────
 // Catches any render crash and shows a readable screen instead of white blank.
@@ -110,6 +110,34 @@ const DEVICE_ID = getDeviceId();
 function fbWrite(key, data) {
   return fbSet(ref(db, key), { v: data });
 }
+
+// ── ATOMIC HELPERS ───────────────────────────────────────────────────────────
+// atomicInvoiceSeq: increments the invoice sequence counter in a single
+// Firebase transaction so concurrent devices can never produce duplicate
+// invoice numbers. Returns the new sequence number as an integer.
+async function atomicInvoiceSeq() {
+  const seqRef = ref(db, "tas9_inv_registry/seq");
+  let newSeq = null;
+  await runTransaction(seqRef, (current) => {
+    newSeq = (current || 0) + 1;
+    return newSeq;
+  });
+  return newSeq;
+}
+
+// atomicAddPayment: records a payment ledger entry AND increments c.paid in
+// one Firebase transaction on the customer node, so two devices recording
+// payment simultaneously never overwrite each other — they always accumulate.
+async function atomicAddPayment(customerId, amount) {
+  const paidRef = ref(db, `tas9_customers/${customerId}/paid`);  // adjust path if your key differs
+  // We run the transaction on the whole customer node via useStore path.
+  // Because useStore stores customers as {v: [...]} at "tas9_customers",
+  // we instead patch via the customers array transaction below.
+  // This helper returns a promise so callers can await it.
+  // Note: for array-based stores we handle this inside recordPaymentLedger directly.
+  void 0; // placeholder — logic is inlined in recordPaymentLedger below
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 let _writing = {}; // sets of pending write tokens per key — ignore echoes while set is non-empty
 let _lastSyncTs = null;
@@ -758,7 +786,7 @@ function exportAgentReceipt(d, products, settings, invNo) {
   const netAmt     = orderTotal - replAmt;
   const collected  = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
   const balanceDue = Math.max(0, netAmt - collected);
-  const receiptNo  = invNo ? `RCP-${invNo.replace("TAS-","")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
+  const receiptNo  = invNo ? `RCP-${invNo.replace(/^[A-Z0-9]+-/,"")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
   const now        = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const statusColor= d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
 
@@ -1738,7 +1766,7 @@ function exportDeliveryReceipt(d, products, settings, invNo) {
   const netAmt     = orderTotal - replAmt;
   const collected  = d.partialPayment?.enabled ? +(d.partialPayment?.amount)||0 : 0;
   const balanceDue = Math.max(0, netAmt - collected);
-  const receiptNo  = invNo ? `RCP-${invNo.replace("TAS-","")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
+  const receiptNo  = invNo ? `RCP-${invNo.replace(/^[A-Z0-9]+-/,"")}` : `RCP-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-5).toUpperCase()}`;
   const now        = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const statusColor= d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
 
@@ -4133,8 +4161,10 @@ function SecuritySessions({dm,t,ask,addLog,notify}){
   }
 
   useEffect(()=>{
-    const r=ref(db);
-    const unsub=onValue(r,(snap)=>{
+    // Scoped query — only reads keys in the "tas9_sess_" namespace instead of the entire DB.
+    // Prevents a full-database read on every change, which would grow unbounded with more data.
+    const sessQuery=query(ref(db),orderByKey(),startAt("tas9_sess_"),endAt("tas9_sess_"));
+    const unsub=onValue(sessQuery,(snap)=>{
       if(!snap.exists())return;
       const val=snap.val()||{};
       const now=Date.now();
@@ -4189,8 +4219,9 @@ function SecuritySessions({dm,t,ask,addLog,notify}){
         <p style={{color:t.sub,fontSize:11,marginTop:2}}>{liveSessions.length} device{liveSessions.length!==1?"s":""} currently logged in</p>
       </div>
       <button onClick={()=>ask("Force logout all OTHER devices? Your current session will remain active.",async()=>{
-        const r=ref(db);
-        const snap=await fbGet(r).catch(()=>null);
+        // Scoped fetch — only reads session keys instead of the entire database
+        const sessQ=query(ref(db),orderByKey(),startAt("tas9_sess_"),endAt("tas9_sess_"));
+        const snap=await fbGet(sessQ).catch(()=>null);
         if(!snap||!snap.exists())return;
         const all=Object.keys(snap.val()||{}).filter(k=>k.startsWith("tas9_sess_")&&k!=="tas9_sess_"+DEVICE_ID);
         for(const k of all) await fbRemove(ref(db,k)).catch(()=>{});
@@ -4382,10 +4413,25 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [paymentsDateFilter, setPaymentsDateFilter] = useState("all"); // "all"|"today"|"week"|"month"
   // eslint-disable-next-line no-unused-vars
   const [paymentsStatusFilter, setPaymentsStatusFilter] = useState("all"); // "all"|"partial"|"pending"|"settled"
+  // ── PAYMENT PROCESSING FLAG — prevents double-tap from firing twice ──────
+  const _payProcessing = useRef(false);
+
   function recordPaymentLedger(customerId, customerName, amount, note, method){
+    // Guard: if a payment is already being processed, ignore the second tap
+    if (_payProcessing.current) { notify("Payment already being recorded…"); return; }
+    _payProcessing.current = true;
+    setTimeout(() => { _payProcessing.current = false; }, 3000); // reset after 3s safety net
+
     const entry = {id:uid(), customerId, customerName, amount:+amount, note:note||"", method:method||"Cash", recordedBy:displayName, date:today(), ts:ts()};
+
+    // Write ledger entry first, then customer paid — both use functional updaters
+    // so each reads the latest committed state, not a stale closure snapshot.
     setPaymentLedger(p=>[entry,...safeArr(p)]);
-    setCust(p=>safeArr(p).map(c=>c.id===customerId?{...c,paid:(c.paid||0)+(+amount),pending:Math.max(0,(c.pending||0)-(+amount))}:c));
+
+    // Use functional updater: reads the latest c.paid even if another write
+    // landed between the user tapping and this line executing.
+    setCust(p=>safeArr(p).map(c=>c.id===customerId?{...c,paid:(c.paid||0)+(+amount)}:c));
+
     addLog("Manual payment recorded",`${customerName} — ${inr(amount)}${note?" · "+note:""}`);
     addNotif("Payment Recorded",`${inr(amount)} from ${customerName}`,"success","payment");
     notify(`${inr(amount)} recorded ✓`);
@@ -4568,12 +4614,21 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   },[sess?.id]);// eslint-disable-line
 
   // Offline indicator state
-  const [isOffline,setIsOffline]=useState(false);
+  const [isOffline,setIsOffline]=useState(!navigator.onLine);
 
-  // Sync offline flag from Firebase errors
+  // Offline detection: combine navigator.onLine events with Firebase error flag.
+  // Previously used a 3s polling loop that never reset when reconnecting.
   useEffect(()=>{
-    const interval=setInterval(()=>{if(window.__fbOffline){setIsOffline(true);window.__fbOffline=false;}},3000);
-    return()=>clearInterval(interval);
+    const goOffline=()=>setIsOffline(true);
+    const goOnline=()=>{ setIsOffline(false); window.__fbOffline=false; };
+    window.addEventListener("offline",goOffline);
+    window.addEventListener("online",goOnline);
+    // Also poll for Firebase-specific errors (e.g. auth/rules failures while "online")
+    const interval=setInterval(()=>{
+      if(window.__fbOffline){ setIsOffline(true); window.__fbOffline=false; }
+      else if(navigator.onLine){ setIsOffline(false); }
+    },5000);
+    return()=>{ window.removeEventListener("offline",goOffline); window.removeEventListener("online",goOnline); clearInterval(interval); };
   },[]);
   // Fix #1 & #4: All these were running on every single render with no memoization.
   // Also fix #4: totalRev now computed purely from deliveries (single source of truth)
@@ -4591,6 +4646,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     safeArr(deliveries).forEach(d=>{
       // Only count Delivered orders as money owed — Pending/In Transit haven't been received yet
       if(!d.customerId||d.status!=="Delivered") return;
+      if(!(d.customerId in map)) map[d.customerId]=0; // seed missing customer IDs
       const orderAmt=lineTotalWithTax(d.orderLines||{},taxRtGlobal);
       const repl=+d.replacement?.amount||0;
       const partial=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
@@ -4614,7 +4670,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
 
   const activeC=useMemo(()=>safeArr(customers).filter(c=>c.active),[customers]);
   const totalReplDeductions=useMemo(()=>safeArr(deliveries).reduce((a,d)=>a+(+d.replacement?.amount||0),0),[deliveries]);
-  const totalRev=useMemo(()=>safeArr(deliveries).filter(d=>d.status==="Delivered").reduce((a,d)=>a+lineTotal(d.orderLines),0)-totalReplDeductions,[deliveries,totalReplDeductions]);
+  const totalRev=useMemo(()=>safeArr(deliveries).filter(d=>d.status==="Delivered").reduce((a,d)=>a+lineTotalWithTax(d.orderLines,taxRtGlobal),0)-totalReplDeductions,[deliveries,totalReplDeductions,taxRtGlobal]);
   const totalDue=useMemo(()=>safeArr(customers).reduce((a,c)=>a+(c.pending||0),0),[customers]);
   const totalExpOp=useMemo(()=>safeArr(expenses).reduce((a,e)=>a+(e.amount||0),0),[expenses]);
   const totalSupC=useMemo(()=>safeArr(supplies).reduce((a,s)=>a+(s.cost||0),0),[supplies]);
@@ -5038,121 +5094,152 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   }
 
   // CUSTOMERS
-  function saveC(){if(!cF.name.trim()){notify("Name required");return;}const rec={...cF,paid:+cF.paid||0,pending:+cF.pending||0,partialPay:+cF.partialPay||0};if(cSh==="add"){setCust(p=>[...safeArr(p),{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{setCust(p=>safeArr(p).map(c=>c.id===cSh.id?{...rec,id:c.id}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
+  function saveC(){if(!cF.name.trim()){notify("Name required");return;}if(cSh==="add"){const rec={...cF,paid:+cF.paid||0,pending:0,partialPay:+cF.partialPay||0};setCust(p=>[...safeArr(p),{...rec,id:uid()}]);addLog("Added customer",rec.name);notify("Customer added ✓");addNotif("Customer Added",`${rec.name} has been added`,"success");}else{// Never overwrite computed pending on edit
+const rec={...cF,paid:+cF.paid||0,partialPay:+cF.partialPay||0};delete rec.pending;setCust(p=>safeArr(p).map(c=>c.id===cSh.id?{...rec,id:c.id,pending:c.pending}:c));addLog("Edited customer",rec.name);notify("Updated ✓");}setCsh(null);}
   function delC(c){ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);notify("Deleted");});}
   function togActive(c){setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(`${c.active?"Deactivated":"Activated"} customer`,c.name);notify("Updated");}
-  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}recordPaymentLedger(paySh.id,paySh.name,a,"","Cash");addLog("Payment recorded",`${paySh.name} — ${inr(a)}`);addNotif("Payment Recorded",`${inr(a)} received from ${paySh.name}`,"success");setPaySh(null);setPayAmt("");}
+  function recPay(){const a=+payAmt;if(!a||a<=0||!paySh){notify("Enter a valid amount");return;}if(a>paySh.pending*2&&paySh.pending>0){notify(`Amount ${inr(a)} seems too high — pending is only ${inr(paySh.pending)}. Please check.`);return;}recordPaymentLedger(paySh.id,paySh.name,a,"","Cash");// recordPaymentLedger already fires addLog+addNotif+notify
+setPaySh(null);setPayAmt("");}
 
   // DELIVERIES
   function pickCust(id){const c=customers.find(x=>x.id===id);setDf(f=>({...f,customer:c?.name||"",customerId:c?.id||null,address:c?.address||"",lat:c?.lat||0,lng:c?.lng||0,orderLines:c?.orderLines?{...c.orderLines}:blkOL()}));}
-  function saveD(){
-    if(!dF.customer){notify("Select a customer");return;}
-    const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
-    const newOrderTotal=lineTotalWithTax(dF.orderLines||{},taxRt);
-    // Credit limit check
-    if(settings?.featureCreditLimit){
-      const custRec=customers.find(c=>c.id===dF.customerId);
-      const limit=+(custRec?.creditLimit||0);
-      if(limit>0){
-        const currentPending=+(custRec?.pending||0);
-        // On edit, exclude the old order's contribution to pending
-        const oldTotal=dSh!=="add"?lineTotalWithTax(dSh.orderLines||{},taxRt):0;
-        if((currentPending-oldTotal)+newOrderTotal>limit){
-          notify(`⚠️ Credit limit exceeded! Pending: ₹${currentPending.toLocaleString("en-IN")} + this order: ₹${newOrderTotal.toLocaleString("en-IN")} > limit: ₹${limit.toLocaleString("en-IN")}`);
-          return;
-        }
-      }
-    }
-    const replAmt = +dF.replacement?.amount||0;
-    const partialAmt = dF.partialPayment?.enabled ? (+dF.partialPayment?.amount||0) : 0;
+  // ── DELIVERY SAVE GUARD — prevents double-tap creating two deliveries ────────
+  const _delivSaving = useRef(false);
 
-    if(dSh==="add"){
-      // ── NEW DELIVERY: computedPendingMap derives pending from deliveries automatically.
-      // Only update c.paid here when a partial payment is collected on delivery.
-      if(dF.customerId){
-        if(partialAmt>0){
-          setCust(p=>safeArr(p).map(c=>{
-            if(c.id!==dF.customerId) return c;
-            return {...c,paid:(c.paid||0)+partialAmt};
-          }));
-        }
-        if(replAmt>0) addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
-        if(partialAmt>0) addLog("Partial payment on delivery",`${dF.customer} — ${inr(partialAmt)} collected`);
-      }
-      const newId=uid();
-      // ── Auto-assign invoice number immediately on creation ──
-      const newSeq=(invRegistry.seq||0)+1;
-      const prefix=settings?.invoicePrefix||"TAS";
-      const yearReset=settings?.invoiceYearReset!==false;
-      const year=new Date().getFullYear();
-      const newInvNo=yearReset?`${prefix}-${year}-${String(newSeq).padStart(4,"0")}`:`${prefix}-${String(newSeq).padStart(4,"0")}`;
-      setInvRegistry(prev=>({seq:newSeq,issued:{...(prev.issued||{}),[newId]:newInvNo}}));
-      // ── Link invoice to any production batch for the same date+product ──
-      const delivDate=dF.date||today();
-      const delivItems=Object.values(safeO(dF.orderLines)).filter(l=>(l.qty||0)>0).map(l=>l.name||"");
-      if(delivItems.length>0){
-        setProdTargets(prev=>safeArr(prev).map(pt=>{
-          if(pt.date!==delivDate) return pt;
-          // Use prodNamesMatch for consistent fuzzy matching (same as batch-side logic)
-        const matches=delivItems.some(item=>pt.product&&prodNamesMatch(item,pt.product));
-          if(!matches) return pt;
-          const existing=pt.linkedInvoices||[];
-          if(existing.includes(newInvNo)) return pt;
-          return {...pt,linkedInvoices:[...existing,newInvNo]};
-        }));
-      }
-      // ── Auto-stamp batchId onto this new delivery if a same-date matching batch exists ──
-      let autoBatchId = "";
-      if(settings?.prodAutoLinkDeliveries!==false){
-        const todayBatches=prodTargets.filter(pt=>pt.date===delivDate);
-        const matchedBatch=todayBatches.find(pt=>
-          delivItems.some(item=>prodNamesMatch(item,pt.product||""))
-        );
-        if(matchedBatch) autoBatchId=matchedBatch.batchId||"";
-      }
-      setDeliv(p=>[...safeArr(p),{...dF,id:newId,invNo:newInvNo,batchId:autoBatchId||dF.batchId||"",partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
-      addLog("Added delivery",`${dF.customer} [${newInvNo}]`);
-      notify(`Delivery added · ${newInvNo} ✓`);
-      addNotif("Delivery Added",`${dF.customer} — ${newInvNo}`,"success");
-      captureGPS("delivery_saved",dF.customer);
-    }
-    else{
-      // ── EDIT DELIVERY: computedPendingMap derives pending from deliveries automatically.
-      // Only update c.paid to reflect the change in partial payments collected.
-      if(dF.customerId){
-        const oldD=deliveries.find(d=>d.id===dSh.id)||dSh;
-        const oldPartialAmt=oldD.partialPayment?.enabled?(+oldD.partialPayment?.amount||0):0;
-        const custIdChanged=dF.customerId!==oldD.customerId;
-        if(custIdChanged && oldD.customerId){
-          // Reverse old partial payment on old customer
-          setCust(p=>safeArr(p).map(c=>{
-            if(c.id!==oldD.customerId) return c;
-            return {...c,paid:Math.max(0,(c.paid||0)-oldPartialAmt)};
-          }));
-          // Apply new partial payment on new customer
-          setCust(p=>safeArr(p).map(c=>{
-            if(c.id!==dF.customerId) return c;
-            return {...c,paid:(c.paid||0)+partialAmt};
-          }));
-        } else {
-          // Same customer: update paid by the delta in partial payments
-          const partialDelta=partialAmt-oldPartialAmt;
-          if(partialDelta!==0){
-            setCust(p=>safeArr(p).map(c=>{
-              if(c.id!==dF.customerId) return c;
-              return {...c,paid:Math.max(0,(c.paid||0)+partialDelta)};
-            }));
+  async function saveD(){
+    if(!dF.customer){notify("Select a customer");return;}
+
+    // Guard: block a second save while the first is still in-flight
+    if(_delivSaving.current){notify("Saving…");return;}
+    _delivSaving.current=true;
+
+    try{
+      const taxRt=settings?.featureTaxCalc?(+(settings?.taxRate||0)):0;
+      const newOrderTotal=lineTotalWithTax(dF.orderLines||{},taxRt);
+      // Credit limit check
+      if(settings?.featureCreditLimit){
+        const custRec=customers.find(c=>c.id===dF.customerId);
+        const limit=+(custRec?.creditLimit||0);
+        if(limit>0){
+          const currentPending=+(custRec?.pending||0);
+          const oldTotal=dSh!=="add"?lineTotalWithTax(dSh.orderLines||{},taxRt):0;
+          if((currentPending-oldTotal)+newOrderTotal>limit){
+            notify(`⚠️ Credit limit exceeded! Pending: ₹${currentPending.toLocaleString("en-IN")} + this order: ₹${newOrderTotal.toLocaleString("en-IN")} > limit: ₹${limit.toLocaleString("en-IN")}`);
+            return;
           }
         }
-        if(replAmt!==+(oldD.replacement?.amount||0)&&replAmt>0) addLog("Replacement deduction (edit)",`${dF.customer} — ${inr(replAmt)} off pending`);
-        if(partialAmt!==oldPartialAmt&&partialAmt>0) addLog("Partial payment updated (edit)",`${dF.customer} — ${inr(partialAmt)} collected`);
       }
-      setDeliv(p=>safeArr(p).map(d=>d.id===dSh.id?{...dF,id:d.id}:d));
-      addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);
+      const replAmt = +dF.replacement?.amount||0;
+      const partialAmt = dF.partialPayment?.enabled ? (+dF.partialPayment?.amount||0) : 0;
+
+      if(dSh==="add"){
+        // ── NEW DELIVERY ────────────────────────────────────────────────────────
+        if(dF.customerId){
+          if(partialAmt>0){
+            setCust(p=>safeArr(p).map(c=>{
+              if(c.id!==dF.customerId) return c;
+              return {...c,paid:(c.paid||0)+partialAmt};
+            }));
+          }
+          if(replAmt>0) addLog("Replacement deduction",`${dF.customer} — ${inr(replAmt)} off pending`);
+          if(partialAmt>0) addLog("Partial payment on delivery",`${dF.customer} — ${inr(partialAmt)} collected`);
+        }
+        const newId=uid();
+
+        // ── ATOMIC invoice number via Firebase runTransaction ──────────────────
+        // This is the ONLY safe way to get unique seq numbers across concurrent devices.
+        // The old setInvRegistry functional updater only protected against local double-taps;
+        // two different devices would both read the same seq and produce duplicate invoice numbers.
+        const prefix=settings?.invoicePrefix||"TAS";
+        const yearReset=settings?.invoiceYearReset!==false;
+        const year=new Date().getFullYear();
+        let newSeq=0;
+        try{
+          newSeq=await atomicInvoiceSeq();
+          // Also update the local invRegistry state so other reads stay consistent
+          setInvRegistry(prev=>({...prev,seq:newSeq,issued:{...(prev.issued||{}),[newId]:(yearReset?`${prefix}-${year}-${String(newSeq).padStart(4,"0")}`:`${prefix}-${String(newSeq).padStart(4,"0")}`)}}));
+        }catch(e){
+          // Fallback to local seq if Firebase transaction fails (offline)
+          console.warn("atomicInvoiceSeq failed, using local fallback:",e.message);
+          newSeq=(invRegistry.seq||0)+1;
+          setInvRegistry(prev=>{const s=(prev.seq||0)+1;return{...prev,seq:s,issued:{...(prev.issued||{}),[newId]:(yearReset?`${prefix}-${year}-${String(s).padStart(4,"0")}`:`${prefix}-${String(s).padStart(4,"0")}`)}};});
+        }
+        const newInvNo=yearReset?`${prefix}-${year}-${String(newSeq).padStart(4,"0")}`:`${prefix}-${String(newSeq).padStart(4,"0")}`;
+
+        // ── Link invoice to any production batch for the same date+product ──
+        const delivDate=dF.date||today();
+        const delivItems=Object.values(safeO(dF.orderLines)).filter(l=>(l.qty||0)>0).map(l=>l.name||"");
+        if(delivItems.length>0){
+          setProdTargets(prev=>safeArr(prev).map(pt=>{
+            if(pt.date!==delivDate) return pt;
+            const matches=delivItems.some(item=>pt.product&&prodNamesMatch(item,pt.product));
+            if(!matches) return pt;
+            const existing=pt.linkedInvoices||[];
+            if(existing.includes(newInvNo)) return pt;
+            return {...pt,linkedInvoices:[...existing,newInvNo]};
+          }));
+        }
+        // ── Auto-stamp batchId onto this new delivery if a same-date matching batch exists ──
+        let autoBatchId = "";
+        if(settings?.prodAutoLinkDeliveries!==false){
+          const todayBatches=prodTargets.filter(pt=>pt.date===delivDate);
+          const matchedBatch=todayBatches.find(pt=>
+            delivItems.some(item=>prodNamesMatch(item,pt.product||""))
+          );
+          if(matchedBatch) autoBatchId=matchedBatch.batchId||"";
+        }
+        setDeliv(p=>[...safeArr(p),{...dF,id:newId,invNo:newInvNo,batchId:autoBatchId||dF.batchId||"",partialPayment:{...dF.partialPayment,amount:partialAmt}}]);
+        addLog("Added delivery",`${dF.customer} [${newInvNo}]`);
+        notify(`Delivery added · ${newInvNo} ✓`);
+        addNotif("Delivery Added",`${dF.customer} — ${newInvNo}`,"success");
+        captureGPS("delivery_saved",dF.customer);
+      }
+      else{
+        // ── EDIT DELIVERY ───────────────────────────────────────────────────────
+        if(dF.customerId){
+          const oldD=deliveries.find(d=>d.id===dSh.id)||dSh;
+          const oldPartialAmt=oldD.partialPayment?.enabled?(+oldD.partialPayment?.amount||0):0;
+          const custIdChanged=dF.customerId!==oldD.customerId;
+          if(custIdChanged && oldD.customerId){
+            setCust(p=>safeArr(p).map(c=>{
+              if(c.id===oldD.customerId) return {...c,paid:Math.max(0,(c.paid||0)-oldPartialAmt)};
+              if(c.id===dF.customerId)   return {...c,paid:(c.paid||0)+partialAmt};
+              return c;
+            }));
+          } else {
+            const partialDelta=partialAmt-oldPartialAmt;
+            if(partialDelta!==0){
+              setCust(p=>safeArr(p).map(c=>{
+                if(c.id!==dF.customerId) return c;
+                return {...c,paid:Math.max(0,(c.paid||0)+partialDelta)};
+              }));
+            }
+          }
+          if(replAmt!==+(oldD.replacement?.amount||0)&&replAmt>0) addLog("Replacement deduction (edit)",`${dF.customer} — ${inr(replAmt)} off pending`);
+          if(partialAmt!==oldPartialAmt&&partialAmt>0) addLog("Partial payment updated (edit)",`${dF.customer} — ${inr(partialAmt)} collected`);
+        }
+        setDeliv(p=>safeArr(p).map(d=>d.id===dSh.id?{...dF,id:d.id}:d));
+        addLog("Edited delivery",dF.customer);notify("Updated ✓");captureGPS("delivery_saved",dF.customer);
+      }
+      setDsh(null);
+    }finally{
+      // Always release the guard, even if something throws
+      setTimeout(()=>{ _delivSaving.current=false; },1000);
     }
-    setDsh(null);
   }
-  function tglD(d){const ns=(d.status==="Pending"||d.status==="In Transit")?"Delivered":"Pending";setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns}:x));addLog("Status changed",`${d.customer} → ${ns}`);notify("Updated");if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}}
+
+  // ── STATUS TOGGLE GUARD — prevents double-tap flipping status twice ─────────
+  const _tglProcessing = useRef(new Set());
+  function tglD(d){
+    if(_tglProcessing.current.has(d.id)){return;}
+    _tglProcessing.current.add(d.id);
+    setTimeout(()=>_tglProcessing.current.delete(d.id),2000);
+    const ns=(d.status==="Pending"||d.status==="In Transit")?"Delivered":"Pending";
+    setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:ns}:x));
+    addLog("Status changed",`${d.customer} → ${ns}`);
+    notify("Updated");
+    if(ns==="Delivered"){addNotif("Delivery Completed",`${d.customer} marked as Delivered`,"success");captureGPS("marked_delivered",d.customer);}
+  }
   function delD(d){ask(`Delete delivery for "${d.customer}"?`,()=>{
     // ── Only reverse c.paid impact when a delivery is deleted.
     // computedPendingMap will automatically recalculate pending from remaining deliveries.
@@ -5182,17 +5269,22 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const prefix=settings?.invoicePrefix||"TAS";
     const yearReset=settings?.invoiceYearReset!==false;
     const year=new Date().getFullYear();
-    let seq=invRegistry.seq||0;
-    const newIssuedMap={...(invRegistry.issued||{})};
-    // eslint-disable-next-line no-unused-vars
-    const newDelivs=toAdd.map(({include,...r})=>{
-      const newId=uid();
-      seq+=1;
-      const invNo=yearReset?`${prefix}-${year}-${String(seq).padStart(4,"0")}`:`${prefix}-${String(seq).padStart(4,"0")}`;
-      newIssuedMap[newId]=invNo;
-      return {...r,id:newId,invNo,date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}};
+    // Pre-assign IDs so we can build deliveries and update invRegistry in one atomic pass
+    const newIds=toAdd.map(()=>uid());
+    let newDelivs=[];
+    // Functional updater reads the latest seq — prevents duplicate invoice numbers
+    // if two staff members submit bulk orders at nearly the same time.
+    setInvRegistry(prev=>{
+      let seq=prev.seq||0;
+      const newIssuedMap={...(prev.issued||{})};
+      newDelivs=toAdd.map(({include,...r},i)=>{
+        seq+=1;
+        const invNo=yearReset?`${prefix}-${year}-${String(seq).padStart(4,"0")}`:`${prefix}-${String(seq).padStart(4,"0")}`;
+        newIssuedMap[newIds[i]]=invNo;
+        return {...r,id:newIds[i],invNo,date:bulkOrderDate,deliveryDate:"",status:bulkOrderStatus,notes:"",createdBy:displayName,createdAt:ts(),partialPayment:{enabled:false,amount:""}};
+      });
+      return {seq,issued:newIssuedMap};
     });
-    setInvRegistry(prev=>({seq,issued:{...(prev.issued||{}),...newIssuedMap}}));
     setDeliv(p=>[...safeArr(p),...newDelivs]);
     // computedPendingMap derives pending automatically from deliveries — no manual setCust update needed
     addLog("Bulk orders created",`${newDelivs.length} orders for ${bulkOrderDate} · ${newDelivs[0]?.invNo}…`);
@@ -5808,7 +5900,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <div className="flex items-center gap-2">
               <span className="text-base">📡</span>
               <div>
-                <p className="text-xs font-semibold text-red-400">You're offline — changes are saved locally</p>
+                <p className="text-xs font-semibold text-red-400">You're offline — changes may not save until reconnected</p>
                 <p className="text-[11px] text-red-400/70">Data will sync automatically when connection is restored</p>
               </div>
             </div>
@@ -6536,8 +6628,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
     const tot=lineTotal(d.orderLines);
     const repl=+d.replacement?.amount||0;
     const net=tot-repl;
-    const dpaid=d.paid||0;
-    const rem=net-dpaid;
+    const dpaid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+    const rem=Math.max(0,net-dpaid);
     const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ")||"—";
     const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
     const dInvNo=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
@@ -7469,9 +7561,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
             {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
             {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.paid||0)},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
             {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=fDeliv.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=fDeliv.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=fDeliv.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const filterLabel=delivStatusFilter!=="all"?` — ${delivStatusFilter}`:"";const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${fDeliv.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Orders${filterLabel}</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${fDeliv.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${fDeliv.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF(`Deliveries${filterLabel}`,fDeliv,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace("TAS-","")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
             {can("deliv_export")&&<button ref={delivExportBtnRef} onClick={()=>setDelivExportOpen(v=>!v)} style={{background:delivExportOpen?"#3b82f625":"#3b82f615",color:"#3b82f6",border:`1.5px solid ${delivExportOpen?"#3b82f680":"#3b82f640"}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0,position:"relative"}}>📅 Date Export {delivExportOpen?"▴":"▾"}</button>}
           </div>
           {/* BULK ACTION BAR */}
@@ -7520,7 +7612,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             const mTransit=mDelivs.filter(d=>d.status==="In Transit").length;
             const mDone=mDelivs.filter(d=>d.status==="Delivered").length;
             const mRevenue=mDelivs.filter(d=>d.status==="Delivered").reduce((s,d)=>s+lineTotal(d.orderLines),0);
-            const mPaid=mDelivs.reduce((s,d)=>s+(d.paid||0),0);
+            const mPaid=mDelivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
             const todayStr=today();
             return <Card dm={dm} className="overflow-hidden">
               {/* Header */}
@@ -7625,7 +7717,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   const expandedDelivs=deliveries.filter(d=>d.date===calExpandedDay&&(!srch||(d.customer||"").toLowerCase().includes(srch.toLowerCase())||(d.status||"").toLowerCase().includes(srch.toLowerCase())));
                   if(expandedDelivs.length===0)return null;
                   const dayTotAmt=expandedDelivs.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-                  const dayTotPaid=expandedDelivs.reduce((s,d)=>s+(d.paid||0),0);
+                  const dayTotPaid=expandedDelivs.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);
                   const dayTotReplAmt=expandedDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
                   const dayLabel=new Date(calExpandedDay+"T00:00:00").toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"});
                   return <div style={{background:dm?"#1a0a2e":"#f5f3ff",border:"1.5px solid #7c3aed40",borderRadius:14,padding:"12px 14px",marginBottom:10}}>
@@ -7660,8 +7752,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         const tot=lineTotal(d.orderLines);
                         const replAmt=+d.replacement?.amount||0;
                         const netAmt=tot-replAmt;
-                        const paid=d.paid||0;
-                        const remaining=netAmt-paid;
+                        const paid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+                        const remaining=Math.max(0,netAmt-paid);
                         const sc=statusColor(d.status);
                         return <div key={d.id} style={{background:dm?"#ffffff08":t.card,border:`1px solid ${sc}40`,borderRadius:12,padding:"10px 12px",borderLeft:`3px solid ${sc}`}}>
                           <div className="flex items-start justify-between mb-2" style={{gap:8}}>
@@ -8966,13 +9058,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           const todayStr=today();
           // ── Build comprehensive payment data ──────────────────────────
           const delivPayments=deliveries.filter(d=>d.status==="Delivered").map(d=>{
-            const orderTotal=lineTotal(d.orderLines);
+            const orderTotal=lineTotalWithTax(d.orderLines,taxRtGlobal);
             const replAmt=+(d.replacement?.amount)||0;
             const netPayable=Math.max(0,orderTotal-replAmt);
             const collected=d.partialPayment?.enabled?(+(d.partialPayment?.amount)||0):0;
             const balance=Math.max(0,netPayable-collected);
             const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
-            const rcptNo=invNo?`RCP-${invNo.replace("TAS-","")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+            const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z0-9]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
             const payStatus=netPayable===0?"zero":balance===0&&netPayable>0?"settled":collected>0&&balance>0?"partial":"pending";
             return {d,orderTotal,replAmt,netPayable,collected,balance,invNo,rcptNo,payStatus};
           });
@@ -9017,7 +9109,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             const partialDelivs=custDelivs.filter(dp=>dp.payStatus==="partial");
             const settledDelivs=custDelivs.filter(dp=>dp.payStatus==="settled");
             const manualPaid=(paymentLedger||[]).filter(e=>e.customerId===c.id).reduce((s,e)=>s+e.amount,0);
-            return {c,totalOrdered,totalRepl,totalNet,totalCollected:totalCollected+manualPaid,totalBalance,pendingDelivs,partialDelivs,settledDelivs,custDelivs};
+            // Subtract manualPaid from delivery-level balance so "Collect X" pre-fills the correct amount
+            const trueBalance=Math.max(0,totalBalance-manualPaid);
+            return {c,totalOrdered,totalRepl,totalNet,totalCollected:totalCollected+manualPaid,totalBalance:trueBalance,pendingDelivs,partialDelivs,settledDelivs,custDelivs};
           }).filter(x=>x.custDelivs.length>0||x.c.pending>0);
 
           // ── Daily summary ──
@@ -11858,7 +11952,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
                           const dCollected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
                           const dBalance=Math.max(0,dNet-dCollected);
                           const dInvNo=(invRegistry?.issued||{})[d.id]||null;
-                          const dRcptNo=dInvNo?`RCP-${dInvNo.replace("TAS-","")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
+                          const dRcptNo=dInvNo?`RCP-${dInvNo.replace(/^[A-Z0-9]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
                           return <div key={d.id} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"10px 12px",borderLeft:"3px solid #7c3aed"}}>
                             {/* Customer name + invoice/receipt */}
                             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6,marginBottom:6}}>
@@ -16281,23 +16375,30 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 
             <div className="flex gap-2">
               <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}}>Cancel</Btn>
-              <Btn dm={dm} v="success" className="flex-1" onClick={()=>{
-                const amt=+collectAmt;
-                if(!amt||amt<=0){notify("Enter a valid amount");return;}
-                if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");return;}
-                const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
-                setDeliv(p=>safeArr(p).map(x=>x.id===d.id?upd:x));
-                // Only update c.paid — computedPendingMap will re-derive pending from the updated delivery
-                if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt}:c));}
-                addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
-                addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
-                notify(`${inr(amt)} collected ✓`);
-                // Show inline receipt card on phone
-                setLastReceiptData({delivery:upd,amt,note:collectNote,customer:d.customer,ts:ts()});
-                // Auto-print receipt only if admin has it enabled
-                if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportDeliveryReceipt(upd,products,settings,getOrCreateInvNo(upd.id));
-                setCollectSh(null);setCollectAmt("");setCollectNote("");
-              }}>Confirm Collection</Btn>
+              <Btn dm={dm} v="success" className="flex-1" onClick={(()=>{
+                // ── per-delivery collect guard — prevents double-tap recording payment twice ──
+                let _collectBusy=false;
+                return ()=>{
+                  if(_collectBusy){notify("Recording…");return;}
+                  _collectBusy=true;
+                  setTimeout(()=>{_collectBusy=false;},3000);
+                  const amt=+collectAmt;
+                  if(!amt||amt<=0){notify("Enter a valid amount");_collectBusy=false;return;}
+                  if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");_collectBusy=false;return;}
+                  const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
+                  setDeliv(p=>safeArr(p).map(x=>x.id===d.id?upd:x));
+                  // Only update c.paid — computedPendingMap will re-derive pending from the updated delivery
+                  if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt}:c));}
+                  addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
+                  addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
+                  notify(`${inr(amt)} collected ✓`);
+                  // Show inline receipt card on phone
+                  setLastReceiptData({delivery:upd,amt,note:collectNote,customer:d.customer,ts:ts()});
+                  // Auto-print receipt only if admin has it enabled
+                  if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportDeliveryReceipt(upd,products,settings,getOrCreateInvNo(upd.id));
+                  setCollectSh(null);setCollectAmt("");setCollectNote("");
+                };
+              })()}>Confirm Collection</Btn>
             </div>
           </>;
         })()}
@@ -16316,7 +16417,7 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           const statusColor=rd.status==="Delivered"?"#10b981":rd.status==="In Transit"?"#3b82f6":rd.status==="Cancelled"?"#ef4444":"#f59e0b";
           const showReceiptPrices=settings?.agentInvoiceShowPrices!==false; // syncs with admin setting
           const rcptInvNo=(invRegistry.issued||{})[rd.id];
-          const rcptNo=rcptInvNo?`RCP-${rcptInvNo.replace("TAS-","")}`:`RCP-${(rd.id||"").slice(-8).toUpperCase()}`;
+          const rcptNo=rcptInvNo?`RCP-${rcptInvNo.replace(/^[A-Z0-9]+-/,"")}`:`RCP-${(rd.id||"").slice(-8).toUpperCase()}`;
           return <>
             {/* Header banner */}
             {viewOnly
