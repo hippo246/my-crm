@@ -3474,7 +3474,9 @@ function Login({users,onLogin,dm,settings}){
   const [pinMode,setPinMode]=useState(false);
   const [pinTarget,setPinTarget]=useState(null);
   const [pinVal,setPinVal]=useState("");
+  const [capsLock,setCapsLock]=useState(false);
   const [showPw,setShowPw]=useState(false);
+  const [showForgot,setShowForgot]=useState(false);
   const [rememberMe,setRememberMe]=useState(true);
 
   const appName=settings?.appName||"TAS Healthy World";
@@ -3527,7 +3529,7 @@ function Login({users,onLogin,dm,settings}){
     setPinVal(next);
     if(next.length===4){
       setTimeout(()=>{
-        if(pinTarget&&pinTarget.pin===next&&pinTarget.active){onLogin({...pinTarget,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo()});}
+        if(pinTarget&&String(pinTarget.pin)===next&&pinTarget.active){onLogin({...pinTarget,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo()});}
         else{setErr("Incorrect PIN. Try again.");setPinVal("");}
       },200);
     }
@@ -3628,7 +3630,7 @@ function Login({users,onLogin,dm,settings}){
             <div style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex"}}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <input className="linp" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
+            <input className="linp" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")go();}} onKeyUp={e=>setCapsLock(e.getModifierState&&e.getModifierState("CapsLock"))}
               type={showPw?"text":"password"} placeholder="Enter your password" autoComplete="current-password"
               style={{width:"100%",background:"rgba(15,22,38,0.8)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 52px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
             <button onClick={()=>setShowPw(v=>!v)} tabIndex={-1}
@@ -3638,6 +3640,7 @@ function Login({users,onLogin,dm,settings}){
                 :<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
             </button>
           </div>
+          {capsLock&&<p style={{color:"#f59e0b",fontSize:12,fontWeight:600,marginTop:6,display:"flex",alignItems:"center",gap:5}}>⚠ Caps Lock is on — passwords are case-sensitive</p>}
         </div>
 
         <div className="lfa3" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:err?14:22}}>
@@ -3647,8 +3650,19 @@ function Login({users,onLogin,dm,settings}){
             </div>
             <span style={{color:"#8ba3c0",fontSize:15,fontWeight:500}}>Remember me</span>
           </label>
-          <span style={{color:BLUE,fontSize:15,fontWeight:500,cursor:"pointer"}}>Forgot password?</span>
+          <span style={{color:BLUE,fontSize:15,fontWeight:500,cursor:"pointer"}} onClick={()=>setShowForgot(true)}>Forgot password?</span>
         </div>
+
+        {showForgot&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowForgot(false)}>
+          <div style={{background:"#131c2e",border:"1.5px solid #1e2d45",borderRadius:20,padding:"28px 24px",maxWidth:360,width:"100%",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:52,height:52,borderRadius:16,background:"rgba(59,110,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <p style={{color:"#e8edf5",fontSize:18,fontWeight:700,margin:"0 0 10px"}}>Forgot your password?</p>
+            <p style={{color:"#7a9cbd",fontSize:14,lineHeight:1.6,margin:"0 0 20px"}}>Passwords can only be reset by an admin.<br/>Please contact your administrator and ask them to go to <b style={{color:"#e8edf5"}}>Settings → Users</b> and reset your password from there.</p>
+            <button onClick={()=>setShowForgot(false)} style={{width:"100%",background:"linear-gradient(135deg,#3b6ef6 0%,#2953d4 100%)",color:"#fff",border:"none",borderRadius:12,padding:"13px 20px",fontSize:15,fontWeight:700,cursor:"pointer"}}>Got it</button>
+          </div>
+        </div>}
 
         {err&&<div className="lfa3" style={{background:"rgba(239,68,68,0.1)",border:"1.5px solid rgba(239,68,68,0.3)",borderRadius:12,padding:"13px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -3825,14 +3839,14 @@ function Login({users,onLogin,dm,settings}){
             <div className="lfa2" style={{background:"rgba(19,28,46,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr"}}>
                 {featurePills.map((f,i)=>(
-                  <>
-                    <div key={f.label} style={{textAlign:"center",padding:"8px 10px"}}>
+                  <React.Fragment key={f.label}>
+                    <div style={{textAlign:"center",padding:"8px 10px"}}>
                       <div style={{width:46,height:46,borderRadius:13,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px"}}>{f.svg}</div>
                       <p style={{color:TEXT,fontSize:14,fontWeight:700,margin:"0 0 5px",lineHeight:1.2}}>{f.label}</p>
                       <p style={{color:MUTED,fontSize:12,margin:0,lineHeight:1.4}}>{f.sub}</p>
                     </div>
-                    {i<2&&<div key={"d"+i} style={{background:BORDER,width:1,margin:"6px 0"}}/>}
-                  </>
+                    {i<2&&<div style={{background:BORDER,width:1,margin:"6px 0"}}/>}
+                  </React.Fragment>
                 ))}
               </div>
             </div>
@@ -3850,13 +3864,13 @@ function Login({users,onLogin,dm,settings}){
           <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
           <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
             {featurePills.map((f,i)=>(
-              <>
-                <div key={f.label} style={{textAlign:"center",padding:"0 6px"}}>
+              <React.Fragment key={f.label}>
+                <div style={{textAlign:"center",padding:"0 6px"}}>
                   <div style={{width:38,height:38,borderRadius:11,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}>{f.svg}</div>
                   <p style={{color:TEXT,fontSize:13,fontWeight:700,margin:0,lineHeight:1.3}}>{f.label}</p>
                 </div>
-                {i<2&&<div key={"md"+i} style={{background:BORDER,width:1,margin:"4px 0"}}/>}
-              </>
+                {i<2&&<div style={{background:BORDER,width:1,margin:"4px 0"}}/>}
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -3891,7 +3905,10 @@ function RootInner(){
   const sess=(sessRaw&&Date.now()-sessRaw.loginAt<SESSION_TTL)?sessRaw:null;
   const setSess=(s)=>setSessRaw(s||null);
   // Show spinner until Firebase has responded for all critical keys
-  const fbReady=usersLoaded&&settingsLoaded&&sessLoaded;
+  // Safety: after 8 seconds, stop blocking on Firebase so user can still log in
+  const [fbTimeout,setFbTimeout]=useState(false);
+  useEffect(()=>{const t=setTimeout(()=>setFbTimeout(true),8000);return()=>clearTimeout(t);},[]);
+  const fbReady=(usersLoaded&&settingsLoaded&&sessLoaded)||fbTimeout;
 
   // ── Passive touch/wheel listeners: improves scroll jank on Android & iOS ──
   useEffect(()=>{
@@ -3911,6 +3928,7 @@ function RootInner(){
   const spinner=<div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
     <div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
     <p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Connecting to cloud…</p>
+    {fbTimeout&&!fbReady&&<p style={{color:"#ef4444",fontSize:12,fontWeight:500,marginTop:4,textAlign:"center",padding:"0 24px"}}>⚠ Taking longer than usual — check your internet connection</p>}
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
   </div>;
   if(!fbReady) return spinner;
