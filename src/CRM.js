@@ -13,7 +13,7 @@ import { T } from "./lib/theme";
 import { exportPDF, exportAgentReceipt, useT, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, shareWhatsApp, exportCSV, exportWord, exportTabPDF, exportPnLReport, exportPnLCSV, exportTabExcel } from "./lib/exports";
 
 // ── component imports ─────────────────────────────────────────────────────────
-import { Btn, Inp, Sel, Card, Sheet, Toast, Confirm, Search, StatCard, Pill, Hr, Tog, ProdRow, OrderEditor, SectionHeader, TabStatCards, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination } from "./components/ui";
+import { Btn, Inp, Sel, Card, Sheet, Toast, Confirm, Search, StatCard, Pill, Hr, Tog, ProdRow, OrderEditor, SectionHeader, TabStatCards, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination, BottomNav } from "./components/ui";
 import { DetailModal } from "./components/DetailModal";
 import { MorningBriefing } from "./components/MorningBriefing";
 import { GPSMap } from "./components/GPSMap";
@@ -11115,57 +11115,43 @@ td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
         })()}
       </div>
 
-      {/* ── MOBILE BOTTOM NAV — Phase 3: fixed 5-tab bar + More drawer ──────── */}
+      {/* ── MOBILE BOTTOM NAV — clean FAB-style bar ──────── */}
       {(()=>{
         const BN_PRIMARY=["Dashboard","Customers","Deliveries","Payments"];
         const bnTabs=BN_PRIMARY.filter(tb=>TABS.includes(tb));
         const moreTabs=TABS.filter(tb=>!BN_PRIMARY.includes(tb));
         const isMoreActive=moreTabs.includes(tab);
-        const moreOpen=showMoreNav; const setMoreOpen=setShowMoreNav;
-        return <>
-          {/* More drawer backdrop */}
-          {moreOpen&&<div onClick={()=>setMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:48,background:"rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} className="lg:hidden"/>}
-          {/* More drawer panel */}
-          {moreOpen&&<div style={{position:"fixed",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
-            <div style={{width:36,height:4,borderRadius:99,background:t.border,margin:"0 auto 16px"}}/>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:8}}>
-              {moreTabs.map(tb=>{
-                const isA=tab===tb;
-                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
-                  style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"12px 6px",borderRadius:14,background:isA?"#2563eb":"transparent",border:`1.5px solid ${isA?"#2563eb":t.border}`,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
-                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-                  <span style={{fontSize:11,fontWeight:isA?700:500,color:isA?"#fff":t.sub,lineHeight:1.2,textAlign:"center"}}>{TAB_LABELS[tb]||tb}</span>
-                </button>;
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:12,paddingBottom:4}}>
-              <button onClick={()=>{setDm(d=>!d);setMoreOpen(false);}} style={{flex:1,padding:"11px",borderRadius:12,border:`1.5px solid ${t.border}`,background:t.inp,color:t.text,fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>{dm?"☀️ Light":"🌙 Dark"}</button>
-              <button onClick={()=>{setMoreOpen(false);onLogout();}} style={{flex:1,padding:"11px",borderRadius:12,border:"1.5px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>↩ Sign Out</button>
-            </div>
-          </div>}
-          {/* Fixed bottom tab bar */}
-          <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,height:"calc(68px + env(safe-area-inset-bottom,0px))",WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
-            <div style={{display:"flex",alignItems:"stretch",height:68}}>
-              {bnTabs.map(tb=>{
-                const isA=tab===tb;
-                const hasBadge=tb==="Dashboard"&&pendingD.length>0&&!isA;
-                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
-                  style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isA?"#2563eb":"transparent"}`,color:isA?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-                  <span style={{fontSize:10,fontWeight:isA?700:500,lineHeight:1,letterSpacing:"0.01em"}}>{TAB_LABELS[tb]||tb}</span>
-                  {hasBadge&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
-                </button>;
-              })}
-              {/* More tab */}
-              <button onClick={()=>setMoreOpen(o=>!o)}
-                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isMoreActive||moreOpen?"#2563eb":"transparent"}`,color:isMoreActive||moreOpen?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                <span style={{fontSize:22,lineHeight:1}}>⋯</span>
-                <span style={{fontSize:10,fontWeight:isMoreActive||moreOpen?700:500,lineHeight:1,letterSpacing:"0.01em"}}>More</span>
-                {isMoreActive&&!moreOpen&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#2563eb",width:6,height:6,borderRadius:"50%",border:`2px solid ${t.card}`}}/>}
-              </button>
-            </div>
-          </nav>
-        </>;
+
+        function handleFab(){
+          setShowMoreNav(false);
+          if(tab==="Dashboard"||tab==="Customers") { setCsh("add"); setCf(blkC()); }
+          else if(tab==="Deliveries")               { setDf(blkD()); setDsh("add"); }
+          else if(tab==="Payments")                 { setPayLedgerCust(null); setPayLedgerAmt(""); setPayLedgerNote(""); setPayLedgerMethod("Cash"); setPayLedgerSh(true); }
+          else if(tab==="Supplies")                 { setSf(blkS()); setSsh("add"); }
+          else if(tab==="Expenses")                 { setEf(blkE()); setEsh("add"); }
+          else if(tab==="Wastage")                  { setWasteSh("add"); }
+          else if(tab==="Ingredients")              { setIngF({ingredient:"",qty:"",unit:(settings?.supplyUnits||["kg"])[0]||"kg",date:today(),notes:"",loggedBy:displayName}); setIngSh("add"); }
+          else if(tab==="Staff")                    { setStaffSh("add"); }
+          else if(tab==="Vehicles")                 { setVehSh("add"); }
+          else                                      { setDf(blkD()); setDsh("add"); }
+        }
+
+        return <BottomNav
+          tabs={bnTabs}
+          activeTab={tab}
+          onTab={tb=>{setTab(tb);setSrch("");setShowMoreNav(false);}}
+          onFab={handleFab}
+          moreOpen={showMoreNav}
+          onMore={()=>setShowMoreNav(o=>!o)}
+          moreTabs={moreTabs}
+          isMoreActive={isMoreActive}
+          icons={TAB_ICONS}
+          labels={TAB_LABELS}
+          dm={dm}
+          pendingCount={pendingD.length}
+          onLogout={onLogout}
+          onDm={()=>setDm(d=>!d)}
+        />;
       })()}
 
       </div>{/* end desktop flex child */}

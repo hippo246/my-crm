@@ -57,9 +57,9 @@
             const partialDelivs=custDelivs.filter(dp=>dp.payStatus==="partial");
             const settledDelivs=custDelivs.filter(dp=>dp.payStatus==="settled");
             const manualPaid=(paymentLedger||[]).filter(e=>e.customerId===c.id).reduce((s,e)=>s+e.amount,0);
-            // totalBalance is already from delivery-level; manualPaid is tracked separately.
-            // Don't subtract manualPaid here as it would double-count and hide real dues.
-            const trueBalance=totalBalance;
+            // manualPaid is not reflected at the delivery level, so we must subtract it here
+            // to get the real remaining balance owed by this customer.
+            const trueBalance=Math.max(0,totalBalance-manualPaid);
             return {c,totalOrdered,totalRepl,totalNet,totalCollected:totalCollected+manualPaid,totalBalance:trueBalance,pendingDelivs,partialDelivs,settledDelivs,custDelivs};
           }).filter(x=>x.custDelivs.length>0||x.c.pending>0);
 
@@ -83,7 +83,7 @@
           const totalCollectedAll=allLedgerEntries.filter(e=>e.type==="delivery").reduce((s,e)=>s+e.amount,0);
           const totalManualAll=(paymentLedger||[]).reduce((s,e)=>s+e.amount,0);
           const totalReplAll=delivPayments.reduce((s,dp)=>s+dp.replAmt,0);
-          const totalBalanceAll=delivPayments.reduce((s,dp)=>s+dp.balance,0);
+          const totalBalanceAll=custOutstanding.reduce((s,x)=>s+x.totalBalance,0);
           const partialCustCount=custOutstanding.filter(x=>x.partialDelivs.length>0).length;
           const pendingCustCount=custOutstanding.filter(x=>x.totalBalance>0).length;
           const grandTotal=totalCollectedAll+totalManualAll;
@@ -123,7 +123,7 @@
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:22}}>⚠️</span>
                 <div>
-                  <p style={{color:red,fontWeight:800,fontSize:13}}>{inr(Math.max(totalBalanceAll,customers.reduce((s,c)=>s+(c.pending||0),0)))} outstanding</p>
+                  <p style={{color:red,fontWeight:800,fontSize:13}}>{inr(totalBalanceAll)} outstanding</p>
                   <p style={{color:t.sub,fontSize:11}}>{pendingCustCount||customers.filter(c=>(c.pending||0)>0).length} customer{(pendingCustCount||1)!==1?"s":""} haven't fully paid · {partialCustCount} partial</p>
                 </div>
               </div>

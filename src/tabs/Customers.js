@@ -3,7 +3,12 @@
 // This file contains the Customers tab JSX, extracted from App.js
 
         {tab==="Customers"&&(()=>{
-          const isMobile=typeof window!=="undefined"&&window.innerWidth<768;
+          const [isMobile, setIsMobile] = React.useState(typeof window!=="undefined"&&window.innerWidth<768);
+          React.useEffect(()=>{
+            const handler=()=>setIsMobile(window.innerWidth<768);
+            window.addEventListener("resize",handler);
+            return()=>window.removeEventListener("resize",handler);
+          },[]);
           return (<>
           <SectionHeader dm={dm} title="Customers" sub="Manage all your customers in one place"
             cta={can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
@@ -241,7 +246,11 @@
           })()}
 
           {/* ── UNIFIED TOOLBAR ── */}
-          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4,justifyContent:"space-between"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:4}}>
+            {/* Row 1 (mobile only): Search full-width */}
+            {isMobile&&<Search dm={dm} value={custSearch} onChange={setCustSearch} placeholder="Search customers…"/>}
+            {/* Row 2: Sort + actions */}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"space-between"}}>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"nowrap",flexShrink:0}}>
             {/* Sort select — always visible */}
             <select value={custSortField} onChange={e=>setCustSortField(e.target.value)}
@@ -253,7 +262,7 @@
               {!isMobile&&<option value="revenue">Revenue ↓</option>}
             </select>
             <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"nowrap",alignItems:"center"}}>
-            {/* Mobile toolbar: Export buttons + Add Customer */}
+            {/* Mobile toolbar: compact export icons + add button */}
             {isMobile&&<>
               {can("cust_export")&&<button
                 onClick={()=>{
@@ -469,8 +478,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             </div>}
             </div>
             </div>
+            </div>
           </div>
-          {/* ── STATUS FILTER PILLS + VIEW TOGGLE (same row) ── */}
+          {/* ── STATUS FILTER PILLS + VIEW TOGGLE (same row on desktop, pills-only on mobile) ── */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
             <div className="flex gap-2 overflow-x-auto pb-1" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",minWidth:0}}>
               {[
@@ -487,8 +497,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </button>;
               })}
             </div>
-            {/* View mode toggle — all screen sizes */}
-            <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+            {/* View mode toggle — desktop only (mobile only has Recent which is default) */}
+            {!isMobile&&<div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
               {[
                 {v:"recent",lbl:"Recent",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>},
                 {v:"expanded",lbl:"Table",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>},
@@ -500,7 +510,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {icon}{lbl}
                 </button>;
               })}
-            </div>
+            </div>}
           </div>
 
           {/* ── MOBILE CUSTOMER CARD LIST ── */}
@@ -586,7 +596,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                     const delivRate=allCDelivs.length>0?Math.round(cDone.length/allCDelivs.length*100):100;
                     const collPct=(cPaid+cDue)>0?Math.round(cPaid/(cPaid+cDue)*100):100;
-                    const tStr=today();
+                    const tStr=new Date().toISOString().slice(0,10);
                     const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
                     const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
                     const filtDelivs=allCDelivs.filter(d=>{
@@ -944,7 +954,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     const allCDelivs=[...deliveries.filter(d=>d.customerId===c.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
                     const cDue=cFull.pending||0;
                     const cPaid=cFull.paid||0;
-                    const tStr=today();
+                    const tStr=new Date().toISOString().slice(0,10);
                     const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
                     const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
                     const filtDelivs=allCDelivs.filter(d=>{
@@ -1331,7 +1341,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
               const collPct=(cPaid+cDue)>0?Math.round(cPaid/(cPaid+cDue)*100):100;
               const lastD=allCDelivs[0]||null;
               // Delivery filter
-              const tStr=today();
+              const tStr=new Date().toISOString().slice(0,10);
               const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
               const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
               const filtDelivs=allCDelivs.filter(d=>{

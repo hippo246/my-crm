@@ -426,4 +426,178 @@ function sendBrowserNotif(title, body, icon = "🫓") {
 //  Renders rich interactive details for any entity clicked
 // ═══════════════════════════════════════════════════════════════
 
-export { StatusPill, AvatarCircle, StatIconBox, SectionHeader, TabStatCards, DataTable, FilterBar, Pill, Hr, Inp, Sel, Btn, Card, StatCard, Sheet, Toast, Confirm, Search, Pagination, Tog, ProdRow, OrderEditor, sendBrowserNotif, requestPushPermission };
+// ═══════════════════════════════════════════════════════════════
+//  BOTTOM NAV — Mobile phone nav bar with centered FAB
+//  Matches reference: 4 tabs + big dark centered + button
+//  Usage: <BottomNav tabs={bnTabs} activeTab={tab} onTab={setTab}
+//           onFab={()=>setShowQuickAdd(true)} moreOpen={moreOpen}
+//           onMore={()=>setMoreOpen(o=>!o)} moreTabs={moreTabs}
+//           isMoreActive={isMoreActive} icons={TAB_ICONS}
+//           labels={TAB_LABELS} dm={dm} pendingCount={pendingD.length}
+//           onLogout={onLogout} onDm={()=>setDm(d=>!d)} />
+// ═══════════════════════════════════════════════════════════════
+function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[], isMoreActive, icons={}, labels={}, dm, pendingCount=0, onLogout, onDm }) {
+  const t = T(dm);
+  // Split tabs around the FAB: left half and right half
+  const half = Math.floor(tabs.length / 2);
+  const leftTabs  = tabs.slice(0, half);
+  const rightTabs = tabs.slice(half);
+
+  function NavBtn({ tb }) {
+    const isA = activeTab === tb;
+    const hasBadge = tb === "Dashboard" && pendingCount > 0 && !isA;
+    return (
+      <button
+        key={tb}
+        onClick={() => onTab(tb)}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          background: "transparent",
+          border: "none",
+          color: isA ? (dm ? "#fff" : "#0d1b2a") : (dm ? "rgba(255,255,255,0.4)" : "#9ca3af"),
+          cursor: "pointer",
+          WebkitTapHighlightColor: "transparent",
+          touchAction: "manipulation",
+          position: "relative",
+          padding: "10px 4px 8px",
+          minHeight: 64,
+        }}
+      >
+        <span style={{ fontSize: 22, lineHeight: 1, filter: isA ? "none" : "opacity(0.7)" }}>{icons[tb] || "•"}</span>
+        <span style={{ fontSize: 10, fontWeight: isA ? 800 : 500, lineHeight: 1, letterSpacing: "0.01em" }}>{labels[tb] || tb}</span>
+        {hasBadge && (
+          <span style={{ position: "absolute", top: 8, right: "calc(50% - 16px)", background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 99, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", border: `2px solid ${t.card}` }}>
+            {pendingCount > 9 ? "9+" : pendingCount}
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      {/* More drawer backdrop */}
+      {moreOpen && (
+        <div
+          onClick={() => onMore()}
+          style={{ position: "fixed", inset: 0, zIndex: 48, background: "rgba(0,0,0,0.4)", WebkitBackdropFilter: "blur(4px)", backdropFilter: "blur(4px)" }}
+          className="lg:hidden"
+        />
+      )}
+
+      {/* More drawer panel */}
+      {moreOpen && (
+        <div
+          style={{ position: "fixed", bottom: "calc(72px + env(safe-area-inset-bottom,0px))", left: 0, right: 0, zIndex: 49, background: t.card, borderTop: `1.5px solid ${t.border}`, boxShadow: "0 -8px 32px rgba(0,0,0,0.18)", borderRadius: "20px 20px 0 0", padding: "16px 16px 8px" }}
+          className="lg:hidden"
+        >
+          <div style={{ width: 36, height: 4, borderRadius: 99, background: t.border, margin: "0 auto 16px" }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(160px,100%),1fr))", gap: 8 }}>
+            {moreTabs.map(tb => {
+              const isA = activeTab === tb;
+              return (
+                <button key={tb} onClick={() => { onTab(tb); onMore(); }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 6px", borderRadius: 14, background: isA ? "#2563eb" : "transparent", border: `1.5px solid ${isA ? "#2563eb" : t.border}`, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>{icons[tb] || "•"}</span>
+                  <span style={{ fontSize: 11, fontWeight: isA ? 700 : 500, color: isA ? "#fff" : t.sub, lineHeight: 1.2, textAlign: "center" }}>{labels[tb] || tb}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, paddingBottom: 4 }}>
+            <button onClick={() => { onDm(); onMore(); }} style={{ flex: 1, padding: "11px", borderRadius: 12, border: `1.5px solid ${t.border}`, background: t.inp, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 46 }}>{dm ? "☀️ Light" : "🌙 Dark"}</button>
+            <button onClick={() => { onMore(); onLogout(); }} style={{ flex: 1, padding: "11px", borderRadius: 12, border: "1.5px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 46 }}>↩ Sign Out</button>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed bottom bar */}
+      <nav
+        style={{
+          background: dm ? "#111827" : "#ffffff",
+          borderTop: `1px solid ${dm ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`,
+          paddingBottom: "env(safe-area-inset-bottom,0px)",
+          boxShadow: dm ? "0 -4px 24px rgba(0,0,0,0.5)" : "0 -4px 24px rgba(0,0,0,0.08)",
+          zIndex: 50,
+          WebkitTransform: "translateZ(0)",
+          transform: "translateZ(0)",
+          willChange: "transform",
+          contain: "layout style",
+          WebkitBackfaceVisibility: "hidden",
+          backfaceVisibility: "hidden",
+        }}
+        className="fixed bottom-0 left-0 right-0 lg:hidden"
+      >
+        <div style={{ display: "flex", alignItems: "stretch", height: 64 }}>
+          {/* Left tabs */}
+          {leftTabs.map(tb => <NavBtn key={tb} tb={tb} />)}
+
+          {/* Center FAB */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+            <button
+              onClick={onFab}
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                background: dm ? "#ffffff" : "#0d1b2a",
+                color: dm ? "#0d1b2a" : "#ffffff",
+                border: "none",
+                fontSize: 28,
+                fontWeight: 300,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                WebkitTapHighlightColor: "transparent",
+                touchAction: "manipulation",
+                boxShadow: dm ? "0 4px 16px rgba(255,255,255,0.15)" : "0 4px 16px rgba(13,27,42,0.35)",
+                flexShrink: 0,
+                lineHeight: 1,
+                marginBottom: 6,
+              }}
+            >+</button>
+          </div>
+
+          {/* Right tabs */}
+          {rightTabs.map(tb => <NavBtn key={tb} tb={tb} />)}
+
+          {/* More */}
+          <button
+            onClick={() => onMore()}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              background: "transparent",
+              border: "none",
+              color: isMoreActive || moreOpen ? (dm ? "#fff" : "#0d1b2a") : (dm ? "rgba(255,255,255,0.4)" : "#9ca3af"),
+              cursor: "pointer",
+              WebkitTapHighlightColor: "transparent",
+              touchAction: "manipulation",
+              padding: "10px 4px 8px",
+              minHeight: 64,
+              position: "relative",
+            }}
+          >
+            <span style={{ fontSize: 20, lineHeight: 1 }}>•••</span>
+            <span style={{ fontSize: 10, fontWeight: isMoreActive || moreOpen ? 800 : 500, lineHeight: 1 }}>More</span>
+            {isMoreActive && !moreOpen && (
+              <span style={{ position: "absolute", top: 8, right: "calc(50% - 14px)", background: "#2563eb", width: 6, height: 6, borderRadius: "50%", border: `2px solid ${t.card}` }} />
+            )}
+          </button>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+export { StatusPill, AvatarCircle, StatIconBox, SectionHeader, TabStatCards, DataTable, FilterBar, Pill, Hr, Inp, Sel, Btn, Card, StatCard, Sheet, Toast, Confirm, Search, Pagination, Tog, ProdRow, OrderEditor, sendBrowserNotif, requestPushPermission, BottomNav };

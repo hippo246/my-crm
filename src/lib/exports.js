@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════════
 //  EXPORTS
 // ═══════════════════════════════════════════════════════════════
+
+function today() { return new Date().toISOString().slice(0, 10); }
 function exportPDF(record, products, type, settings, deliveries) {
   const rows   = lineRows(record.orderLines||record.orders||{}, products);
   const total  = lineTotal(record.orderLines||record.orders||{});
@@ -1351,10 +1353,129 @@ function shareWhatsApp(record, products, type, settings) {
   window.open(url,"_blank","noopener");
 }
 
-function exportCSV(data, fname, cols) {
+function exportCSV(data, fname, cols, settings) {
   const esc = v => { const s=String(v==null?"":v); return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:`${s}`; };
-  const csv = [cols.map(c=>esc(c.label)).join(","), ...data.map(r=>cols.map(c=>esc(typeof c.val==="function"?c.val(r):r[c.key]??(""))).join(","))].join("\n");
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"})); a.download=`${fname}_${today()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  const co = settings?.companyName||"TAS Healthy World";
+  const cosub = settings?.companySubtitle||"";
+  const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const getVal = (row, c) => typeof c.val==="function" ? c.val(row) : (row[c.key]??(""));
+  const toNum = v => { const n=Number(String(v).replace(/[₹,]/g,"")); return isNaN(n)?0:n; };
+  const sumOf = (col) => col ? data.reduce((s,r)=>s+toNum(getVal(r,col)),0) : null;
+  const paidCol   = cols.find(c=>c.key==="paid"||String(c.label).toLowerCase().includes("paid (₹)"));
+  const pendCol   = cols.find(c=>c.key==="pending"||String(c.label).toLowerCase().includes("pending (₹)"));
+  const revCol    = cols.find(c=>c.key==="_revenue"||c.key==="revenue"||String(c.label).toLowerCase().includes("revenue"));
+  const ordersCol = cols.find(c=>c.key==="_orders"||c.key==="orderCount"||String(c.label).toLowerCase()==="# orders");
+  const totalPaid    = sumOf(paidCol);
+  const totalPending = sumOf(pendCol);
+  const totalRev     = sumOf(revCol);
+  const totalOrders  = sumOf(ordersCol);
+  const collRate     = (totalPaid!=null&&totalPending!=null&&(totalPaid+totalPending)>0)?Math.round(totalPaid/(totalPaid+totalPending)*100):null;
+  const summaryLines = [
+    `"=== ${co.toUpperCase()} — ${fname.replace(/_/g," ").toUpperCase()} EXPORT ==="`,
+    `"Exported:","${now}"`,
+    `"Records:","${data.length}"`,
+    ...(cosub?[`"","${cosub}"`]:[]),
+    `""`,
+    `"── SUMMARY ──"`,
+    ...(totalRev!=null?[`"Total Revenue (Rs)","${totalRev.toLocaleString("en-IN")}"`]:[]),
+    ...(totalPaid!=null?[`"Total Collected (Rs)","${totalPaid.toLocaleString("en-IN")}"`]:[]),
+    ...(totalPending!=null?[`"Total Outstanding (Rs)","${totalPending.toLocaleString("en-IN")}"`]:[]),
+    ...(collRate!=null?[`"Collection Rate","${collRate}%"`]:[]),
+    ...(totalOrders!=null?[`"Total Orders","${totalOrders}"`]:[]),
+    `"Active Customers","${data.filter(r=>r.active===true||r.active==="Yes").length}"`,
+    `"Unpaid Customers","${data.filter(r=>{const p=pendCol?toNum(getVal(r,pendCol)):0;return p>0;}).length}"`,
+    `""`,
+    `"── DATA ──"`,
+  ];
+  const totalsRow = cols.map((c,ci)=>{
+    const t=sumOf(c);
+    if(t!==null&&t!==0&&c.num!==false) return esc(`TOTAL: ${t.toLocaleString("en-IN")}`);
+    return ci===0?esc(`TOTAL (${data.length} records)`):"";
+  }).join(",");
+  const csv = [
+    ...summaryLines,
+    cols.map(c=>esc(c.label)).join(","),
+    ...data.map(r=>cols.map(c=>esc(getVal(r,c)??(""))).join(",")),
+    totalsRow,
+  ].join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}));
+  a.download=`${fname}_${today()}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// --- CUSTOMERS CSV - flattens to individual delivery/order rows ---
+// Call this instead of exportCSV when you want one row per delivery, not per customer.
+// Params: customers[], deliveries[], products[], settings
+// eslint-disable-next-line no-unused-vars
+function exportCustomersCSV(customers, deliveries, products, settings) {
+  const esc = v => { const s=String(v==null?"":v); return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:`${s}`; };
+  const co  = settings?.companyName||"TAS Healthy World";
+  const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const rows = [];
+  // Header block
+  rows.push(`"=== ${co.toUpperCase()} — CUSTOMERS EXPORT (PER ORDER) ==="`);
+  rows.push(`"Exported:","${now}"`);
+  rows.push(`"Customers:","${customers.length}"`);
+  rows.push(`"Total Deliveries:","${deliveries.length}"`);
+  rows.push(`""`);
+  rows.push(`"── ORDER DATA ──"`);
+  rows.push([
+    "Customer","Phone","Address","Agent/Created By",
+    "Invoice No","Receipt No","Date","Status",
+    "Items","Order Total","Repl Item","Repl Amount","Net Payable",
+    "Collected","Balance Due","Payment Status","Notes"
+  ].map(esc).join(","));
+
+  // One row per delivery, enriched with customer data
+  const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  [...deliveries].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(d=>{
+    const cust = custMap[d.customerId]||{};
+    const invNo = d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+    const rcptNo = `RCP-${invNo.replace(/^[A-Z]+-/,"")}`;
+    // Build items string
+    const itemsStr = Object.entries(d.orderLines||{})
+      .filter(([,l])=>l.qty>0)
+      .map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}×${p?p.name:(l.name||pid)}`;})
+      .join("; ");
+    const orderTotal = Object.entries(d.orderLines||{}).reduce((s,[,l])=>s+(l.qty||0)*(l.priceAmount||0),0);
+    const replAmt   = +(d.replacement?.amount)||0;
+    const netAmt    = Math.max(0, orderTotal - replAmt);
+    const collected = d.partialPayment?.enabled ? (+(d.partialPayment?.amount)||0) : 0;
+    const balance   = Math.max(0, netAmt - collected);
+    const payStatus = balance===0?"PAID":"UNPAID";
+    rows.push([
+      cust.name||d.customer||"—",
+      cust.phone||"—",
+      cust.address||"—",
+      d.createdBy||d._createdBy||"—",
+      invNo, rcptNo, d.date||"—", d.status||"Pending",
+      itemsStr||"—",
+      orderTotal, d.replacement?.done?(d.replacement.item||""):"—",
+      replAmt||"—", netAmt,
+      collected||"—", balance||"—", payStatus,
+      d.notes||"—"
+    ].map(esc).join(","));
+  });
+
+  // Summary totals at bottom
+  const totalRev     = deliveries.filter(d=>d.status==="Delivered").reduce((s,d)=>s+Object.entries(d.orderLines||{}).reduce((ss,[,l])=>ss+(l.qty||0)*(l.priceAmount||0),0),0);
+  const totalPaid    = customers.reduce((s,c)=>s+(c.paid||0),0);
+  const totalPending = customers.reduce((s,c)=>s+(c.pending||0),0);
+  rows.push(`""`);
+  rows.push(`"── SUMMARY ──"`);
+  rows.push(`"Total Revenue (Delivered Orders, Rs)","${totalRev.toLocaleString("en-IN")}"`);
+  rows.push(`"Total Collected (Rs)","${totalPaid.toLocaleString("en-IN")}"`);
+  rows.push(`"Total Outstanding (Rs)","${totalPending.toLocaleString("en-IN")}"`);
+  if(totalPaid+totalPending>0) rows.push(`"Collection Rate","${Math.round(totalPaid/(totalPaid+totalPending)*100)}%"`);
+
+  const csv = rows.join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}));
+  a.download = `Customers_orders_${today()}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -1450,84 +1571,202 @@ ${type==="customer"?`
 }
 
 // ─── HIGH-QUALITY TAB EXPORT — PDF ──────────────────────────────────────────
-function exportTabPDF(tabName, data, columns, settings, extraHtml="") {
-  const co     = settings?.companyName||"TAS Healthy World";
-  const cosub  = settings?.companySubtitle||"";
-  const gst    = settings?.companyGST||"";
-  const coPhone= settings?.companyPhone||"";
-  const coLogo = settings?.companyLogo||"";
-  const appEmoji=settings?.appEmoji||"🫓";
+function exportTabPDF(tabName, data, columns, settings, extraHtml, options) {
+  extraHtml = extraHtml || "";
+  options   = options   || {};
+  const co      = settings?.companyName||"TAS Healthy World";
+  const cosub   = settings?.companySubtitle||"";
+  const gst     = settings?.companyGST||"";
+  const coPhone = settings?.companyPhone||"";
+  const coLogo  = settings?.companyLogo||"";
+  const appEmoji= settings?.appEmoji||"🫓";
   const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
-  const rows = data.map(row=>
-    `<tr>${columns.map(c=>{
-      const v=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+  const dateStr = today();
+
+  // ── Compute summary stats ──
+  const getVal = (row,c)=>typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+  const toNum  = v=>{ const n=Number(String(v==null?"":v).replace(/[₹,<>a-zA-Z\s]/g,"")); return isNaN(n)?0:n; };
+  const sumCol = (col)=>data.reduce((s,r)=>s+toNum(getVal(r,col)),0);
+  const labelMatch = (c, ...terms) => { const l=String(c.label||c.key||"").toLowerCase().replace(/[₹()#\s]/g,""); return terms.some(t=>l.includes(t.toLowerCase().replace(/[₹()#\s]/g,""))); };
+  const paidCol   = columns.find(c=>c.key==="paid"||labelMatch(c,"paid₹","paid(₹)","totalcollected"));
+  const pendCol   = columns.find(c=>c.key==="pending"||labelMatch(c,"pending₹","pending(₹)","outstanding"));
+  const revCol    = columns.find(c=>c.key==="_revenue"||c.key==="revenue"||labelMatch(c,"revenue₹","revenue(₹)"));
+  const ordersCol = columns.find(c=>c.key==="_orders"||labelMatch(c,"#orders","orders") && !labelMatch(c,"avg","net","partial"));
+  const replCol   = columns.find(c=>c.key==="_replAmt"||labelMatch(c,"repldeducted","repl.deducted"));
+  const totalPaid    = paidCol   ? sumCol(paidCol)   : null;
+  const totalPending = pendCol   ? sumCol(pendCol)   : null;
+  const totalRev     = revCol    ? sumCol(revCol)    : null;
+  const totalOrders  = ordersCol ? sumCol(ordersCol) : null;
+  const totalRepl    = replCol   ? sumCol(replCol)   : null;
+  const collRate = (totalPaid!=null&&totalPending!=null&&(totalPaid+totalPending)>0)?Math.round(totalPaid/(totalPaid+totalPending)*100):null;
+  const activeCount  = data.filter(r=>r.active===true||r.active==="Yes").length;
+  const unpaidCount  = data.filter(r=>toNum(pendCol?getVal(r,pendCol):0)>0).length;
+  const inrF = v=>v==null?"—":"₹"+Number(v).toLocaleString("en-IN",{minimumFractionDigits:0,maximumFractionDigits:2});
+
+  // ── Auto stat cards (only non-null ones) ──
+  const statCards=[
+    {label:"Total Records",value:data.length,color:"#3b82f6"},
+    {label:"Active",value:activeCount,color:"#10b981"},
+    ...(totalOrders!=null?[{label:"Total Orders",value:totalOrders,color:"#6366f1"}]:[]),
+    ...(totalRev!=null?[{label:"Total Revenue",value:inrF(totalRev),color:"#f59e0b"}]:[]),
+    ...(totalPaid!=null?[{label:"Collected",value:inrF(totalPaid),color:"#10b981"}]:[]),
+    ...(totalPending!=null&&totalPending>0?[{label:"Outstanding",value:inrF(totalPending),color:"#ef4444"}]:[]),
+    ...(collRate!=null?[{label:"Collection Rate",value:collRate+"%",color:collRate>=90?"#10b981":collRate>=70?"#f59e0b":"#ef4444"}]:[]),
+    ...(unpaidCount>0?[{label:"Unpaid Customers",value:unpaidCount,color:"#ef4444"}]:[]),
+    ...(totalRepl!=null&&totalRepl>0?[{label:"Replacements Deducted",value:inrF(totalRepl),color:"#f97316"}]:[]),
+  ];
+
+  // ── Table rows with smart formatting ──
+  const tableRows=data.map((row,ri)=>{
+    const cells=columns.map(c=>{
+      const v=String(getVal(row,c)==null?"":getVal(row,c));
+      // Already-formatted HTML (badges etc.) — pass through
+      if(v.startsWith("<")) return `<td>${v}</td>`;
+      // Status
+      const vu=v.toUpperCase();
+      if(vu==="PAID")   return `<td><span class="badge badge-g">PAID</span></td>`;
+      if(vu==="UNPAID") return `<td><span class="badge badge-r">UNPAID</span></td>`;
+      if(vu==="DELIVERED") return `<td><span class="badge badge-g">Delivered</span></td>`;
+      if(vu==="CANCELLED") return `<td><span class="badge badge-r">Cancelled</span></td>`;
+      if(vu==="IN TRANSIT") return `<td><span class="badge badge-b">In Transit</span></td>`;
+      if(vu==="YES"||vu==="ACTIVE") return `<td><span class="badge badge-g">Active</span></td>`;
+      if(vu==="NO"||vu==="INACTIVE") return `<td><span class="badge" style="background:#f1f5f9;color:#64748b">Inactive</span></td>`;
       return `<td class="${c.cls||""}">${v}</td>`;
-    }).join("")}</tr>`
-  ).join("");
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${tabName} — ${co}</title>
+    }).join("");
+    return `<tr class="${ri%2===0?"":"alt"}">${cells}</tr>`;
+  }).join("");
+
+  // ── Totals footer row ──
+  const totalsFooter=`<tr class="totals-row">${columns.map((c,ci)=>{
+    const t=sumCol(c);
+    if(c.num!==false&&t!==0) return `<td class="r"><strong>${inrF(t)}</strong></td>`;
+    return `<td>${ci===0?`<strong>TOTAL — ${data.length} records</strong>`:"—"}</td>`;
+  }).join("")}</tr>`;
+
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${tabName} Report — ${co}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-body{font-family:'Inter',Arial,sans-serif;color:#0f172a;background:#fff;padding:0}
-.cover{background:linear-gradient(135deg,#0f1923 0%,#1e3a5f 100%);color:#fff;padding:40px 48px 36px;position:relative;overflow:hidden}
-.cover::after{content:'';position:absolute;top:-60px;right:-60px;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,0.04)}
-.co-name{font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.6;margin-bottom:10px}
-.report-title{font-size:34px;font-weight:900;letter-spacing:-0.03em;line-height:1.1;margin-bottom:6px}
-.report-meta{font-size:12px;opacity:0.5;margin-top:10px}
-.content{padding:40px 48px}
-.stats-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:32px}
-.stat-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px}
-.stat-val{font-size:22px;font-weight:900;color:#0f172a;line-height:1}
-.stat-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-top:5px}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-thead tr{background:#f1f5f9}
-th{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;padding:10px 14px;text-align:left;border-bottom:2px solid #e2e8f0}
-td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;vertical-align:top}
-tr:last-child td{border-bottom:none}
-tbody tr:nth-child(even) td{background:#f8fafc}
+body{font-family:'Inter',Arial,sans-serif;color:#0f172a;background:#f8fafc;padding:0}
+
+/* ── Cover ── */
+.cover{background:linear-gradient(135deg,#0f1923 0%,#1e3a5f 60%,#0a2240 100%);color:#fff;padding:44px 52px 40px;position:relative;overflow:hidden;page-break-after:avoid}
+.cover::before{content:'${tabName.charAt(0)}';position:absolute;right:-10px;top:-20px;font-size:220px;font-weight:900;opacity:0.04;color:#fff;line-height:1;pointer-events:none}
+.cover::after{content:'';position:absolute;bottom:-80px;right:80px;width:260px;height:260px;border-radius:50%;background:rgba(59,130,246,0.08);pointer-events:none}
+.cover-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.brand{display:flex;flex-direction:column;gap:4px}
+.brand-name{font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.55}
+.brand-sub{font-size:11px;opacity:0.38;margin-top:1px}
+.cover-meta{text-align:right;opacity:0.4;font-size:10px;line-height:1.8}
+.report-badge{display:inline-block;background:rgba(59,130,246,0.25);border:1px solid rgba(59,130,246,0.4);border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;margin-top:20px}
+.report-title{font-size:38px;font-weight:900;letter-spacing:-0.03em;line-height:1.1;margin-bottom:4px}
+.report-date{font-size:12px;opacity:0.4;margin-top:10px}
+
+/* ── Stat cards ── */
+.content{padding:36px 48px;background:#fff;min-height:100vh}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:32px}
+.stat-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
+.stat-val{font-size:20px;font-weight:900;color:#0f172a;line-height:1.1;margin-bottom:4px;margin-top:2px}
+.stat-lbl{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8}
+
+/* ── Table ── */
+.section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:#94a3b8;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #f1f5f9}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:#f1f5f9;border-bottom:2px solid #e2e8f0}
+th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;padding:10px 13px;text-align:left;white-space:nowrap}
+td{padding:9px 13px;border-bottom:1px solid #f1f5f9;color:#1e293b;vertical-align:middle;font-size:12px}
+tr.alt td{background:#fafcff}
+tr:hover td{background:#f0f9ff}
+tr.totals-row td{background:#dbeafe;font-size:12px;border-top:2px solid #1e3a5f;border-bottom:none}
 .r{text-align:right}
 .c{text-align:center}
 .green{color:#059669;font-weight:700}
 .red{color:#dc2626;font-weight:700}
 .amber{color:#d97706;font-weight:700}
-.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9.5px;font-weight:700}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:0.03em}
 .badge-g{background:#dcfce7;color:#15803d}
 .badge-r{background:#fee2e2;color:#b91c1c}
 .badge-y{background:#fef9c3;color:#92400e}
 .badge-b{background:#dbeafe;color:#1e40af}
-.footer{padding:24px 48px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;margin-top:32px}
-@media print{@page{size:A4 landscape;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cover{padding:28px 36px}.no-print{display:none!important}}
+
+/* ── Footer ── */
+.footer{padding:20px 48px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;margin-top:32px;background:#fff}
+.confidential{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em}
+
+/* ── Print bar ── */
+.print-bar{position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,Arial,sans-serif;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,0.5);gap:12px}
+.print-bar a{padding:7px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap;transition:opacity 0.15s}
+.print-bar a:hover{opacity:0.85}
+
+@media print{
+  @page{size:A4 landscape;margin:12mm 10mm}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
+  .cover{padding:24px 32px}
+  .content{padding:20px 32px}
+  .print-bar{display:none!important}
+  .footer{padding:14px 32px}
+  .report-title{font-size:28px}
+  tr:hover td{background:inherit}
+}
 </style></head><body>
+
+<div class="print-bar no-print">
+  <span style="font-weight:700">📊 ${tabName} Report — ${co}</span>
+  <div style="display:flex;gap:8px">
+    <a href="#" onclick="window.print();return false;" style="background:#3b82f6;color:#fff">🖨 Print / Save PDF</a>
+    <a href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='${tabName.replace(/\s+/g,'_')}_${dateStr}.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;" style="background:#059669;color:#fff">⬇ Download</a>
+  </div>
+</div>
+
 <div class="cover">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start">
-    <div>
-      ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:48px;max-width:130px;object-fit:contain;margin-bottom:10px;display:block;background:rgba(255,255,255,0.1);border-radius:6px;padding:4px"/>`:``}
-      <div class="co-name">${coLogo?"":appEmoji+" "}${co}</div>
-      ${cosub?`<div style="font-size:11px;opacity:0.5;margin-bottom:4px">${cosub}</div>`:""}
-      ${gst?`<div style="font-size:11px;opacity:0.5;margin-bottom:2px">GST: ${gst}</div>`:""}
-      ${coPhone?`<div style="font-size:11px;opacity:0.5">📞 ${coPhone}</div>`:""}
+  <div class="cover-top">
+    <div class="brand">
+      ${coLogo?`<img src="${coLogo}" alt="logo" style="max-height:44px;max-width:120px;object-fit:contain;margin-bottom:8px;background:rgba(255,255,255,0.1);border-radius:6px;padding:4px"/>`:``}
+      <div class="brand-name">${coLogo?"":appEmoji+" "}${co}</div>
+      ${cosub?`<div class="brand-sub">${cosub}</div>`:""}
+      ${gst?`<div class="brand-sub">GST: ${gst}</div>`:""}
+      ${coPhone?`<div class="brand-sub">📞 ${coPhone}</div>`:""}
     </div>
-    <div style="text-align:right;opacity:0.5;font-size:10px;margin-top:4px">
+    <div class="cover-meta">
       <div>Exported: ${now}</div>
       <div>${data.length} records</div>
+      <div style="margin-top:4px;opacity:0.6">CONFIDENTIAL</div>
     </div>
   </div>
-  <div class="report-title" style="margin-top:16px">${tabName}<br>Report</div>
+  <div class="report-badge">Report</div>
+  <div class="report-title">${tabName}</div>
+  <div class="report-date">${dateStr}</div>
 </div>
+
 <div class="content">
+  ${statCards.length>0?`
+  <div class="stat-grid">
+    ${statCards.map(s=>`<div class="stat-card" style="--accent:${s.color}">
+      <div class="stat-lbl">${s.label}</div>
+      <div class="stat-val" style="color:${s.color}">${s.value}</div>
+    </div>`).join("")}
+  </div>`:""}
+
   ${extraHtml}
+
+  <div class="section-title">${options.mainTableTitle||tabName+" Data — "+data.length+" records"}</div>
   <table>
     <thead><tr>${columns.map(c=>`<th class="${c.cls||""}">${c.label}</th>`).join("")}</tr></thead>
-    <tbody>${rows}</tbody>
+    <tbody>${tableRows}${totalsFooter}</tbody>
   </table>
 </div>
-<div class="print-bar no-print" style="position:fixed;top:0;left:0;right:0;background:#0f1923;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,Arial,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.4);gap:12px"><span style="font-weight:700">📊 ${tabName} Report — ${co}</span><div style="display:flex;gap:8px"><a href="#" onclick="window.print();return false;" style="background:#3b82f6;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">🖨 Print / Save PDF</a><a href="#" onclick="var b=document.documentElement.outerHTML;var bl=new Blob([b],{type:'text/html'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='${tabName.replace(/\s+/g,'_')}_export.html';document.body.appendChild(a);a.click();URL.revokeObjectURL(u);return false;" style="background:#059669;color:#fff;padding:7px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">⬇ Download</a></div></div>
+
 <div class="footer">
-  <span>${co}${gst?` &nbsp;·&nbsp; GST: ${gst}`:""}${coPhone?` &nbsp;·&nbsp; ${coPhone}`:""} &mdash; Confidential</span>
-  <span>${tabName} Export &nbsp;·&nbsp; ${today()}</span>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span>${co}${gst?` &nbsp;·&nbsp; GST: ${gst}`:""}${coPhone?` &nbsp;·&nbsp; ${coPhone}`:""}</span>
+    <span class="confidential">Confidential</span>
+  </div>
+  <span>${tabName} Report &nbsp;·&nbsp; ${dateStr}</span>
 </div>
 </body></html>`;
-  // Use blob URL — avoids popup-blocker, works reliably across browsers
+
   const blob=new Blob([html],{type:"text/html;charset=utf-8"});
   const burl=URL.createObjectURL(blob);
   const a2=document.createElement("a");
@@ -1797,42 +2036,131 @@ function exportPnLCSV({mData,filtD,filtE,filtS,filtW,customers,deliveries,expens
 
 // ─── HIGH-QUALITY TAB EXPORT — EXCEL (XLSX-compatible) ──────────────────────
 function exportTabExcel(tabName, data, columns, settings) {
-  const co  = settings?.companyName||"TAS Healthy World";
-  const coLogo = settings?.companyLogo||"";
+  const co       = settings?.companyName||"TAS Healthy World";
+  const cosub    = settings?.companySubtitle||"";
+  const gst      = settings?.companyGST||"";
+  const coPhone  = settings?.companyPhone||"";
   const appEmoji = settings?.appEmoji||"🫓";
   const now = new Date().toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
-  // Build XML for a real .xlsx using SpreadsheetML
-  const esc = v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const isNum = v=>v!==null&&v!==undefined&&v!==""&&!isNaN(Number(String(v).replace(/[₹,]/g,"")));
-  const numVal= v=>Number(String(v).replace(/[₹,]/g,""));
 
-  // Header row style index 1 = header; 0 = data
-  const headerRow=`<Row ss:Index="3" ss:StyleID="s2">
+  const esc    = v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const isNum  = v=>v!==null&&v!==undefined&&v!==""&&!isNaN(Number(String(v).replace(/[₹,]/g,"")));
+  const numVal = v=>Number(String(v).replace(/[₹,]/g,""));
+  const getVal = (row,c)=>typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+  const sumCol = (col)=>data.reduce((s,row)=>{ const v=String(getVal(row,col)==null?"":getVal(row,col)); return s+(isNum(v)?numVal(v):0); },0);
+
+  // ── Computed summary stats ──
+  const xlsLabelMatch = (c,...terms)=>{const l=String(c.label||c.key||"").toLowerCase().replace(/[₹()\s#]/g,"");return terms.some(t=>l.includes(t.toLowerCase().replace(/[₹()\s#]/g,"")));};
+  const paidCol   = columns.find(c=>c.key==="paid"||xlsLabelMatch(c,"paid₹","paid(₹)","totalcollected","amountpaid"));
+  const pendCol   = columns.find(c=>c.key==="pending"||xlsLabelMatch(c,"pending₹","pending(₹)","outstanding","amountpending"));
+  const revCol    = columns.find(c=>c.key==="_revenue"||c.key==="revenue"||xlsLabelMatch(c,"revenue₹","revenue(₹)","totalrevenue"));
+  const ordersCol = columns.find(c=>c.key==="_orders"||xlsLabelMatch(c,"#orders","orders")&&!xlsLabelMatch(c,"avg","net","partial"));
+  const replCol   = columns.find(c=>c.key==="_replAmt"||xlsLabelMatch(c,"repldeducted","repl.deducted","replacement"));
+  const totalPaid    = paidCol   ? sumCol(paidCol)   : null;
+  const totalPending = pendCol   ? sumCol(pendCol)   : null;
+  const totalRev     = revCol    ? sumCol(revCol)    : null;
+  const totalOrders  = ordersCol ? sumCol(ordersCol) : null;
+  const totalRepl    = replCol   ? sumCol(replCol)   : null;
+  const collRate = (totalPaid!=null&&totalPending!=null&&(totalPaid+totalPending)>0)?Math.round(totalPaid/(totalPaid+totalPending)*100):null;
+  const activeCount  = data.filter(r=>r.active===true||r.active==="Yes").length;
+  const unpaidCount  = data.filter(r=>{ const p=pendCol?numVal(String(getVal(r,pendCol))):0; return p>0; }).length;
+
+  // ── Styles ──
+  const styles=`<Styles>
+  <Style ss:ID="title"><Font ss:Bold="1" ss:Size="16" ss:Color="#0F172A"/><Alignment ss:Horizontal="Left"/></Style>
+  <Style ss:ID="subtitle"><Font ss:Italic="1" ss:Size="9" ss:Color="#64748B"/><Alignment ss:Horizontal="Left"/></Style>
+  <Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="10"/><Interior ss:Color="#0F1923" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#3B82F6"/></Borders></Style>
+  <Style ss:ID="d0"><Alignment ss:Horizontal="Left" ss:WrapText="1"/><Font ss:Size="10"/></Style>
+  <Style ss:ID="d1"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left" ss:WrapText="1"/><Font ss:Size="10"/></Style>
+  <Style ss:ID="num0"><Alignment ss:Horizontal="Right"/><Font ss:Size="10"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="num1"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Alignment ss:Horizontal="Right"/><Font ss:Size="10"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="tot"><Font ss:Bold="1" ss:Size="10" ss:Color="#0F172A"/><Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A5F"/></Borders><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
+  <Style ss:ID="totNum"><Font ss:Bold="1" ss:Size="10" ss:Color="#0F172A"/><Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A5F"/></Borders><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="paid"><Font ss:Bold="1" ss:Color="#15803D" ss:Size="10"/><Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+  <Style ss:ID="unpaid"><Font ss:Bold="1" ss:Color="#B91C1C" ss:Size="10"/><Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+  <Style ss:ID="active"><Font ss:Bold="1" ss:Color="#065F46" ss:Size="10"/><Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+  <Style ss:ID="inactive"><Font ss:Color="#6B7280" ss:Size="10"/><Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+  <Style ss:ID="smHdr"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="11"/><Interior ss:Color="#1E3A5F" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left"/></Style>
+  <Style ss:ID="smLbl"><Font ss:Bold="1" ss:Size="10" ss:Color="#475569"/><Alignment ss:Horizontal="Left"/></Style>
+  <Style ss:ID="smVal"><Font ss:Bold="1" ss:Size="13" ss:Color="#0F172A"/><Alignment ss:Horizontal="Left"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="smValGreen"><Font ss:Bold="1" ss:Size="13" ss:Color="#059669"/><Alignment ss:Horizontal="Left"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="smValRed"><Font ss:Bold="1" ss:Size="13" ss:Color="#DC2626"/><Alignment ss:Horizontal="Left"/><NumberFormat ss:Format="#,##0.##"/></Style>
+  <Style ss:ID="blank"><Alignment ss:Horizontal="Left"/></Style>
+</Styles>`;
+
+  // ── Data rows with smart cell styling ──
+  const headerRow=`<Row ss:StyleID="hdr">
     ${columns.map(c=>`<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`).join("")}
   </Row>`;
+
   const dataRows=data.map((row,ri)=>{
+    const base=ri%2===0?"0":"1";
     const cells=columns.map(c=>{
-      const raw=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
+      const raw=getVal(row,c);
       const v=String(raw==null?"":raw);
-      if(isNum(v)&&c.num!==false){return `<Cell ss:StyleID="s3"><Data ss:Type="Number">${numVal(v)}</Data></Cell>`;}
-      return `<Cell ss:StyleID="${ri%2===0?"s3":"s4"}"><Data ss:Type="String">${esc(v)}</Data></Cell>`;
+      // Status column — colour coded
+      if(c.key==="status"||c.label==="Status"||String(v).toUpperCase()==="PAID"||String(v).toUpperCase()==="UNPAID"){
+        const sty=v.toUpperCase()==="PAID"?"paid":v.toUpperCase()==="UNPAID"?"unpaid":base==="0"?"d0":"d1";
+        return `<Cell ss:StyleID="${sty}"><Data ss:Type="String">${esc(v)}</Data></Cell>`;
+      }
+      // Active column
+      if(c.key==="active"||c.label==="Active"){
+        const sty=v==="Yes"?"active":"inactive";
+        return `<Cell ss:StyleID="${sty}"><Data ss:Type="String">${esc(v)}</Data></Cell>`;
+      }
+      // Numeric
+      if(isNum(v)&&c.num!==false){
+        return `<Cell ss:StyleID="num${base}"><Data ss:Type="Number">${numVal(v)}</Data></Cell>`;
+      }
+      return `<Cell ss:StyleID="d${base}"><Data ss:Type="String">${esc(v)}</Data></Cell>`;
     });
     return `<Row>${cells.join("")}</Row>`;
   }).join("\n");
-  // Build totals row for numeric columns
-  const totalsRow=`<Row ss:StyleID="s6">
+
+  // ── Totals row ──
+  const totalsRow=`<Row ss:StyleID="tot">
     ${columns.map((c,ci)=>{
-      if(c.num!==false){
-        const colTotal=data.reduce((s,row)=>{
-          const raw=typeof c.val==="function"?c.val(row):(row[c.key]??(""));
-          const v=String(raw==null?"":raw);
-          return s+(isNum(v)?numVal(v):0);
-        },0);
-        if(colTotal!==0){return `<Cell ss:StyleID="s6"><Data ss:Type="Number">${colTotal}</Data></Cell>`;}
-      }
-      return `<Cell ss:StyleID="s6"><Data ss:Type="String">${ci===0?esc("TOTAL ("+data.length+" records)"):"—"}</Data></Cell>`;
+      const t=sumCol(c);
+      if(c.num!==false&&t!==0){return `<Cell ss:StyleID="totNum"><Data ss:Type="Number">${t}</Data></Cell>`;}
+      return `<Cell ss:StyleID="tot"><Data ss:Type="String">${esc(ci===0?"TOTAL ("+data.length+" records)":"—")}</Data></Cell>`;
     }).join("")}
   </Row>`;
+
+  // ── Summary sheet ──
+  const smRow=(label,val,style="smVal")=>`<Row>
+    <Cell ss:StyleID="smLbl"><Data ss:Type="String">${esc(label)}</Data></Cell>
+    <Cell ss:StyleID="${style}"><Data ss:Type="${typeof val==="number"?"Number":"String"}">${typeof val==="number"?val:esc(String(val))}</Data></Cell>
+  </Row>`;
+  const smBlank=`<Row><Cell ss:StyleID="blank"><Data ss:Type="String"></Data></Cell></Row>`;
+
+  const summarySheet=`<Worksheet ss:Name="Summary">
+<Table ss:DefaultColumnWidth="180">
+  <Column ss:Width="200"/><Column ss:Width="160"/>
+  <Row ss:StyleID="smHdr">
+    <Cell ss:MergeAcross="1"><Data ss:Type="String">${esc(appEmoji+" "+co)} — ${esc(tabName)} Summary</Data></Cell>
+  </Row>
+  <Row ss:StyleID="subtitle">
+    <Cell ss:MergeAcross="1"><Data ss:Type="String">Exported: ${esc(now)}${cosub?" · "+cosub:""}${gst?" · GST: "+gst:""}${coPhone?" · "+coPhone:""}</Data></Cell>
+  </Row>
+  ${smBlank}
+  ${smRow("Total Records",data.length)}
+  ${smRow("Active Customers",activeCount)}
+  ${smRow("Inactive Customers",data.length-activeCount)}
+  ${smRow("Unpaid Customers",unpaidCount)}
+  ${smRow("Fully Paid Customers",data.length-unpaidCount,"smValGreen")}
+  ${smBlank}
+  ${totalRev!=null?smRow("Total Revenue (Rs)",totalRev):""}
+  ${totalPaid!=null?smRow("Total Collected (Rs)",totalPaid,"smValGreen"):""}
+  ${totalPending!=null?smRow("Total Outstanding (Rs)",totalPending,totalPending>0?"smValRed":"smValGreen"):""}
+  ${collRate!=null?smRow("Collection Rate",collRate+"%"):""}
+  ${totalOrders!=null?smRow("Total Orders",totalOrders):""}
+  ${totalRepl!=null&&totalRepl>0?smRow("Total Replacements Deducted (Rs)",totalRepl,"smValRed"):""}
+  ${smBlank}
+  <Row ss:StyleID="subtitle">
+    <Cell ss:MergeAcross="1"><Data ss:Type="String">See the '${esc(tabName)}' sheet for full data →</Data></Cell>
+  </Row>
+</Table>
+</Worksheet>`;
 
   const xml=`<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -1844,21 +2172,15 @@ function exportTabExcel(tabName, data, columns, settings) {
   <Author>${esc(co)}</Author>
   <Created>${new Date().toISOString()}</Created>
 </DocumentProperties>
-<Styles>
-  <Style ss:ID="s1"><Font ss:Bold="1" ss:Size="14"/><Alignment ss:Horizontal="Left"/></Style>
-  <Style ss:ID="s2"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F1923" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#3B82F6"/></Borders></Style>
-  <Style ss:ID="s3"><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
-  <Style ss:ID="s4"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
-  <Style ss:ID="s5"><Font ss:Italic="1" ss:Color="#94A3B8" ss:Size="9"/></Style>
-  <Style ss:ID="s6"><Font ss:Bold="1" ss:Color="#0F172A"/><Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A5F"/></Borders><Alignment ss:Horizontal="Left" ss:WrapText="1"/></Style>
-</Styles>
+${styles}
+${summarySheet}
 <Worksheet ss:Name="${esc(tabName)}">
 <Table>
-  <Row ss:StyleID="s1">
-    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">${esc(coLogo?"":appEmoji+" ")}${esc(co)} — ${esc(tabName)} Report</Data></Cell>
+  <Row ss:StyleID="title">
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">${esc(appEmoji+" "+co)} — ${esc(tabName)} Report</Data></Cell>
   </Row>
-  <Row ss:StyleID="s5">
-    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Exported on: ${esc(now)} · ${data.length} records</Data></Cell>
+  <Row ss:StyleID="subtitle">
+    <Cell ss:MergeAcross="${columns.length-1}"><Data ss:Type="String">Exported: ${esc(now)} · ${data.length} records${cosub?" · "+cosub:""}${gst?" · GST: "+gst:""}${coPhone?" · "+coPhone:""}</Data></Cell>
   </Row>
   ${headerRow}
   ${dataRows}
@@ -1869,11 +2191,15 @@ function exportTabExcel(tabName, data, columns, settings) {
 </WorksheetOptions>
 </Worksheet>
 </Workbook>`;
+
   const blob=new Blob([xml],{type:"application/vnd.ms-excel;charset=utf-8"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${tabName.replace(/\s+/g,"_")}_${today()}.xls`;
-  document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(a.href);},1000);
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`${tabName.replace(/\s+/g,"_")}_${today()}.xls`;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(a.href);},1000);
 }
 
 // ═══════════════════════════════════════════════════════════════
 
-export { exportPDF, exportAgentReceipt, useT, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, shareWhatsApp, exportCSV, exportWord, exportTabPDF, exportPnLReport, exportPnLCSV, exportTabExcel };
+export { exportPDF, exportAgentReceipt, useT, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, shareWhatsApp, exportCSV, exportCustomersCSV, exportWord, exportTabPDF, exportPnLReport, exportPnLCSV, exportTabExcel };

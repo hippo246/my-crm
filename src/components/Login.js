@@ -19,14 +19,14 @@ function Login({users,onLogin,dm,settings}){
   const appSub=settings?.appSubtitle||"Paratha Factory \u00b7 Operations";
   const appEmoji=settings?.appEmoji||"\u{1F9AB}";
 
-  const BG="#0b1120";
-  const BORDER="#1e2d45";
-  const MUTED="#4a6080";
-  const TEXT="#e8edf5";
+  const BG="#f0f4f8";
+  const BORDER="#c9d8e8";
+  const MUTED="#6b8399";
+  const TEXT="#0f1f33";
   const BLUE="#3b6ef6";
 
-  const dotsBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(circle, rgba(59,110,246,0.15) 1px, transparent 1px)",backgroundSize:"36px 36px",opacity:0.45};
-  const glowBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(ellipse 60% 50% at 30% 40%, rgba(59,110,246,0.1) 0%, transparent 70%), radial-gradient(ellipse 40% 60% at 75% 70%, rgba(10,30,80,0.4) 0%, transparent 70%)"};
+  const dotsBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(circle, rgba(59,110,246,0.12) 1px, transparent 1px)",backgroundSize:"36px 36px",opacity:0.4};
+  const glowBg={position:"absolute",inset:0,backgroundImage:"radial-gradient(ellipse 60% 50% at 30% 40%, rgba(59,110,246,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 60% at 75% 70%, rgba(180,210,240,0.4) 0%, transparent 70%)"};
 
   const featurePills=[
     {svg:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>, label:"Real-time Sync", sub:"Live updates across all operations", color:"#f59e0b"},
@@ -164,7 +164,7 @@ function Login({users,onLogin,dm,settings}){
             </div>
             <input className="linp" value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
               placeholder="Enter your username" autoComplete="username"
-              style={{width:"100%",background:"rgba(15,22,38,0.8)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 16px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",background:"rgba(255,255,255,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 16px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
           </div>
         </div>
 
@@ -176,7 +176,7 @@ function Login({users,onLogin,dm,settings}){
             </div>
             <input className="linp" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
               type={showPw?"text":"password"} placeholder="Enter your password" autoComplete="current-password"
-              style={{width:"100%",background:"rgba(15,22,38,0.8)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 52px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",background:"rgba(255,255,255,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:12,padding:"15px 52px 15px 50px",fontSize:17,color:TEXT,outline:"none",boxSizing:"border-box"}}/>
             <button onClick={()=>setShowPw(v=>!v)} tabIndex={-1}
               style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",padding:6,color:MUTED,display:"flex",alignItems:"center",WebkitTapHighlightColor:"transparent"}}>
               {showPw
@@ -188,7 +188,7 @@ function Login({users,onLogin,dm,settings}){
 
         <div className="lfa3" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:err?14:22}}>
           <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}} onClick={()=>setRememberMe(v=>!v)}>
-            <div style={{width:24,height:24,borderRadius:7,background:rememberMe?BLUE:"rgba(15,22,38,0.8)",border:`2px solid ${rememberMe?BLUE:BORDER}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+            <div style={{width:24,height:24,borderRadius:7,background:rememberMe?BLUE:"rgba(255,255,255,0.9)",border:`2px solid ${rememberMe?BLUE:BORDER}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
               {rememberMe&&<svg width="13" height="11" viewBox="0 0 13 11" fill="none"><path d="M1.5 5.5l3.5 3.5 6.5-8" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>
             <span style={{color:"#8ba3c0",fontSize:15,fontWeight:500}}>Remember me</span>
@@ -216,7 +216,7 @@ function Login({users,onLogin,dm,settings}){
 
         {/* ── PASSKEY / BIOMETRIC BUTTON ── */}
         {(settings?.secBiometricEnabled!==false)&&hasPasskey&&<button className="lbtn lfa4" onClick={async()=>{setPasskeyChecking(true);setErr("");await tryPasskey();setPasskeyChecking(false);}} disabled={passkeyChecking}
-          style={{width:"100%",background:"rgba(15,22,38,0.85)",border:`1.5px solid ${passkeyChecking?"#3b6ef6":BORDER}`,borderRadius:14,padding:"15px 18px",color:TEXT,fontSize:16,fontWeight:600,cursor:passkeyChecking?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,transition:"all 0.18s",marginBottom:14,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+          style={{width:"100%",background:"rgba(255,255,255,0.85)",border:`1.5px solid ${passkeyChecking?"#3b6ef6":BORDER}`,borderRadius:14,padding:"15px 18px",color:TEXT,fontSize:16,fontWeight:600,cursor:passkeyChecking?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,transition:"all 0.18s",marginBottom:14,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
           {passkeyChecking
             ?<><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="2.5" strokeLinecap="round" style={{animation:"lspin 0.8s linear infinite"}}><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg><span style={{color:"#3b6ef6"}}>Verifying…</span></>
             :<><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b6ef6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 10V2"/><path d="M8 6l4-4 4 4"/><rect x="2" y="12" width="20" height="10" rx="2"/><circle cx="12" cy="17" r="1.5" fill="#3b6ef6"/></svg><span>Sign in with Passkey / Face ID / Fingerprint</span></>}
@@ -232,7 +232,7 @@ function Login({users,onLogin,dm,settings}){
         </div>}
 
         {mode==="picker"&&<button onClick={()=>setShowAdminForm(false)}
-          style={{width:"100%",background:"rgba(15,22,38,0.6)",border:`1.5px solid ${BORDER}`,borderRadius:14,padding:"14px 18px",color:MUTED,fontSize:15,fontWeight:500,cursor:"pointer",textAlign:"center",WebkitTapHighlightColor:"transparent",marginBottom:14}}>
+          style={{width:"100%",background:"rgba(255,255,255,0.6)",border:`1.5px solid ${BORDER}`,borderRadius:14,padding:"14px 18px",color:MUTED,fontSize:15,fontWeight:500,cursor:"pointer",textAlign:"center",WebkitTapHighlightColor:"transparent",marginBottom:14}}>
           ← Back to staff selection
         </button>}
 
@@ -262,7 +262,7 @@ function Login({users,onLogin,dm,settings}){
             {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i)=>(
               <button key={i} onClick={()=>{if(k==="⌫"){setPinVal(v=>v.slice(0,-1));setErr("");}else if(k!=="")enterPin(String(k));}}
                 disabled={k===""}
-                style={{height:72,borderRadius:16,fontSize:k==="⌫"?22:26,fontWeight:700,background:k===""?"transparent":"rgba(19,28,46,0.9)",color:TEXT,border:k===""?"none":`1.5px solid ${BORDER}`,cursor:k===""?"default":"pointer",transition:"background 0.1s",opacity:k===""?0:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                style={{height:72,borderRadius:16,fontSize:k==="⌫"?22:26,fontWeight:700,background:k===""?"transparent":"rgba(255,255,255,0.9)",color:TEXT,border:k===""?"none":`1.5px solid ${BORDER}`,cursor:k===""?"default":"pointer",transition:"background 0.1s",opacity:k===""?0:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
                 {k}
               </button>
             ))}
@@ -289,7 +289,7 @@ function Login({users,onLogin,dm,settings}){
           </div>
           <p style={{color:MUTED,fontSize:12,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",textAlign:"center",marginBottom:14}}>Select your profile</p>
           {staffNames.length===0&&(
-            <div style={{background:"rgba(19,28,46,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"22px",textAlign:"center"}}>
+            <div style={{background:"rgba(255,255,255,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"22px",textAlign:"center"}}>
               <p style={{color:TEXT,fontSize:16,marginBottom:8}}>No staff profiles configured.</p>
               <p style={{color:MUTED,fontSize:14}}>Admin → Settings → Staff Login Mode</p>
             </div>
@@ -301,9 +301,9 @@ function Login({users,onLogin,dm,settings}){
               const color=colors[i%colors.length];
               return(
                 <button key={name} onClick={()=>pickStaff(name)}
-                  style={{background:"rgba(19,28,46,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,textAlign:"left",width:"100%",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"border-color 0.15s,background 0.15s"}}
+                  style={{background:"rgba(255,255,255,0.9)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,textAlign:"left",width:"100%",cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"border-color 0.15s,background 0.15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=`${color}08`;}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER;e.currentTarget.style.background="rgba(19,28,46,0.9)";}}>
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER;e.currentTarget.style.background="rgba(255,255,255,0.9)";}}>
                   <div style={{width:46,height:46,background:`${color}18`,border:`1.5px solid ${color}35`,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",color,fontWeight:800,fontSize:17,flexShrink:0}}>{initials}</div>
                   <div style={{flex:1}}>
                     <p style={{color:TEXT,fontWeight:600,fontSize:17,lineHeight:1.2,margin:0}}>{name}</p>
@@ -367,7 +367,7 @@ function Login({users,onLogin,dm,settings}){
               <h1 style={{color:TEXT,fontWeight:800,fontSize:38,lineHeight:1.15,margin:"0 0 12px",letterSpacing:"-0.02em"}}>{appName}</h1>
               <p style={{color:MUTED,fontSize:18,margin:0,fontWeight:400,lineHeight:1.6}}>{appSub}</p>
             </div>
-            <div className="lfa2" style={{background:"rgba(19,28,46,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
+            <div className="lfa2" style={{background:"rgba(255,255,255,0.75)",border:`1.5px solid ${BORDER}`,borderRadius:20,padding:"22px 26px",marginBottom:32,backdropFilter:"blur(10px)"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr"}}>
                 {featurePills.map((f,i)=>(
                   <React.Fragment key={f.label}>
@@ -393,7 +393,7 @@ function Login({users,onLogin,dm,settings}){
           <div style={{width:84,height:84,borderRadius:24,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
           <h1 style={{color:TEXT,fontWeight:800,fontSize:30,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
           <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
-          <div style={{background:"rgba(19,28,46,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
+          <div style={{background:"rgba(255,255,255,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
             {featurePills.map((f,i)=>(
               <React.Fragment key={f.label}>
                 <div style={{textAlign:"center",padding:"0 6px"}}>
