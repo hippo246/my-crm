@@ -563,6 +563,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [custSortField,setCustSortField]=useState("lastOrder");
   const [custStatusFilter,setCustStatusFilter]=useState("all");
   const [custView,setCustView]=useState("expanded"); // "expanded" | "compact"
+  const [custMobileFilterOpen,setCustMobileFilterOpen]=useState(false);
   const [selectedCustomer,setSelectedCustomer]=useState(null); // for inline split-panel
   const [custDetailDelivFilter,setCustDetailDelivFilter]=useState("all"); // "all"|"today"|"yesterday"|"week"
   const [custDetailPartialAmt,setCustDetailPartialAmt]=useState("");

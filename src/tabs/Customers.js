@@ -253,13 +253,8 @@
               {!isMobile&&<option value="revenue">Revenue ↓</option>}
             </select>
             <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"nowrap",alignItems:"center"}}>
-            {/* Mobile toolbar: Filter button + Export icon + Add Customer */}
+            {/* Mobile toolbar: Export buttons + Add Customer */}
             {isMobile&&<>
-              <button onClick={()=>setCustStatusFilter&&setCustMobileFilterOpen&&setCustMobileFilterOpen(v=>!v)}
-                style={{display:"flex",alignItems:"center",gap:6,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                Filter
-              </button>
               {can("cust_export")&&<button
                 onClick={()=>{
                   const enriched=customers.map(c=>{
@@ -279,6 +274,25 @@
                 }}
                 style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+              </button>}
+              {can("cust_export")&&<button
+                onClick={()=>{
+                  const enriched=customers.map(c=>{
+                    const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                    const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                    const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                    const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                    const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
+                    return {...c,_orders:cDelivs.length,_revenue:cRev,_replAmt:cReplAmt,_lastDate:lastD?.date||""};
+                  });
+                  exportCSV(enriched,"customers",[
+                    {label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"_orders"},
+                    {label:"Revenue (₹)",key:"_revenue"},{label:"Paid (₹)",key:"paid"},
+                    {label:"Pending (₹)",key:"pending"},{label:"Last Order",key:"_lastDate"},
+                  ]);
+                }}
+                style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               </button>}
               {can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
                 style={{display:"flex",alignItems:"center",gap:6,background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -473,8 +487,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </button>;
               })}
             </div>
-            {/* Right: view mode toggle — desktop only */}
-            {!isMobile&&<div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+            {/* View mode toggle — all screen sizes */}
+            <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
               {[
                 {v:"recent",lbl:"Recent",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>},
                 {v:"expanded",lbl:"Table",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>},
@@ -486,7 +500,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                   {icon}{lbl}
                 </button>;
               })}
-            </div>}
+            </div>
           </div>
 
           {/* ── MOBILE CUSTOMER CARD LIST ── */}
