@@ -214,7 +214,7 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
                             {dInvNo2&&<span style={{fontFamily:"monospace",fontSize:9,color:t.sub,background:t.inp,borderRadius:4,padding:"1px 5px"}}>{dInvNo2}</span>}
                           </div>
                           {d.createdBy&&<p style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</p>}
-                          {d.orderLines&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>{Object.values(d.orderLines).filter(l=>l.qty>0).map(l=>`${l.qty}×${l.name||""}`).join(", ")}</p>}
+                          {d.orderLines&&<p style={{color:t.sub,fontSize:10,marginTop:2}}>{Object.entries(d.orderLines).filter(([,l])=>l.qty>0).map(([pid,l])=>{const prod=products.find(p=>p.id===pid);return`${l.qty}×${prod?.name||l.name||pid}`;}).join(", ")}</p>}
                           {d.replacement?.done&&<p style={{color:"#f97316",fontSize:10,marginTop:2}}>🔄 Replacement: {d.replacement.item||""}{d.replacement.qty?` (${d.replacement.qty})`:""}{repl>0?` · −${inr(repl)}`:""}</p>}
                         </div>
                         <div style={{textAlign:"right"}}>
