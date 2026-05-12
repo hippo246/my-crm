@@ -1,70 +1,94 @@
-# Getting Started with Create React App
+# TAS CRM — Split File Structure
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Original: 1 file, 16,606 lines
+Split:    35 files across lib/, components/, tabs/
 
-## Available Scripts
+## Folder Structure
 
-In the project directory, you can run:
+```
+src/
+├── App.js                    ← Entry point (25 lines)
+├── CRM.js                    ← Main shell: state + tab switcher
+├── lib/
+│   ├── auth.js               ← hashPw, checkPw, SESSION_TTL, device fingerprinting
+│   ├── store.js              ← useStore, fbWrite, atomicInvoiceSeq
+│   ├── utils.js              ← uid, today, inr, safeArr, cx, mapU, lineTotal, etc.
+│   ├── i18n.js               ← I18N_LANGS, t18n, setAppLang
+│   ├── roles.js              ← ALL_TABS, ROLE_DEF, FINE_PERM_DEFS, hasPerm, defaultFinePerms
+│   ├── constants.js          ← D_PRODS, D_CUST, D_DELIV, D_SETTINGS, D_WASTE etc.
+│   ├── theme.js              ← LT, DK, T(dm)
+│   ├── exports.js            ← exportPDF, exportCSV, exportTabPDF, exportPnLReport, etc.
+│   └── CRMContext.js         ← React Context: CRMContext, useCRM()
+├── components/
+│   ├── ui.js                 ← Btn, Inp, Sel, Card, Sheet, Toast, Confirm, StatCard,
+│   │                            Pagination, ProdRow, OrderEditor, StatusPill, etc.
+│   ├── DetailModal.js        ← Universal detail/view modal
+│   ├── MorningBriefing.js    ← Daily briefing widget
+│   ├── Login.js              ← Login screen
+│   ├── RootInner.js          ← AppErrorBoundary + RootInner (login gate)
+│   ├── GPSMap.js             ← Leaflet GPS map component
+│   ├── WeatherWidget.js      ← Weather widget
+│   └── SecurityPanels.js     ← PasskeyManager, SecuritySessions, FailedLoginAttempts
+└── tabs/
+    ├── Dashboard.js          ← 451 lines
+    ├── Customers.js          ← 1,143 lines
+    ├── Deliveries.js         ← 874 lines
+    ├── Supplies.js           ← 210 lines
+    ├── Expenses.js           ← 379 lines
+    ├── Wastage.js            ← 109 lines
+    ├── Payments.js           ← 390 lines
+    ├── PnL.js                ← 902 lines
+    ├── Analytics.js          ← 1,111 lines
+    ├── Production.js         ← 694 lines
+    ├── Ingredients.js        ← 141 lines
+    ├── Staff.js              ← 254 lines
+    ├── Machines.js           ← 228 lines
+    ├── Vehicles.js           ← 253 lines
+    ├── GPS.js                ← 450 lines
+    └── Settings.js           ← 3,110 lines
+```
 
-### `npm start`
+## Current Status: Phase 1 — Files Separated
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+✅ All code extracted into logical files
+✅ No functionality changed — everything still works as before
+⚠️  CRM.js still imports/uses tab JSX inline (Phase 2 work below)
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Phase 2 — Convert tabs to proper React components (optional, do later)
 
-### `npm test`
+Each tab file contains raw JSX. To make them proper importable components:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. Wrap each tab file's JSX in a function that uses `useCRM()` hook
+2. Import CRMContext in each tab
+3. Replace inline JSX in CRM.js with `<DashboardTab />`, `<CustomersTab />` etc.
+4. Add React.lazy() + Suspense for code splitting (this is where the real perf gains are)
 
-### `npm run build`
+Example for Dashboard.js:
+```jsx
+import { useCRM } from "../lib/CRMContext";
+export default function DashboardTab() {
+  const { t, dm, sess, isAdmin, can, deliveries, customers, ...rest } = useCRM();
+  return (
+    <>
+      {/* paste the dashboard JSX block here */}
+    </>
+  );
+}
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Then in CRM.js:
+```jsx
+import { lazy, Suspense } from "react";
+const DashboardTab = lazy(() => import("./tabs/Dashboard"));
+// ...
+{tab === "Dashboard" && <Suspense fallback={<Spinner />}><DashboardTab /></Suspense>}
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+This is where lazy loading kicks in — users only download tab code when they open it.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## How to use these files
 
-### `npm run eject`
+Drop the `src/` folder into your existing project, replacing the current App.js.
+Make sure firebase.js is at src/firebase.js (unchanged).
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+The file split alone won't break anything — all code is the same, just organised.
