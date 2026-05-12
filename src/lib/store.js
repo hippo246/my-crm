@@ -21,18 +21,6 @@ async function atomicInvoiceSeq() {
   return newSeq;
 }
 
-// atomicAddPayment: records a payment ledger entry AND increments c.paid in
-// one Firebase transaction on the customer node, so two devices recording
-// payment simultaneously never overwrite each other — they always accumulate.
-async function atomicAddPayment(customerId, amount) {
-  const paidRef = ref(db, `tas9_customers/${customerId}/paid`);  // adjust path if your key differs
-  // We run the transaction on the whole customer node via useStore path.
-  // Because useStore stores customers as {v: [...]} at "tas9_customers",
-  // we instead patch via the customers array transaction below.
-  // This helper returns a promise so callers can await it.
-  // Note: for array-based stores we handle this inside recordPaymentLedger directly.
-  void 0; // placeholder — logic is inlined in recordPaymentLedger below
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _writing = {}; // sets of pending write tokens per key — ignore echoes while set is non-empty
