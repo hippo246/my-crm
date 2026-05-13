@@ -438,166 +438,193 @@ function sendBrowserNotif(title, body, icon = "🫓") {
 // ═══════════════════════════════════════════════════════════════
 function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[], isMoreActive, icons={}, labels={}, dm, pendingCount=0, onLogout, onDm }) {
   const t = T(dm);
-  // Split tabs around the FAB: left half and right half
   const half = Math.floor(tabs.length / 2);
   const leftTabs  = tabs.slice(0, half);
   const rightTabs = tabs.slice(half);
 
+  const BLUE = "#2563eb";
+  const activeCol  = dm ? "#ffffff" : "#0f172a";
+  const inactiveCol = dm ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.32)";
+  const navBg = dm ? "rgba(10,11,18,0.97)" : "rgba(255,255,255,0.97)";
+  const navBorder = dm ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
+
   function NavBtn({ tb }) {
     const isA = activeTab === tb;
-    const hasBadge = tb === "Dashboard" && pendingCount > 0 && !isA;
+    const hasBadge = tb === "Deliveries" && pendingCount > 0;
     return (
       <button
-        key={tb}
         onClick={() => onTab(tb)}
         style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 4,
-          background: "transparent",
-          border: "none",
-          color: isA ? (dm ? "#fff" : "#0d1b2a") : (dm ? "rgba(255,255,255,0.4)" : "#9ca3af"),
-          cursor: "pointer",
-          WebkitTapHighlightColor: "transparent",
-          touchAction: "manipulation",
-          position: "relative",
-          padding: "10px 4px 8px",
-          minHeight: 64,
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: 3, background: "transparent", border: "none",
+          cursor: "pointer", WebkitTapHighlightColor: "transparent",
+          touchAction: "manipulation", position: "relative",
+          padding: "0 2px", minHeight: 64,
+          transition: "opacity 0.1s",
         }}
       >
-        <span style={{ fontSize: 22, lineHeight: 1, filter: isA ? "none" : "opacity(0.7)" }}>{icons[tb] || "•"}</span>
-        <span style={{ fontSize: 10, fontWeight: isA ? 800 : 500, lineHeight: 1, letterSpacing: "0.01em" }}>{labels[tb] || tb}</span>
-        {hasBadge && (
-          <span style={{ position: "absolute", top: 8, right: "calc(50% - 16px)", background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 99, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", border: `2px solid ${t.card}` }}>
-            {pendingCount > 9 ? "9+" : pendingCount}
-          </span>
+        {/* Active top indicator */}
+        {isA && (
+          <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+            width: 20, height: 3, borderRadius: "0 0 3px 3px", background: BLUE }} />
         )}
+        {/* Icon */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+          width: 28, height: 28 }}>
+          <span style={{ fontSize: isA ? 22 : 20, lineHeight: 1, transition: "font-size 0.15s",
+            filter: isA ? "none" : `opacity(0.55) ${dm ? "" : "grayscale(0.2)"}` }}>
+            {icons[tb] || "•"}
+          </span>
+          {hasBadge && (
+            <span style={{ position: "absolute", top: -3, right: -5, background: "#ef4444",
+              color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 99,
+              minWidth: 15, height: 15, display: "flex", alignItems: "center",
+              justifyContent: "center", padding: "0 3px",
+              border: `2px solid ${dm ? "#0a0b12" : "#fff"}` }}>
+              {pendingCount > 9 ? "9+" : pendingCount}
+            </span>
+          )}
+        </div>
+        {/* Label */}
+        <span style={{ fontSize: 10, fontWeight: isA ? 700 : 500, lineHeight: 1,
+          color: isA ? activeCol : inactiveCol,
+          letterSpacing: "0.01em", transition: "color 0.15s" }}>
+          {labels[tb] || tb}
+        </span>
       </button>
     );
   }
 
   return (
     <>
-      {/* More drawer backdrop */}
+      {/* ── More drawer backdrop ── */}
       {moreOpen && (
-        <div
-          onClick={() => onMore()}
-          style={{ position: "fixed", inset: 0, zIndex: 48, background: "rgba(0,0,0,0.4)", WebkitBackdropFilter: "blur(4px)", backdropFilter: "blur(4px)" }}
-          className="lg:hidden"
-        />
+        <div onClick={() => onMore()} className="lg:hidden"
+          style={{ position: "fixed", inset: 0, zIndex: 48,
+            background: "rgba(0,0,0,0.35)", backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)" }} />
       )}
 
-      {/* More drawer panel */}
+      {/* ── More drawer panel ── */}
       {moreOpen && (
-        <div
-          style={{ position: "fixed", bottom: "calc(72px + env(safe-area-inset-bottom,0px))", left: 0, right: 0, zIndex: 49, background: t.card, borderTop: `1.5px solid ${t.border}`, boxShadow: "0 -8px 32px rgba(0,0,0,0.18)", borderRadius: "20px 20px 0 0", padding: "16px 16px 8px" }}
-          className="lg:hidden"
-        >
-          <div style={{ width: 36, height: 4, borderRadius: 99, background: t.border, margin: "0 auto 16px" }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(160px,100%),1fr))", gap: 8 }}>
+        <div className="lg:hidden"
+          style={{ position: "fixed", bottom: "calc(64px + env(safe-area-inset-bottom,0px))",
+            left: 8, right: 8, zIndex: 49,
+            background: dm ? "rgba(14,15,22,0.98)" : "rgba(255,255,255,0.98)",
+            border: `1px solid ${navBorder}`,
+            borderRadius: 24, padding: "6px 10px 12px",
+            boxShadow: dm ? "0 -12px 48px rgba(0,0,0,0.7)" : "0 -12px 48px rgba(0,0,0,0.14)",
+            backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}>
+          {/* drag handle */}
+          <div style={{ width: 32, height: 4, borderRadius: 99, background: dm ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)", margin: "8px auto 12px" }} />
+          {/* Tab grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 10 }}>
             {moreTabs.map(tb => {
               const isA = activeTab === tb;
               return (
                 <button key={tb} onClick={() => { onTab(tb); onMore(); }}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 6px", borderRadius: 14, background: isA ? "#2563eb" : "transparent", border: `1.5px solid ${isA ? "#2563eb" : t.border}`, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                    padding: "12px 4px 10px", borderRadius: 16,
+                    background: isA ? BLUE + "18" : "transparent",
+                    border: `1.5px solid ${isA ? BLUE + "40" : navBorder}`,
+                    cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>{icons[tb] || "•"}</span>
-                  <span style={{ fontSize: 11, fontWeight: isA ? 700 : 500, color: isA ? "#fff" : t.sub, lineHeight: 1.2, textAlign: "center" }}>{labels[tb] || tb}</span>
+                  <span style={{ fontSize: 10, fontWeight: isA ? 700 : 500,
+                    color: isA ? BLUE : inactiveCol, lineHeight: 1.2, textAlign: "center" }}>
+                    {labels[tb] || tb}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, paddingBottom: 4 }}>
-            <button onClick={() => { onDm(); onMore(); }} style={{ flex: 1, padding: "11px", borderRadius: 12, border: `1.5px solid ${t.border}`, background: t.inp, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 46 }}>{dm ? "☀️ Light" : "🌙 Dark"}</button>
-            <button onClick={() => { onMore(); onLogout(); }} style={{ flex: 1, padding: "11px", borderRadius: 12, border: "1.5px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 46 }}>↩ Sign Out</button>
+          {/* Bottom actions */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { onDm(); onMore(); }}
+              style={{ flex: 1, padding: "11px 8px", borderRadius: 14, border: `1.5px solid ${navBorder}`,
+                background: dm ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+                color: dm ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)",
+                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                WebkitTapHighlightColor: "transparent", display: "flex",
+                alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44 }}>
+              {dm ? "☀️" : "🌙"} {dm ? "Light" : "Dark"}
+            </button>
+            <button onClick={() => { onMore(); onLogout(); }}
+              style={{ flex: 1, padding: "11px 8px", borderRadius: 14,
+                border: "1.5px solid rgba(239,68,68,0.25)",
+                background: "rgba(239,68,68,0.07)", color: "#ef4444",
+                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                WebkitTapHighlightColor: "transparent", display: "flex",
+                alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44 }}>
+              ↩ Sign Out
+            </button>
           </div>
         </div>
       )}
 
-      {/* Fixed bottom bar */}
-      <nav
-        style={{
-          background: dm ? "#111827" : "#ffffff",
-          borderTop: `1px solid ${dm ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`,
+      {/* ── Floating action button (above nav) ── */}
+      <button onClick={onFab} className="lg:hidden"
+        style={{ position: "fixed", bottom: "calc(72px + env(safe-area-inset-bottom,0px))", right: 20,
+          zIndex: 47, width: 52, height: 52, borderRadius: 18,
+          background: dm ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "linear-gradient(135deg,#0f172a,#1e293b)",
+          border: "none", cursor: "pointer",
+          WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: dm ? "0 4px 20px rgba(37,99,235,0.5)" : "0 4px 20px rgba(0,0,0,0.35)" }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+
+      {/* ── Fixed bottom nav bar ── */}
+      <nav className="fixed bottom-0 left-0 right-0 lg:hidden"
+        style={{ background: navBg,
+          borderTop: `1px solid ${navBorder}`,
           paddingBottom: "env(safe-area-inset-bottom,0px)",
-          boxShadow: dm ? "0 -4px 24px rgba(0,0,0,0.5)" : "0 -4px 24px rgba(0,0,0,0.08)",
-          zIndex: 50,
-          WebkitTransform: "translateZ(0)",
-          transform: "translateZ(0)",
-          willChange: "transform",
-          contain: "layout style",
-          WebkitBackfaceVisibility: "hidden",
-          backfaceVisibility: "hidden",
-        }}
-        className="fixed bottom-0 left-0 right-0 lg:hidden"
-      >
+          boxShadow: dm ? "0 -4px 32px rgba(0,0,0,0.6)" : "0 -1px 0 rgba(0,0,0,0.06), 0 -8px 32px rgba(0,0,0,0.06)",
+          backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+          zIndex: 50, WebkitTransform: "translateZ(0)", transform: "translateZ(0)",
+          willChange: "transform", contain: "layout style" }}>
         <div style={{ display: "flex", alignItems: "stretch", height: 64 }}>
-          {/* Left tabs */}
-          {leftTabs.map(tb => <NavBtn key={tb} tb={tb} />)}
 
-          {/* Center FAB */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
-            <button
-              onClick={onFab}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: "50%",
-                background: dm ? "#ffffff" : "#0d1b2a",
-                color: dm ? "#0d1b2a" : "#ffffff",
-                border: "none",
-                fontSize: 28,
-                fontWeight: 300,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                WebkitTapHighlightColor: "transparent",
-                touchAction: "manipulation",
-                boxShadow: dm ? "0 4px 16px rgba(255,255,255,0.15)" : "0 4px 16px rgba(13,27,42,0.35)",
-                flexShrink: 0,
-                lineHeight: 1,
-                marginBottom: 6,
-              }}
-            >+</button>
-          </div>
+          {/* All 4 primary tabs — no FAB in the bar */}
+          {tabs.map(tb => <NavBtn key={tb} tb={tb} />)}
 
-          {/* Right tabs */}
-          {rightTabs.map(tb => <NavBtn key={tb} tb={tb} />)}
-
-          {/* More */}
-          <button
-            onClick={() => onMore()}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              background: "transparent",
-              border: "none",
-              color: isMoreActive || moreOpen ? (dm ? "#fff" : "#0d1b2a") : (dm ? "rgba(255,255,255,0.4)" : "#9ca3af"),
-              cursor: "pointer",
-              WebkitTapHighlightColor: "transparent",
-              touchAction: "manipulation",
-              padding: "10px 4px 8px",
-              minHeight: 64,
-              position: "relative",
-            }}
-          >
-            <span style={{ fontSize: 20, lineHeight: 1 }}>•••</span>
-            <span style={{ fontSize: 10, fontWeight: isMoreActive || moreOpen ? 800 : 500, lineHeight: 1 }}>More</span>
-            {isMoreActive && !moreOpen && (
-              <span style={{ position: "absolute", top: 8, right: "calc(50% - 14px)", background: "#2563eb", width: 6, height: 6, borderRadius: "50%", border: `2px solid ${t.card}` }} />
+          {/* More button */}
+          <button onClick={() => onMore()}
+            style={{ width: 56, flexShrink: 0, display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: 3,
+              background: "transparent", border: "none",
+              cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              touchAction: "manipulation", padding: "0 2px", minHeight: 64,
+              position: "relative" }}>
+            {(isMoreActive || moreOpen) && (
+              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+                width: 20, height: 3, borderRadius: "0 0 3px 3px", background: BLUE }} />
             )}
+            <div style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {moreOpen
+                ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isMoreActive ? BLUE : inactiveCol} strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                : <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <circle cx="5" cy="12" r="1.8" fill={isMoreActive ? BLUE : inactiveCol}/>
+                    <circle cx="12" cy="12" r="1.8" fill={isMoreActive ? BLUE : inactiveCol}/>
+                    <circle cx="19" cy="12" r="1.8" fill={isMoreActive ? BLUE : inactiveCol}/>
+                  </svg>
+              }
+            </div>
+            <span style={{ fontSize: 10, fontWeight: (isMoreActive || moreOpen) ? 700 : 500,
+              color: (isMoreActive || moreOpen) ? activeCol : inactiveCol, lineHeight: 1 }}>
+              More
+            </span>
           </button>
+
         </div>
       </nav>
     </>
   );
 }
+
 
 export { StatusPill, AvatarCircle, StatIconBox, SectionHeader, TabStatCards, DataTable, FilterBar, Pill, Hr, Inp, Sel, Btn, Card, StatCard, Sheet, Toast, Confirm, Search, Pagination, Tog, ProdRow, OrderEditor, sendBrowserNotif, requestPushPermission, BottomNav };
