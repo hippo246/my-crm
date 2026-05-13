@@ -269,32 +269,85 @@
                   const enriched=customers.map(c=>{
                     const cDelivs=deliveries.filter(d=>d.customerId===c.id);
                     const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                    const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                    const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                    const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
                     const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                    const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                     const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                     const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
                     const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
+                    const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
                     const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
-                    return {...c,_orders:cDelivs.length,_revenue:cRev,_avgOrd:avgOrd,_replAmt:cReplAmt,_lastDate:lastD?.date||"",_createdBy:createdByList};
+                    return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_lastDays:lastDays,_cDelivs:cDelivs,_createdBy:createdByList};
                   });
                   const totalColl=customers.reduce((s,c)=>s+(c.paid||0),0);
                   const totalOut=customers.reduce((s,c)=>s+(c.pending||0),0);
                   const totalReplAll=enriched.reduce((s,c)=>s+c._replAmt,0);
+                  const custBreakdownHtml=enriched.map(c=>{
+                    if(!c._cDelivs||c._cDelivs.length===0)return "";
+                    const sorted=[...c._cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                    return `<div style="margin-top:28px;page-break-inside:avoid">
+  <div style="background:#f1f5f9;border-left:4px solid #f59e0b;padding:8px 14px;border-radius:4px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+    <span style="font-weight:800;font-size:13px">${c.name}</span>
+    <span style="font-size:11px;color:#64748b">${c._orders} orders &nbsp;·&nbsp; Paid: ₹${(c.paid||0).toLocaleString("en-IN")} &nbsp;·&nbsp; Due: <span style="color:${c.pending>0?"#dc2626":"#059669"};font-weight:700">₹${(c.pending||0).toLocaleString("en-IN")}</span></span>
+  </div>
+  <table><thead><tr>
+    <th>Invoice No</th><th>Receipt No</th><th>Date</th><th>Status</th><th>Items</th><th class="r">Order Total</th><th class="r">Repl Deducted</th><th class="r">Net Amount</th><th class="r">Paid</th><th class="r">Remaining</th><th>Agent</th>
+  </tr></thead><tbody>
+  ${sorted.map((d,i)=>{
+    const tot=lineTotal(d.orderLines);
+    const repl=+d.replacement?.amount||0;
+    const net=tot-repl;
+    const dpaid=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
+    const rem=Math.max(0,net-dpaid);
+    const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return`${l.qty}×${p?p.name:(l.name||pid)}`;}).join(", ")||"—";
+    const sc=d.status==="Delivered"?"#059669":d.status==="In Transit"?"#2563eb":"#d97706";
+    const dInvNo=d.invNo||`INV-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+    const dRcptNo=`RCP-${dInvNo.replace(/^[A-Z]+-/,"")}`;
+    return`<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+      <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#7c3aed;font-weight:700">${dInvNo}</td>
+      <td style="white-space:nowrap;font-family:monospace;font-size:10px;color:#0ea5e9;font-weight:700">${dRcptNo}</td>
+      <td style="white-space:nowrap">${d.date}</td>
+      <td><span style="background:${sc}18;color:${sc};padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700">${d.status}</span></td>
+      <td style="font-size:11px;color:#475569">${items}${d.replacement?.done?` <span style="color:#f97316;font-weight:600">[🔄 ${d.replacement.item||"repl"}]</span>`:""}</td>
+      <td class="r" style="font-weight:700">₹${tot.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:#f97316">${repl>0?"−₹"+repl.toLocaleString("en-IN"):"—"}</td>
+      <td class="r" style="font-weight:700">₹${net.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:#059669">₹${dpaid.toLocaleString("en-IN")}</td>
+      <td class="r" style="color:${rem>0?"#dc2626":"#059669"};font-weight:700">₹${rem.toLocaleString("en-IN")}</td>
+      <td style="font-size:11px;color:#64748b">${d.createdBy||"—"}</td>
+    </tr>`;
+  }).join("")}
+  </tbody></table></div>`;
+                  }).filter(Boolean).join("");
                   exportTabPDF("Customers",enriched,[
                     {label:"Name",key:"name"},
                     {label:"Phone",key:"phone"},
+                    {label:"Address",key:"address"},
                     {label:"Orders",key:"_orders",num:true},
+                    {label:"Delivered",key:"_delivered",num:true},
+                    {label:"Pending",key:"_pending",num:true},
+                    {label:"Returns",key:"_returns",num:true},
+                    {label:"Replacements",key:"_replacements",num:true},
+                    {label:"Repl. Deducted (₹)",key:"_replAmt",num:true},
                     {label:"Revenue (₹)",key:"_revenue",num:true},
                     {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                    {label:"Partial Paid (₹)",val:r=>r.partialPay||0,num:true},
                     {label:"Paid (₹)",key:"paid",num:true},
                     {label:"Pending (₹)",key:"pending",num:true},
                     {label:"Last Order",key:"_lastDate"},
-                    {label:"Agent",key:"_createdBy"},
+                    {label:"Agent / Created By",key:"_createdBy"},
                     {label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},
-                  ],settings,`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+                    {label:"Since",key:"joinDate"}
+                  ],settings,`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px">
   <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#92400e">${activeC.length}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Active Customers</div></div>
   <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#059669">₹${totalColl.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Total Collected</div></div>
   <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#b91c1c">₹${totalOut.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Outstanding</div></div>
-</div>`);
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#ea580c">₹${totalReplAll.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Total Replacements</div></div>
+</div>
+<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin:28px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Customer Summary Table</div>
+${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin:36px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Per-Customer Delivery Breakdown</div>${custBreakdownHtml}`:""}`);
                 }}
                 style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -304,16 +357,39 @@
                   const enriched=customers.map(c=>{
                     const cDelivs=deliveries.filter(d=>d.customerId===c.id);
                     const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                    const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                    const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                    const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
                     const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                    const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                     const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
                     const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
                     const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
-                    return {...c,_orders:cDelivs.length,_revenue:cRev,_avgOrd:avgOrd,_replAmt:cReplAmt,_lastDate:lastD?.date||""};
+                    const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
+                    return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_createdBy:createdByList};
                   });
                   exportTabExcel("Customers",enriched,[
-                    {label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"_orders",num:true},
-                    {label:"Revenue (₹)",key:"_revenue",num:true},{label:"Paid (₹)",key:"paid",num:true},
-                    {label:"Pending (₹)",key:"pending",num:true},{label:"Last Order",key:"_lastDate"},
+                    {label:"Name",key:"name"},
+                    {label:"Phone",key:"phone"},
+                    {label:"Address",key:"address"},
+                    {label:"Join Date",key:"joinDate"},
+                    {label:"Active",val:r=>r.active?"Yes":"No"},
+                    {label:"# Orders",key:"_orders",num:true},
+                    {label:"# Delivered",key:"_delivered",num:true},
+                    {label:"# Pending/Transit",key:"_pending",num:true},
+                    {label:"# Returns",key:"_returns",num:true},
+                    {label:"# Replacements",key:"_replacements",num:true},
+                    {label:"Repl. Deducted (₹)",key:"_replAmt",num:true},
+                    {label:"Revenue (₹)",key:"_revenue",num:true},
+                    {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                    {label:"Partial Paid (₹)",val:r=>r.partialPay||0,num:true},
+                    {label:"Paid (₹)",key:"paid",num:true},
+                    {label:"Pending (₹)",key:"pending",num:true},
+                    {label:"Net Total (₹)",key:"_netTotal",num:true},
+                    {label:"Last Order Date",key:"_lastDate"},
+                    {label:"Agent / Created By",key:"_createdBy"},
+                    {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
+                    {label:"Notes",key:"notes"}
                   ],settings);
                 }}
                 style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
@@ -324,20 +400,57 @@
                   const enriched=customers.map(c=>{
                     const cDelivs=deliveries.filter(d=>d.customerId===c.id);
                     const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                    const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
+                    const cReturns=cDelivs.filter(d=>d.status==="Cancelled").length;
+                    const cRepl=cDelivs.filter(d=>d.replacement?.done).length;
                     const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                    const netTotal=Math.max(0,lineTotal(c.orderLines)-cReplAmt);
                     const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                    const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
                     const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
-                    return {...c,_orders:cDelivs.length,_revenue:cRev,_replAmt:cReplAmt,_lastDate:lastD?.date||""};
+                    const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
+                    return {...c,_orders:cDelivs.length,_delivered:cDone.length,_pending:cPending.length,_returns:cReturns,_replacements:cRepl,_replAmt:cReplAmt,_netTotal:netTotal,_revenue:cRev,_avgOrd:avgOrd,_lastDate:lastD?.date||"",_createdBy:createdByList};
                   });
                   exportCSV(enriched,"customers",[
-                    {label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Orders",key:"_orders"},
-                    {label:"Revenue (₹)",key:"_revenue"},{label:"Paid (₹)",key:"paid"},
-                    {label:"Pending (₹)",key:"pending"},{label:"Last Order",key:"_lastDate"},
+                    {label:"Name",key:"name"},
+                    {label:"Phone",key:"phone"},
+                    {label:"Address",key:"address"},
+                    {label:"Join Date",key:"joinDate"},
+                    {label:"Active",val:r=>r.active?"Yes":"No"},
+                    {label:"# Orders",key:"_orders"},
+                    {label:"# Delivered",key:"_delivered"},
+                    {label:"# Pending/Transit",key:"_pending"},
+                    {label:"# Returns",key:"_returns"},
+                    {label:"# Replacements",key:"_replacements"},
+                    {label:"Repl. Deducted (₹)",key:"_replAmt"},
+                    {label:"Revenue (₹)",key:"_revenue"},
+                    {label:"Avg Order (₹)",key:"_avgOrd"},
+                    {label:"Partial Paid (₹)",val:r=>r.partialPay||0},
+                    {label:"Paid (₹)",key:"paid"},
+                    {label:"Pending (₹)",key:"pending"},
+                    {label:"Net Total (₹)",key:"_netTotal"},
+                    {label:"Last Order Date",key:"_lastDate"},
+                    {label:"Agent / Created By",key:"_createdBy"},
+                    {label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},
+                    {label:"Notes",key:"notes"}
                   ]);
                 }}
                 style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               </button>}
+              {/* Mobile view toggle: Cards / Compact */}
+              <div style={{display:"flex",borderRadius:9,overflow:"hidden",border:`1.5px solid ${t.border}`,flexShrink:0}}>
+                {[
+                  {v:"expanded",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>},
+                  {v:"compact",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>},
+                ].map(({v,icon})=>{
+                  const active=custView===v||(v==="expanded"&&custView!=="compact");
+                  return <button key={v} onClick={()=>{setCustView(v);setSelectedCustomer(null);}}
+                    style={{width:34,height:34,display:"inline-flex",alignItems:"center",justifyContent:"center",background:active?"#2563eb":t.inp,color:active?"#fff":t.sub,border:"none",cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                    {icon}
+                  </button>;
+                })}
+              </div>
               {can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
                 style={{display:"flex",alignItems:"center",gap:28,background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -532,7 +645,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 </button>;
               })}
             </div>
-            {/* View mode toggle — desktop only (mobile only has Recent which is default) */}
+            {/* View mode toggle — desktop only (mobile has its own 2-button toggle above) */}
             {!isMobile&&<div style={{display:"flex",gap:24,alignItems:"center",flexShrink:0}}>
               {[
                 {v:"recent",lbl:"Recent",icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>},
