@@ -2650,6 +2650,42 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
                   : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 }
               </button>
+              {can("cust_export")&&<button
+                onClick={()=>{
+                  const enriched=customers.map(c=>{
+                    const cDelivs=deliveries.filter(d=>d.customerId===c.id);
+                    const cDone=cDelivs.filter(d=>d.status==="Delivered");
+                    const cReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
+                    const cRev=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
+                    const avgOrd=cDelivs.length>0?Math.round(cRev/cDelivs.length):0;
+                    const lastD=[...cDelivs].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
+                    const createdByList=[...new Set(cDelivs.map(d=>d.createdBy).filter(Boolean))].join(", ")||"—";
+                    return {...c,_orders:cDelivs.length,_revenue:cRev,_avgOrd:avgOrd,_replAmt:cReplAmt,_lastDate:lastD?.date||"",_createdBy:createdByList};
+                  });
+                  const totalColl=customers.reduce((s,c)=>s+(c.paid||0),0);
+                  const totalOut=customers.reduce((s,c)=>s+(c.pending||0),0);
+                  const totalReplAll=enriched.reduce((s,c)=>s+c._replAmt,0);
+                  exportTabPDF("Customers",enriched,[
+                    {label:"Name",key:"name"},
+                    {label:"Phone",key:"phone"},
+                    {label:"Orders",key:"_orders",num:true},
+                    {label:"Revenue (₹)",key:"_revenue",num:true},
+                    {label:"Avg Order (₹)",key:"_avgOrd",num:true},
+                    {label:"Paid (₹)",key:"paid",num:true},
+                    {label:"Pending (₹)",key:"pending",num:true},
+                    {label:"Last Order",key:"_lastDate"},
+                    {label:"Agent",key:"_createdBy"},
+                    {label:"Status",val:r=>r.pending>0?`<span class="badge badge-r">UNPAID</span>`:`<span class="badge badge-g">PAID</span>`},
+                  ],settings,`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+  <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#92400e">${activeC.length}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Active Customers</div></div>
+  <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#059669">₹${totalColl.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Total Collected</div></div>
+  <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px"><div style="font-size:18px;font-weight:900;color:#b91c1c">₹${totalOut.toLocaleString("en-IN")}</div><div style="font-size:9px;text-transform:uppercase;color:#a8a29e;margin-top:2px">Outstanding</div></div>
+</div>`);
+                }}
+                title="Export PDF"
+                style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              </button>}
               {can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
                 style={{display:"flex",alignItems:"center",gap:6,background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
