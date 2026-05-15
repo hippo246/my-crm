@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { useStore } from "../../lib/store.js";
+import { hasPerm } from "../../lib/roles.js";
 import {
   dispatchDelivery,
   advanceDeliveryStatus,
@@ -37,6 +38,29 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
   const [vehList]      = useStore("tas9_veh_list", []);
   const [staffList]    = useStore("tas9_staff_list", []);
   const [products]     = useStore("tas9_prod", []);
+
+  // ── Staff Portal settings ─────────────────────────────────
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
+
+  // ── Portal-gated visibility ───────────────────────────────
+  const portalCanAdd      = spOn("deliveryCanAdd",      true);
+  const portalCanDispatch = spOn("deliveryCanDispatch",  true);
+  const portalCanMarkDone = spOn("deliveryCanMarkDone",  true);
+  const portalCanCancel   = spOn("deliveryCanCancel",    false);
+  const portalShowPhone   = spOn("deliveryShowPhone",    true);
+  const portalShowPrices  = spOn("deliveryShowPrices",   false);
+
+  // ── Perms (role-based) ────────────────────────────────────
+  const canAdd      = hasPerm(sess, "deliv_add")      && portalCanAdd;
+  const canDispatch = hasPerm(sess, "deliv_dispatch")  && portalCanDispatch;
+  const canMarkDone = hasPerm(sess, "deliv_markDone")  && portalCanMarkDone;
+  const canCancel   = hasPerm(sess, "deliv_delete")    && portalCanCancel;
+  const canSeePrices = hasPerm(sess, "deliv_seePrices") && portalShowPrices;
+
+  // ── Settings-driven labels ────────────────────────────────
+  const tabTitle    = settings?.deliveryTabTitle    ?? "Delivery / Dispatch";
+  const tabSubtitle = settings?.deliveryTabSubtitle ?? "Log and manage deliveries";
 
   const [logOpen, setLogOpen]           = useState(false);
   const [custSearch, setCustSearch]     = useState("");
@@ -160,19 +184,21 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: GRAD, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: "#fff", boxShadow: GLOW }}>3</div>
           <div>
-            <div style={{ color: t.text, fontSize: isMobile ? 17 : 20, fontWeight: 900 }}>Delivery / Dispatch</div>
-            <div style={{ color: t.sub, fontSize: 12, marginTop: 2 }}>Log and manage deliveries</div>
+            <div style={{ color: t.text, fontSize: isMobile ? 17 : 20, fontWeight: 900 }}>{tabTitle}</div>
+            <div style={{ color: t.sub, fontSize: 12, marginTop: 2 }}>{tabSubtitle}</div>
           </div>
         </div>
-        <button onClick={openLog} style={{
-          padding: "12px 20px", borderRadius: 12, border: "none",
-          background: GRAD, color: "#fff", fontWeight: 800, fontSize: 14,
-          cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW,
-          display: "flex", alignItems: "center", gap: 8,
-        }}
-          onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.15)"}
-          onMouseLeave={e => e.currentTarget.style.filter = ""}
-        >🚚 Log Entry</button>
+        {canAdd && (
+          <button onClick={openLog} style={{
+            padding: "12px 20px", borderRadius: 12, border: "none",
+            background: GRAD, color: "#fff", fontWeight: 800, fontSize: 14,
+            cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW,
+            display: "flex", alignItems: "center", gap: 8,
+          }}
+            onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.15)"}
+            onMouseLeave={e => e.currentTarget.style.filter = ""}
+          >🚚 Log Entry</button>
+        )}
       </div>
 
       {/* Stats — 2 cols on mobile, 4 on desktop */}
@@ -224,7 +250,9 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
           <div style={{ fontSize: 44, marginBottom: 12, opacity: 0.2 }}>🚚</div>
           <div style={{ color: t.text, fontWeight: 800, fontSize: 16, marginBottom: 6 }}>No deliveries yet</div>
           <div style={{ color: t.sub, fontSize: 13, marginBottom: 20 }}>Tap Log Entry to create your first delivery</div>
-          <button onClick={openLog} style={{ padding: "12px 24px", borderRadius: 11, border: "none", background: GRAD, color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW }}>🚚 Log Entry</button>
+          {canAdd && (
+            <button onClick={openLog} style={{ padding: "12px 24px", borderRadius: 11, border: "none", background: GRAD, color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW }}>🚚 Log Entry</button>
+          )}
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ ...glass, padding: 28, textAlign: "center" }}>
@@ -236,6 +264,9 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
             const sc = STATUS_COLORS[del.status] || t.sub;
             const steps = ["Pending", "In Transit", "Delivered"];
             const canAdvance = steps.indexOf(del.status) < steps.length - 1 && del.status !== "Cancelled";
+            const showDispatch = canAdvance && del.status === "Pending" && canDispatch;
+            const showMarkDone = canAdvance && del.status !== "Pending" && canMarkDone;
+            const showAdvance  = showDispatch || showMarkDone;
             const items = del.orderLines ? Object.values(del.orderLines).filter(l => l?.qty > 0) : [];
             const totalQty = items.reduce((s, l) => s + (l.qty||0), 0);
             return (
@@ -258,14 +289,19 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
                   <div style={{ color: t.sub, fontSize: 11, display: "flex", gap: 12, flexWrap: "wrap" }}>
                     {del.address && <span>📍 {del.address}</span>}
                     {del.date    && <span>📅 {del.date}</span>}
+                    {portalShowPhone && del.phone && <span>📞 {del.phone}</span>}
                     {del.agent   && <span>🚗 {del.agent}</span>}
                     {del.vehicle && <span>🚛 {del.vehicle}</span>}
                     {totalQty > 0 && <span>📦 {totalQty} pcs</span>}
+                    {canSeePrices && del.orderLines && (() => {
+                      const total = Object.values(del.orderLines).reduce((s,l) => s + (l.qty||0)*(l.priceAmount||0), 0);
+                      return total > 0 ? <span style={{ color: "#10B981", fontWeight: 700 }}>₹{total.toLocaleString("en-IN")}</span> : null;
+                    })()}
                   </div>
                   {del.notes && <div style={{ color: t.muted, fontSize: 11, marginTop: 5, fontStyle: "italic" }}>"{del.notes}"</div>}
                 </div>
                 <div style={{ display: "flex", gap: 7, flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
-                  {canAdvance && (
+                  {showAdvance && (
                     <button onClick={() => advanceStatus(del)} style={{
                       padding: "9px 14px", borderRadius: 9, border: "none",
                       background: GRAD, color: "#fff", fontWeight: 700, fontSize: 12,
@@ -275,7 +311,7 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
                       {del.status === "Pending" ? "🚚 Dispatch" : "✅ Delivered"}
                     </button>
                   )}
-                  {del.status !== "Delivered" && del.status !== "Cancelled" && (
+                  {canCancel && del.status !== "Delivered" && del.status !== "Cancelled" && (
                     <button onClick={() => cancelDel(del)} style={{
                       padding: "9px 12px", borderRadius: 9,
                       border: "1px solid rgba(239,68,68,0.25)",
@@ -292,7 +328,7 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
       )}
 
       {/* ══ LOG ENTRY SHEET ═══════════════════════════════════ */}
-      {logOpen && (
+      {logOpen && canAdd && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)",
           backdropFilter: "blur(4px)", zIndex: 300,
@@ -460,19 +496,23 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
 
             {/* Save buttons */}
             <div style={{ display: "flex", gap: 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-              <button onClick={() => handleSave("Pending")} style={{
-                flex: 1, minWidth: isMobile ? "100%" : "auto",
-                padding: "13px 0", borderRadius: 11,
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.05)", color: t.text,
-                fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
-              }}>💾 Save as Pending</button>
-              <button onClick={() => handleSave("In Transit")} style={{
-                flex: 1, minWidth: isMobile ? "100%" : "auto",
-                padding: "13px 0", borderRadius: 11, border: "none",
-                background: GRAD, color: "#fff", fontWeight: 800,
-                fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW,
-              }}>🚀 Dispatch Now</button>
+              {canAdd && (
+                <button onClick={() => handleSave("Pending")} style={{
+                  flex: 1, minWidth: isMobile ? "100%" : "auto",
+                  padding: "13px 0", borderRadius: 11,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.05)", color: t.text,
+                  fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+                }}>💾 Save as Pending</button>
+              )}
+              {(canAdd && canDispatch) && (
+                <button onClick={() => handleSave("In Transit")} style={{
+                  flex: 1, minWidth: isMobile ? "100%" : "auto",
+                  padding: "13px 0", borderRadius: 11, border: "none",
+                  background: GRAD, color: "#fff", fontWeight: 800,
+                  fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: GLOW,
+                }}>🚀 Dispatch Now</button>
+              )}
             </div>
 
           </div>

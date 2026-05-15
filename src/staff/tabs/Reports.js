@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
+import { hasPerm } from "../../lib/roles.js";
 import {
   SBtn, SBarChart, SDonut, SPill,
   SSectionHeader,
@@ -271,7 +272,15 @@ function exportPDF(data) {
   setTimeout(() => { w.print(); }, 400);
 }
 
-export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], staffList = [], qcLogs = [], sess, notify = () => {} }) {
+export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], staffList = [], qcLogs = [], sess, notify = () => {}, settings = {}, logActivity }) {
+  // ── staffPortal toggles ──────────────────────────────────────
+  const sp   = settings?.staffPortal || {};
+  const spOn = (key, def) => sp[key] !== undefined ? sp[key] : def;
+
+  // ── Perms ANDed with portal toggles ──────────────────────────
+  const canExport    = (hasPerm(sess, "qc_export") || hasPerm(sess, "deliv_export")) && spOn("reportsCanExportCSV", false);
+  const canSeePrices = hasPerm(sess, "deliv_seePrices") && spOn("reportsShowRevenue", false);
+  const canSeeReport = hasPerm(sess, "deliv_report") && spOn("reportsCanExportPDF", false);
   const [range, setRange] = useState("7D");
   const [activeChart, setActiveChart] = useState("production");
   const vw = useWidth();
@@ -403,6 +412,9 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
     }));
     downloadCSV([...batchRows, ...delivRows, ...qcRows, ...invRows],
       `report_${range}_${new Date().toISOString().slice(0, 10)}.csv`);
+    if (typeof logActivity === "function") {
+      logActivity("report_exported_csv", { tab: "reports", range, rows: batchRows.length + delivRows.length + qcRows.length + invRows.length });
+    }
     notify("CSV downloaded", "success");
   };
 
@@ -413,6 +425,9 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
       range, totalPacked, totalDelivered, totalRevenue, efficiency,
       passedQC, rejectedQC, qcTotal, lowStock, onShift,
     });
+    if (typeof logActivity === "function") {
+      logActivity("report_exported_pdf", { tab: "reports", range });
+    }
     notify("PDF opened for printing", "success");
   };
 
@@ -440,8 +455,8 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
               }}>{r}</button>
             ))}
           </div>
-          <SBtn v="ghost" color={COLOR} onClick={handleExportPDF}>⬇ PDF</SBtn>
-          <SBtn v="primary" color={COLOR} onClick={handleExportCSV}>⬇ Export CSV</SBtn>
+          {canSeeReport && <SBtn v="ghost" color={COLOR} onClick={handleExportPDF}>⬇ PDF</SBtn>}
+          {canExport && <SBtn v="primary" color={COLOR} onClick={handleExportCSV}>⬇ Export CSV</SBtn>}
         </div>
       </div>
 
@@ -454,7 +469,7 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
         {[
           { label: "Total Packed",  value: totalPacked.toLocaleString("en-IN"),   color: COLOR,      icon: "📦", trend: 8   },
           { label: "Delivered",     value: totalDelivered,                         color: "#10B981",  icon: "🚚", trend: 12  },
-          { label: "Revenue",       value: `₹${Math.round(totalRevenue / 1000)}K`, color: "#F59E0B", icon: "💰", trend: 5   },
+          ...(canSeePrices ? [{ label: "Revenue", value: `₹${Math.round(totalRevenue / 1000)}K`, color: "#F59E0B", icon: "💰", trend: 5 }] : []),
           { label: "Efficiency",    value: `${efficiency}%`,                       color: "#8B5CF6",  icon: "⚡", trend: efficiency - 85 },
           { label: "QC Pass Rate",  value: qcTotal > 0 ? `${Math.round((passedQC / qcTotal) * 100)}%` : "—", color: "#10B981", icon: "✅", trend: 3 },
         ].map(k => (
@@ -469,7 +484,7 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
             {[
               { k: "production", l: "📦 Production", color: COLOR },
               { k: "delivery",   l: "🚚 Delivery",   color: "#8B5CF6" },
-              { k: "revenue",    l: "💰 Revenue",    color: "#F59E0B" },
+              ...(canSeePrices ? [{ k: "revenue", l: "💰 Revenue", color: "#F59E0B" }] : []),
             ].map(c => (
               <button key={c.k} onClick={() => setActiveChart(c.k)} style={{
                 padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -676,7 +691,7 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
             <div style={{ color: t.text, fontWeight: 800, fontSize: 13 }}>Production Volume</div>
             <div style={{ color: t.sub, fontSize: 10, marginTop: 2 }}>Units packed · {range}</div>
           </div>
-          <SBtn v="ghost" color={COLOR} sm onClick={handleExportCSV}>⬇ Export</SBtn>
+          {canExport && <SBtn v="ghost" color={COLOR} sm onClick={handleExportCSV}>⬇ Export</SBtn>}
         </div>
         <SBarChart data={barData} color={COLOR} height={80} t={t} />
         {/* Summary row */}

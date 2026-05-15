@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SQtyPicker, SQtyPresets, SSheet, SDonut } from "../components/ui.js";
+import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.packing.solid;
 const GRAD  = TAB_ACCENT.packing.gradient;
@@ -126,7 +127,28 @@ function printLabel(batch) {
   setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
-export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
+export function PackingTab({ t, batches = [], setBatches, sess, notify, settings }) {
+  // ── Staff Portal settings ─────────────────────────────────
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
+
+  // ── Perms (role-based + portal) ───────────────────────────
+  const portalCanEdit = spOn("packingCanEdit", true);
+  const canLog      = hasPerm(sess, "prod_edit") && portalCanEdit;
+  const canDamage   = hasPerm(sess, "waste_add") && portalCanEdit;
+  const canHold     = hasPerm(sess, "prod_edit") && portalCanEdit;
+  const canComplete = hasPerm(sess, "prod_edit") && portalCanEdit;
+  const canPrint    = true;
+  const showPrice   = spOn("packingShowPrice", false);
+
+  // ── Settings-driven labels ─────────────────────────────────
+  const tabTitle    = settings?.packingTabTitle    ?? "Packing Entry";
+  const tabSubtitle = settings?.packingTabSubtitle ?? "Quick packing entry for finished batches";
+  // staffPortal presets override root settings presets
+  const qtyPresets  = (sp.packingPresets?.length ? sp.packingPresets : null)
+    ?.map(Number).filter(n => n > 0)
+    ?? settings?.batchUnitPresets
+    ?? [50, 100, 200, 500];
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [qty, setQty]                     = useState(0);
   const [damage, setDamage]               = useState(0);
@@ -257,12 +279,13 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
             fontSize: 18, fontWeight: 900, color: "#fff", boxShadow: GLOW,
           }}>2</div>
           <div>
-            <div style={{ color: t.text, fontSize: isMobile ? 17 : 20, fontWeight: 900 }}>Packing Entry</div>
-            <div style={{ color: t.sub, fontSize: 12, marginTop: 2 }}>Quick packing entry for finished batches</div>
+            <div style={{ color: t.text, fontSize: isMobile ? 17 : 20, fontWeight: 900 }}>{tabTitle}</div>
+            <div style={{ color: t.sub, fontSize: 12, marginTop: 2 }}>{tabSubtitle}</div>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
+          {canLog && (
           <button
             onClick={() => setLogOpen(true)}
             style={{
@@ -274,6 +297,7 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
             onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.1)"}
             onMouseLeave={e => e.currentTarget.style.filter = ""}
           >📦 Log Entry</button>
+          )}
         </div>
       </div>
 
@@ -389,7 +413,7 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
 
               <div style={{ color: t.sub, fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Quick Add</div>
               <SQtyPresets
-                presets={[50, 100, 200, 500]}
+                presets={qtyPresets}
                 onSelect={v => setQty(q => Math.min(q + v, remaining))}
                 color={COLOR} t={t}
               />
@@ -402,17 +426,17 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
               </div>
 
               <button
-                onClick={handleLogEntry}
+                onClick={canLog ? handleLogEntry : () => notify("You don't have permission to log packing", "warning")}
                 style={{
                   width: "100%", marginTop: 16, padding: "13px 0", borderRadius: 11, border: "none",
-                  background: qty > 0 ? GRAD : "rgba(255,255,255,0.06)",
-                  color: qty > 0 ? "#fff" : t.muted,
+                  background: (qty > 0 && canLog) ? GRAD : "rgba(255,255,255,0.06)",
+                  color: (qty > 0 && canLog) ? "#fff" : t.muted,
                   fontWeight: 800, fontSize: 14, fontFamily: "inherit",
-                  cursor: qty > 0 ? "pointer" : "not-allowed",
-                  boxShadow: qty > 0 ? GLOW : "none",
+                  cursor: (qty > 0 && canLog) ? "pointer" : "not-allowed",
+                  boxShadow: (qty > 0 && canLog) ? GLOW : "none",
                   transition: "all 0.2s",
                 }}
-              >Complete Packing</button>
+              >{canLog ? "Complete Packing" : "🔒 No Permission"}</button>
             </>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0", opacity: 0.35 }}>
@@ -439,6 +463,7 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                   { label: "Packed",         value: `${totalProduced.toLocaleString("en-IN")} pcs`, color: t.text },
                   { label: "Remaining",      value: `${remaining.toLocaleString("en-IN")} pcs`,     color: COLOR  },
                   { label: "Damage / Short", value: `${(activeBatch.damaged ?? 0)} pcs`,             color: (activeBatch.damaged ?? 0) > 0 ? "#ef4444" : t.muted },
+                  ...(showPrice && activeBatch.pricePerUnit > 0 ? [{ label: "Batch Value", value: `₹${((activeBatch.actual ?? 0) * activeBatch.pricePerUnit).toLocaleString("en-IN")}`, color: "#10B981" }] : []),
                 ].map(s => (
                   <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                     <span style={{ color: t.sub, fontSize: 12 }}>{s.label}</span>
@@ -449,6 +474,7 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
 
               {/* Action buttons */}
               <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                {canPrint && (
                 <button
                   onClick={handlePrintLabel}
                   style={{
@@ -462,7 +488,9 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.color = t.text; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = t.sub; }}
                 >🖨 Print Label</button>
+                )}
 
+                {canDamage && (
                 <button onClick={() => { setDamageTarget(activeBatch); setDamageQty(0); setDamageOpen(true); }} style={{
                   flex: 1, padding: "9px 0", borderRadius: 9,
                   border: "1px solid rgba(239,68,68,0.25)",
@@ -471,7 +499,9 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                   minHeight: 38,
                 }}>⚠ Damage</button>
+                )}
 
+                {canHold && (
                 <button onClick={() => { setHoldTarget(activeBatch); setHoldNote(""); setHoldOpen(true); }} style={{
                   flex: 1, padding: "9px 0", borderRadius: 9,
                   border: "1px solid rgba(245,158,11,0.25)",
@@ -480,9 +510,10 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                   minHeight: 38,
                 }}>{activeBatch.onHold ? "▶ Resume" : "⏸ Hold"}</button>
+                )}
               </div>
 
-              {remaining === 0 && (
+              {remaining === 0 && canComplete && (
                 <button onClick={() => handleComplete(activeBatch)} style={{
                   width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 11, border: "none",
                   background: "linear-gradient(135deg,#047857,#10B981)", color: "#fff",
@@ -576,8 +607,8 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                     cursor: "pointer", fontFamily: "inherit",
                     boxShadow: isActive ? "none" : GLOW,
                     minHeight: 36,
-                  }}>{isActive ? "Selected ✓" : "+ Log"}</button>
-                  {rem === 0 && (
+                  }}>{isActive ? "Selected ✓" : canLog ? "+ Log" : "View"}</button>
+                  {rem === 0 && canComplete && (
                     <button onClick={() => handleComplete(b)} style={{
                       padding: "8px 14px", borderRadius: 9, border: "none",
                       background: "linear-gradient(135deg,#047857,#10B981)", color: "#fff",
@@ -585,18 +616,22 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify }) {
                       minHeight: 36,
                     }}>✅ Complete</button>
                   )}
+                  {canDamage && (
                   <button onClick={() => { setDamageTarget(b); setDamageQty(0); setDamageOpen(true); }} style={{
                     padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(239,68,68,0.25)",
                     background: "rgba(239,68,68,0.08)", color: "#ef4444",
                     fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
                     minHeight: 36, minWidth: 36,
                   }}>⚠</button>
+                  )}
+                  {canHold && (
                   <button onClick={() => { setHoldTarget(b); setHoldNote(""); setHoldOpen(true); }} style={{
                     padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.25)",
                     background: "rgba(245,158,11,0.08)", color: "#F59E0B",
                     fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
                     minHeight: 36, minWidth: 36,
                   }}>{b.onHold ? "▶" : "⏸"}</button>
+                  )}
                 </div>
               </div>
             );

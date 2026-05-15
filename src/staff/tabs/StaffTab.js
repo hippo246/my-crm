@@ -13,6 +13,7 @@
 import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SSheet, SAvatar, SPill } from "../components/ui.js";
+import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.staff.solid;
 const GRAD  = TAB_ACCENT.staff.gradient;
@@ -20,7 +21,10 @@ const GLOW  = TAB_ACCENT.staff.glow;
 
 const AVATAR_COLORS = ["#2563EB","#10B981","#8B5CF6","#F59E0B","#06b6d4","#EF4444","#14B8A6","#EC4899"];
 
-export function StaffTab({ t, staffList = [], setStaffList, sess, notify = () => {} }) {
+export function StaffTab({ t, staffList = [], setStaffList, sess, notify = () => {}, settings = {} }) {
+  // ── Settings-driven labels ─────────────────────────────────
+  const tabTitle    = settings?.staffTabTitle    ?? "Team Management";
+  const tabSubtitle = settings?.staffTabSubtitle ?? "Attendance & shift overview";
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState("all");
   const [selected, setSelected] = useState(null);
@@ -91,8 +95,8 @@ export function StaffTab({ t, staffList = [], setStaffList, sess, notify = () =>
           <span style={{ fontSize: 10 }}>👥</span>
           <span style={{ color: COLOR, fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>STAFF</span>
         </div>
-        <div style={{ color: t.text, fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1 }}>Team Management</div>
-        <div style={{ color: t.sub, fontSize: 12, marginTop: 4 }}>Attendance & shift overview</div>
+        <div style={{ color: t.text, fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1 }}>{tabTitle}</div>
+        <div style={{ color: t.sub, fontSize: 12, marginTop: 4 }}>{tabSubtitle}</div>
       </div>
 
       {/* ── Stats strip ────────────────────────────────────────── */}

@@ -7,6 +7,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSheet, SAvatar, SPill, SSearch } from "../components/ui.js";
+import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.staff.solid;
 const GRAD  = TAB_ACCENT.staff.gradient;
@@ -172,6 +173,11 @@ function EmployeeRow({ member, index, onOpen, onClock, t }) {
 export function StaffManagementTab({ t, staffList = [], setStaffList, sess, notify = () => {}, settings = {} }) {
   const SHIFTS = (settings.shifts?.length ? settings.shifts : DEFAULT_SHIFTS);
   const ROLES  = (settings.staffRoles?.length ? settings.staffRoles : DEFAULT_ROLES);
+
+  // ── Perms ─────────────────────────────────────────────────
+  const canAddStaff    = hasPerm(sess, "prod_add") || sess?.role === "admin";
+  const canClockStaff  = true; // all roles can clock in/out
+  const canRemoveStaff = sess?.role === "admin";
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState("all");
   const [view, setView]             = useState("grid");
@@ -278,7 +284,7 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
           <div style={{ color: t.text, fontSize: isMobile ? 19 : 22, fontWeight: 900, letterSpacing: "-0.03em" }}>Staff Management</div>
           <div style={{ color: t.sub, fontSize: 12, marginTop: 2 }}>Attendance · shifts · roles · activity</div>
         </div>
-        <SBtn v="primary" color={COLOR} onClick={() => setAddOpen(true)} icon="+" style={{ boxShadow: GLOW }}>Add Employee</SBtn>
+        {canAddStaff && <SBtn v="primary" color={COLOR} onClick={() => setAddOpen(true)} icon="+" style={{ boxShadow: GLOW }}>Add Employee</SBtn>}
       </div>
 
       {/* Stat tiles — 2 cols on mobile, 4 on desktop */}
@@ -396,7 +402,7 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
               <div style={{ fontSize: 44, marginBottom: 12 }}>👥</div>
               <div style={{ color: t.text, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>No employees added yet</div>
               <div style={{ color: t.sub, fontSize: 13, marginBottom: 18 }}>Add your first team member to get started</div>
-              <SBtn v="primary" color={COLOR} onClick={() => setAddOpen(true)}>+ Add First Employee</SBtn>
+              {canAddStaff && <SBtn v="primary" color={COLOR} onClick={() => setAddOpen(true)}>+ Add First Employee</SBtn>}
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ background: t.card, border: `1px solid ${t.border2}`, borderRadius: 11, padding: "20px", textAlign: "center", color: t.sub, fontSize: 13 }}>
@@ -524,16 +530,19 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
                   full
                 >{currentMember.present ? "Clock Out" : "Clock In"}</SBtn>
               </div>
-              <SBtn v="ghost" color={t.red} full onClick={() => handleRemove(currentMember.id, currentMember.name)}>
-                Remove Employee
-              </SBtn>
+              {canRemoveStaff && (
+                <SBtn v="ghost" color={t.red} full onClick={() => handleRemove(currentMember.id, currentMember.name)}>
+                  Remove Employee
+                </SBtn>
+              )}
             </>
           );
         })()}
       </SSheet>
 
       {/* ── Add employee sheet ── */}
-      <SSheet open={addOpen} onClose={() => setAddOpen(false)} title="Add Employee" t={t}>
+      {canAddStaff && (
+        <SSheet open={addOpen} onClose={() => setAddOpen(false)} title="Add Employee" t={t}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <div style={{ color: t.sub, fontSize: 11, fontWeight: 700, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.07em" }}>Full Name</div>
@@ -584,6 +593,7 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
           </SBtn>
         </div>
       </SSheet>
+      )}
 
     </div>
   );

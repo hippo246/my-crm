@@ -1,15 +1,15 @@
 // ============================================================
-// staff/tabs/Home.js — v5 RESPONSIVE + WIRED
-// FIXED: all grids collapse correctly on phone/tablet
-// FIXED: analytics 7D/1M/3M buttons now change chart data
-// FIXED: "View all" activity wired to reports tab
-// FIXED: "More" quick action wired to reports tab
-// FIXED: hero progress stats wrap properly on small screens
+// staff/tabs/Home.js — v6 PERM-GATED + FIREBASE SYNCED
+// All widgets gated by fine-grained permissions from Firebase
+// Admin controls what each staff member sees via Settings > Permissions
 // ============================================================
 
 import React, { useState, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SKpiCard, SGradCard, SPill, STag, SBarChart, SLiveBadge, SSectionHeader } from "../components/ui.js";
+import { ref, onValue } from "firebase/database";
+import { db } from "../../firebase.js";
+import { hasPerm, defaultFinePerms } from "../../lib/roles.js";
 
 // ── Responsive grid helper ────────────────────────────────────
 function useBreakpoint() {
@@ -40,10 +40,89 @@ const RANGE_LABELS = {
           "Jun W1","Jun W2","Jun W3","Jun W4","Jul W1","Jul W2","Jul W3","Jul W4","Aug W1","Aug W2"],
 };
 
+// ── Hook: live-sync this user's finePerms from Firebase ──────
+// Admin saves to: staffPerms/{uid}/finePerms in Firebase RTDB
+// Staff reads it here and it overrides the session defaults
+function useFirebasePerms(sess) {
+  const [finePerms, setFinePerms] = useState(() =>
+    sess?.finePerms || defaultFinePerms(sess?.role || "factory")
+  );
+
+  useEffect(() => {
+    if (!sess?.uid) return;
+    // admin always has all perms — no need to sync
+    if (sess.role === "admin") return;
+
+    const permRef = ref(db, `staffPerms/${sess.uid}/finePerms`);
+    const unsub = onValue(permRef, snap => {
+      if (snap.exists()) {
+        setFinePerms(snap.val());
+      }
+    });
+    return () => unsub();
+  }, [sess?.uid, sess?.role]);
+
+  return finePerms;
+}
+
+// ── Hook: live-sync pinned notices from Firebase ─────────────
+// Admin posts notices to: staffConfig/notices in Firebase RTDB
+function useFirebaseNotices() {
+  const [notices, setNotices] = useState([]);
+  useEffect(() => {
+    const noticeRef = ref(db, "staffConfig/notices");
+    const unsub = onValue(noticeRef, snap => {
+      if (snap.exists()) {
+        const data = snap.val();
+        // data is an object keyed by id
+        const arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+        setNotices(arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      } else {
+        setNotices([]);
+      }
+    });
+    return () => unsub();
+  }, []);
+  return notices;
+}
+
+// ── Hook: live-sync today's wastage summary from Firebase ────
+function useFirebaseWastage() {
+  const [wastage, setWastage] = useState([]);
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const wastageRef = ref(db, "tas9_wastage");
+    const unsub = onValue(wastageRef, snap => {
+      if (snap.exists()) {
+        const data = snap.val();
+        const arr = Object.values(data).filter(w => (w.date || "").startsWith(today));
+        setWastage(arr);
+      } else {
+        setWastage([]);
+      }
+    });
+    return () => unsub();
+  }, []);
+  return wastage;
+}
+
 export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = [], staffList = [], qcLogs = [], setActiveTab, notify }) {
   const [now, setNow]       = useState(new Date());
   const [chartRange, setChartRange] = useState("7D");
   const { isMobile, isTablet } = useBreakpoint();
+
+  // ── Live perm sync from Firebase ─────────────────────────
+  const finePerms = useFirebasePerms(sess);
+
+  // Build a perm-checked sess that uses live Firebase perms
+  const liveSess = { ...sess, finePerms };
+
+  // Shorthand perm checker
+  const can = (key) => hasPerm(liveSess, key);
+
+  // ── Live data from Firebase ───────────────────────────────
+  const notices = useFirebaseNotices();
+  const todayWastage = useFirebaseWastage();
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -85,7 +164,7 @@ export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = []
     value: Math.max(0, Math.round(seed * f)),
   }));
 
-  // ── Quick actions — "More" now navigates to reports ──────────
+  // ── Quick actions ─────────────────────────────────────────────
   const QUICK_ACTIONS = [
     { icon:"📦", label:"Packing",   sub:"Log units",     tab:"packing",   gradient:TAB_ACCENT.packing.gradient,   glow:TAB_ACCENT.packing.glow,   badge: activeBatches.length || null },
     { icon:"✅", label:"QC Check",  sub:"Inspect batch", tab:"qc",        gradient:TAB_ACCENT.qc.gradient,        glow:TAB_ACCENT.qc.glow,        badge: pendingQC.length || null },
@@ -116,8 +195,38 @@ export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = []
   const analyticsCols = isMobile ? "1fr" : "1.6fr 1fr";
   const bottomCols  = isMobile ? "1fr" : "1fr 1fr";
 
+  // ── Wastage summary for widget ────────────────────────────────
+  const totalWastageQty  = todayWastage.reduce((s, w) => s + (w.qty || 0), 0);
+  const totalWastageCost = todayWastage.reduce((s, w) => s + (w.cost || 0), 0);
+
   return (
     <div style={{ background: t.bg, minHeight: "100vh", padding: isMobile ? "14px 12px 28px" : "18px 18px 32px", animation: "fadeIn 0.3s ease" }}>
+
+      {/* ── Admin Notices (only if dash_postNotice or notices exist and perm granted) ── */}
+      {notices.length > 0 && (
+        <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {notices.map(notice => (
+            <div key={notice.id} style={{
+              background: "rgba(245,158,11,0.08)",
+              border: "1px solid rgba(245,158,11,0.25)",
+              borderRadius: 14,
+              padding: "12px 16px",
+              display: "flex", alignItems: "flex-start", gap: 12,
+            }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>📌</span>
+              <div style={{ flex: 1 }}>
+                {notice.title && (
+                  <div style={{ color: "#F59E0B", fontWeight: 800, fontSize: 13, marginBottom: 3 }}>{notice.title}</div>
+                )}
+                <div style={{ color: t.text, fontSize: 12 }}>{notice.body || notice.text || ""}</div>
+                {notice.createdBy && (
+                  <div style={{ color: t.muted, fontSize: 10, marginTop: 4 }}>— {notice.createdBy}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Greeting Hero ─────────────────────────────────────── */}
       <div style={{
@@ -131,123 +240,147 @@ export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = []
         backdropFilter: "blur(24px)",
         boxShadow:     "0 8px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)",
       }}>
-        <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg,rgba(29,78,216,0.10) 0%,rgba(109,40,217,0.05) 50%,transparent 70%)", pointerEvents:"none" }} />
-        <div style={{ position:"absolute", right:-60, top:-60, width:260, height:260, borderRadius:"50%", background:"radial-gradient(circle,rgba(29,78,216,0.08) 0%,transparent 65%)", pointerEvents:"none" }} />
-
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", position:"relative", flexWrap:"wrap", gap:14 }}>
+        <div style={{
+          position:"absolute", top:-40, right:-40,
+          width:180, height:180, borderRadius:"50%",
+          background:"radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)",
+          pointerEvents:"none",
+        }}/>
+        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
           <div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:12, marginBottom:6, fontWeight:500 }}>{greeting} 👋</div>
-            <div style={{ color:t.text, fontSize: isMobile ? 20 : 26, fontWeight:900, letterSpacing:"-0.03em", lineHeight:1.1 }}>
-              {sess?.name || "Staff Member"}
+            <div style={{ color:t.muted, fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:4 }}>
+              {dateStr} · {timeStr}
             </div>
-            <div style={{ display:"flex", gap:7, marginTop:10, alignItems:"center", flexWrap:"wrap" }}>
-              {sess?.role && (
-                <span style={{ background:"rgba(59,130,246,0.12)", border:"1px solid rgba(59,130,246,0.28)", borderRadius:"999px", padding:"3px 11px", color:"#60a5fa", fontSize:10, fontWeight:700 }}>{sess.role}</span>
-              )}
-              {sess?.shift && (
-                <span style={{ background:"rgba(16,185,129,0.1)", border:"1px solid rgba(16,185,129,0.25)", borderRadius:"999px", padding:"3px 11px", color:"#34d399", fontSize:10, fontWeight:700 }}>⏰ {sess.shift}</span>
-              )}
-              <SLiveBadge t={t} />
+            <div style={{ color:t.text, fontWeight:900, fontSize: isMobile ? 20 : 26, lineHeight:1.15 }}>
+              {greeting}, {sess?.name?.split(" ")[0] || "Team"} 👋
             </div>
-          </div>
-
-          {!isMobile && (
-            <div style={{ textAlign:"right" }}>
-              <div style={{ color:t.text, fontSize:36, fontWeight:900, letterSpacing:"-0.05em", lineHeight:1, fontVariantNumeric:"tabular-nums", textShadow:"0 0 40px rgba(99,179,237,0.25)" }}>{timeStr}</div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, marginTop:5 }}>{dateStr}</div>
-              {myRecord && (
-                <div style={{ marginTop:10 }}>
-                  <span style={{ background: myRecord.present ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border:`1px solid ${myRecord.present ? "rgba(16,185,129,0.28)" : "rgba(239,68,68,0.28)"}`, borderRadius:"999px", padding:"4px 12px", color: myRecord.present ? "#34d399" : "#f87171", fontSize:11, fontWeight:700, display:"inline-block" }}>
-                    {myRecord.present ? `● On shift since ${myRecord.clockedIn || "—"}` : "○ Not clocked in"}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Mobile clock row */}
-        {isMobile && (
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ color:t.text, fontSize:24, fontWeight:900, fontVariantNumeric:"tabular-nums" }}>{timeStr}</div>
-            {myRecord && (
-              <span style={{ background: myRecord.present ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border:`1px solid ${myRecord.present ? "rgba(16,185,129,0.28)" : "rgba(239,68,68,0.28)"}`, borderRadius:"999px", padding:"4px 10px", color: myRecord.present ? "#34d399" : "#f87171", fontSize:10, fontWeight:700 }}>
-                {myRecord.present ? `● ${myRecord.clockedIn || "—"}` : "○ Not in"}
-              </span>
+            {sess?.shift && (
+              <div style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:6,
+                background:"rgba(16,185,129,0.1)", border:"1px solid rgba(16,185,129,0.2)",
+                borderRadius:8, padding:"4px 10px",
+              }}>
+                <div style={{ width:6, height:6, borderRadius:"50%", background:"#10B981", boxShadow:"0 0 8px #10B981" }}/>
+                <span style={{ color:"#10B981", fontSize:11, fontWeight:700 }}>{sess.shift}</span>
+              </div>
             )}
           </div>
-        )}
+          <div style={{ display:"flex", gap: isMobile ? 8 : 14, flexWrap:"wrap" }}>
+            {[
+              { label:"Packed Today",  value: totalPacked.toLocaleString("en-IN"), unit:"pcs", color:TAB_ACCENT.packing.solid },
+              { label:"Target",        value: totalTarget.toLocaleString("en-IN"), unit:"pcs", color:t.sub },
+              { label:"Progress",      value: `${overallPct}%`,                    unit:"done", color: overallPct>=100?"#10B981":TAB_ACCENT.home.solid },
+              { label:"Delivered",     value: totalDelivered,                      unit:"orders", color:TAB_ACCENT.delivery.solid },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign:"right" }}>
+                <div style={{ color:s.color, fontWeight:900, fontSize: isMobile ? 18 : 22 }}>{s.value}</div>
+                <div style={{ color:t.muted, fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Progress bar */}
         {totalTarget > 0 && (
-          <div style={{ marginTop:18, paddingTop:16, borderTop:"1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:7 }}>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Overall Production Progress</div>
-              <div style={{ color:TAB_ACCENT.home.solid, fontSize:12, fontWeight:800 }}>{overallPct}%</div>
-            </div>
-            <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:999, overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${overallPct}%`, background:TAB_ACCENT.home.gradient, borderRadius:999, boxShadow:`0 0 14px ${TAB_ACCENT.home.solid}60`, transition:"width 0.6s ease" }} />
-            </div>
-            <div style={{ display:"flex", gap: isMobile ? 10 : 18, marginTop:8, flexWrap:"wrap" }}>
-              {[
-                { label:"Active Batches",   value:activeBatches.length,   color:TAB_ACCENT.home.solid },
-                { label:"Staff on Shift",   value:onShift.length,          color:t.green },
-                { label:"Low Stock",        value:lowStock.length,         color:t.orange },
-                { label:"Pending Dispatch", value:pendingDispatch.length,  color:TAB_ACCENT.delivery.solid },
-              ].map(s => (
-                <div key={s.label}>
-                  <span style={{ color:s.color, fontWeight:800, fontSize: isMobile ? 12 : 13 }}>{s.value}</span>
-                  <span style={{ color:"rgba(255,255,255,0.3)", fontSize: isMobile ? 9 : 10, marginLeft:4 }}>{s.label}</span>
-                </div>
-              ))}
+          <div style={{ marginTop:16 }}>
+            <div style={{ height:4, background:"rgba(255,255,255,0.06)", borderRadius:"999px", overflow:"hidden" }}>
+              <div style={{
+                height:"100%", width:`${overallPct}%`,
+                background: overallPct>=100
+                  ? "linear-gradient(90deg,#10B981,#34D399)"
+                  : TAB_ACCENT.home.gradient || "linear-gradient(90deg,#2563EB,#7C3AED)",
+                borderRadius:"999px",
+                boxShadow: overallPct>=100 ? "0 0 16px rgba(16,185,129,0.6)" : "0 0 16px rgba(37,99,235,0.5)",
+                transition:"width 0.8s cubic-bezier(0.4,0,0.2,1)",
+              }}/>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── KPI tiles — 2 cols on mobile, 4 on desktop ─────── */}
-      <div style={{ display:"grid", gridTemplateColumns:kpiCols, gap:10, marginBottom:16 }}>
-        <SKpiCard label="Production (KG)" icon="🏭" value={totalPacked.toLocaleString("en-IN")} sub={`${overallPct}% of target`} progress={overallPct} color={TAB_ACCENT.home.solid} t={t} onClick={() => setActiveTab("packing")} />
-        <SKpiCard label="Packed (Pcs)" icon="📦" value={totalPacked.toLocaleString("en-IN")} sub={`${completedToday.length} batches done`} progress={overallPct} color={TAB_ACCENT.packing.solid} t={t} onClick={() => setActiveTab("packing")} />
-        <SKpiCard label="Delivered" icon="🚚" value={totalDelivered} sub={`${pendingDispatch.length} pending`} color={TAB_ACCENT.delivery.solid} t={t} onClick={() => setActiveTab("delivery")} />
-        <SKpiCard label="Active Orders" icon="📋" value={safeDeliveries.length} sub={`${pendingDispatch.length} in transit`} color={TAB_ACCENT.inventory.solid} t={t} onClick={() => setActiveTab("delivery")} />
+      {/* ── PERM-GATED: Today's Wastage Widget ───────────────── */}
+      {can("dash_seeWastage") && todayWastage.length > 0 && (
+        <div style={{
+          background: "rgba(239,68,68,0.06)",
+          border: "1px solid rgba(239,68,68,0.18)",
+          borderRadius: 14,
+          padding: "12px 16px",
+          marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+        }}>
+          <span style={{ fontSize: 22 }}>🗑️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: "#EF4444", fontWeight: 800, fontSize: 13 }}>Today's Wastage</div>
+            <div style={{ color: t.sub, fontSize: 11, marginTop: 2 }}>
+              {todayWastage.length} entries · {totalWastageQty.toLocaleString("en-IN")} units wasted
+              {can("waste_seeCost") && totalWastageCost > 0 && (
+                <span style={{ color:"#EF4444", fontWeight:700 }}> · ₹{totalWastageCost.toLocaleString("en-IN")} lost</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── KPI Cards ─────────────────────────────────────────── */}
+      <div style={{ display:"grid", gridTemplateColumns:kpiCols, gap:10, marginBottom:14 }}>
+        <SKpiCard t={t} label="Active Batches"   value={activeBatches.length}   icon="🏭" color={TAB_ACCENT.production?.solid || "#f97316"} />
+        <SKpiCard t={t} label="Pending QC"        value={pendingQC.length}        icon="✅" color={TAB_ACCENT.qc.solid}                       />
+        <SKpiCard t={t} label="Low Stock Items"   value={lowStock.length}         icon="⚠️" color="#EF4444"                                   />
+        <SKpiCard t={t} label="Pending Dispatch"  value={pendingDispatch.length}  icon="🚚" color={TAB_ACCENT.delivery.solid}                  />
       </div>
 
-      {/* ── Quick Actions — 3 cols on mobile, 6 on desktop ─── */}
+      {/* ── Quick Actions ─────────────────────────────────────── */}
       <div style={{ marginBottom:16 }}>
-        <SSectionHeader title="Quick Actions" t={t} accent={t.blue} />
-        <div style={{ display:"grid", gridTemplateColumns:actionCols, gap:9, marginTop:10 }}>
+        <SSectionHeader title="Quick Actions" t={t} accent={t.cyan} />
+        <div style={{ display:"grid", gridTemplateColumns:actionCols, gap:10, marginTop:10 }}>
           {QUICK_ACTIONS.map(a => (
-            <SGradCard
-              key={a.label}
-              icon={a.icon} label={a.label} sub={isMobile ? undefined : a.sub}
-              gradient={a.gradient} glow={a.glow} badge={a.badge}
-              onClick={() => a.tab && setActiveTab(a.tab)}
-            />
+            <button key={a.tab} onClick={() => setActiveTab(a.tab)} style={{
+              background:     "rgba(255,255,255,0.03)",
+              border:         "1px solid rgba(255,255,255,0.08)",
+              borderRadius:   14,
+              padding:        isMobile ? "12px 8px" : "14px 10px",
+              cursor:         "pointer",
+              display:        "flex",
+              flexDirection:  "column",
+              alignItems:     "center",
+              gap:            6,
+              position:       "relative",
+              transition:     "all 0.18s",
+              backdropFilter: "blur(16px)",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.transform = ""; }}
+            >
+              {a.badge && (
+                <div style={{
+                  position:"absolute", top:8, right:8,
+                  background:"#EF4444", color:"#fff",
+                  borderRadius:"999px", fontSize:8, fontWeight:800,
+                  padding:"1px 5px", minWidth:14, textAlign:"center",
+                }}>{a.badge}</div>
+              )}
+              <span style={{ fontSize: isMobile ? 22 : 26 }}>{a.icon}</span>
+              <div style={{ color:t.text, fontWeight:700, fontSize:11 }}>{a.label}</div>
+              <div style={{ color:t.muted, fontSize:9 }}>{a.sub}</div>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* ── Analytics + Top Products ─────────────────────── */}
-      <div style={{ display:"grid", gridTemplateColumns:analyticsCols, gap:14, marginBottom:16 }}>
+      {/* ── Analytics + Top Products ──────────────────────────── */}
+      <div style={{ display:"grid", gridTemplateColumns:analyticsCols, gap:14, marginBottom:14 }}>
 
-        {/* Bar chart panel — range buttons now change data */}
+        {/* Chart */}
         <div style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"18px", backdropFilter:"blur(20px)", boxShadow:"0 4px 24px rgba(0,0,0,0.3)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:8 }}>
-            <div>
-              <div style={{ color:t.text, fontWeight:800, fontSize:13 }}>Production Analytics</div>
-              <div style={{ color:t.sub, fontSize:10, marginTop:2 }}>
-                {chartRange === "7D" ? "Daily packed units" : chartRange === "1M" ? "Daily — last 30 days" : "Weekly — last 3 months"}
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:5 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+            <div style={{ color:t.text, fontWeight:800, fontSize:13 }}>Production Output</div>
+            <div style={{ display:"flex", gap:4 }}>
               {["7D","1M","3M"].map(l => (
                 <button key={l} onClick={() => setChartRange(l)} style={{
-                  padding:"4px 10px", borderRadius:6, border:"none", cursor:"pointer",
-                  background: chartRange === l ? TAB_ACCENT.home.gradient : "rgba(255,255,255,0.05)",
-                  color:      chartRange === l ? "#fff" : t.sub,
+                  padding:"3px 9px", borderRadius:6, border:"none", cursor:"pointer",
+                  background: chartRange===l ? TAB_ACCENT.home.solid : "rgba(255,255,255,0.05)",
+                  color:      chartRange===l ? "#fff" : t.sub,
                   fontSize:9, fontWeight:700, fontFamily:"inherit",
-                  boxShadow:  chartRange === l ? TAB_ACCENT.home.glow : "none",
+                  boxShadow:  chartRange===l ? TAB_ACCENT.home.glow : "none",
                   transition:"all 0.15s",
                 }}>{l}</button>
               ))}
@@ -290,14 +423,14 @@ export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = []
       {/* ── Activity + Active Batches — stack on mobile ────── */}
       <div style={{ display:"grid", gridTemplateColumns:bottomCols, gap:14 }}>
 
-        {/* Recent activity — "View all" now navigates to reports */}
+        {/* Recent activity */}
         <div>
           <SSectionHeader title="Recent Activity" t={t} accent={t.cyan}
             action={
-              <span
-                onClick={() => setActiveTab("reports")}
-                style={{ color:t.cyan, fontSize:10, fontWeight:700, cursor:"pointer" }}
-              >View all →</span>
+              <span onClick={() => setActiveTab("reports")}
+                style={{ color:t.cyan, fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                View all →
+              </span>
             }
           />
           <div style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, overflow:"hidden", backdropFilter:"blur(20px)", boxShadow:"0 4px 24px rgba(0,0,0,0.25)", marginTop:10 }}>

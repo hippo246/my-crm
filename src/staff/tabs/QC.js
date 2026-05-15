@@ -12,6 +12,16 @@
 import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SPill } from "../components/ui.js";
+import { hasPerm } from "../../lib/roles.js";
+
+// ── CSV export for QC logs ────────────────────────────────────
+function exportQCCSV(logs) {
+  const rows = [["Batch","Product","Inspector","Date","Time","Grade","Fails"]];
+  logs.forEach(l => rows.push([l.batchLabel||"", l.product||"", l.inspector||"", l.date||"", l.time||"", l.grade||"", l.failCount??0]));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
+  a.download = `qc-logs-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
 
 const COLOR = TAB_ACCENT.qc.solid;
 const GRAD  = TAB_ACCENT.qc.gradient;
@@ -33,7 +43,23 @@ const GRADES = [
   { value:"C", label:"Grade C — Sub-standard" },
 ];
 
-export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, sess, notify = () => {} }) {
+export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, sess, notify = () => {}, settings = {} }) {
+  // ── Staff Portal settings ─────────────────────────────────
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
+
+  // ── Perms (role-based + portal) ───────────────────────────
+  const canInspect = hasPerm(sess, "qc_add")    && spOn("qcCanInspect", true);
+  const canDelete  = hasPerm(sess, "qc_delete");
+  const canExport  = hasPerm(sess, "qc_export") && spOn("qcCanExport",  false);
+
+  // ── Settings-driven config — staffPortal overrides settings root ──
+  const checklistItems = (sp.qcChecklist?.length ? sp.qcChecklist : settings?.qcChecklist)?.length
+    ? (sp.qcChecklist?.length ? sp.qcChecklist : settings.qcChecklist).map((l, i) => ({ id: `c${i}`, label: l, icon: "✔️" }))
+    : CHECKLIST;
+  const grades = (sp.qcGrades?.length ? sp.qcGrades : settings?.qcGrades)?.length
+    ? (sp.qcGrades?.length ? sp.qcGrades : settings.qcGrades).map(v => ({ value: v, label: `Grade ${v}` }))
+    : GRADES;
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState("pending");
   const [selected, setSelected] = useState(null);
@@ -62,8 +88,8 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
     rejected: safe.filter(b => b.qcGrade === "Rejected").length,
   };
 
-  const allChecked = CHECKLIST.every(c => checks[c.id] !== undefined);
-  const failCount  = CHECKLIST.filter(c => checks[c.id] === false).length;
+  const allChecked = checklistItems.every(c => checks[c.id] !== undefined);
+  const failCount  = checklistItems.filter(c => checks[c.id] === false).length;
   // When failCount > 0 → auto-Rejected regardless of grade picker (by design)
   const finalGrade = failCount > 0 ? "Rejected" : grade;
 
@@ -108,7 +134,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
     t.red;
 
   const checkedCount = Object.keys(checks).length;
-  const passCount    = CHECKLIST.filter(c => checks[c.id] === true).length;
+  const passCount    = checklistItems.filter(c => checks[c.id] === true).length;
 
   return (
     <div style={{ background: t.bg, minHeight: "100vh", padding: "16px", maxWidth: 900, margin: "0 auto", animation: "fadeIn 0.3s ease" }}>
@@ -191,7 +217,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                 borderRadius: 12, padding: "10px 16px", textAlign: "center",
               }}>
                 <div style={{ color: COLOR, fontSize: 18, fontWeight: 900, lineHeight: 1 }}>
-                  {checkedCount}/{CHECKLIST.length}
+                  {checkedCount}/{checklistItems.length}
                 </div>
                 <div style={{ color: t.muted, fontSize: 9, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Checked</div>
               </div>
@@ -204,7 +230,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
             <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 999, overflow: "hidden" }}>
               <div style={{
                 height: "100%",
-                width: `${CHECKLIST.length > 0 ? (checkedCount / CHECKLIST.length) * 100 : 0}%`,
+                width: `${checklistItems.length > 0 ? (checkedCount / checklistItems.length) * 100 : 0}%`,
                 background: failCount > 0 ? `linear-gradient(90deg,${t.red},${t.orange})` : GRAD,
                 borderRadius: 999,
                 boxShadow: failCount > 0 ? `0 0 12px ${t.red}60` : `0 0 12px ${COLOR}60`,
@@ -221,10 +247,10 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
           {/* Checklist items */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
-              Checklist · {checkedCount}/{CHECKLIST.length} completed
+              Checklist · {checkedCount}/{checklistItems.length} completed
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {CHECKLIST.map(item => {
+              {checklistItems.map(item => {
                 const val = checks[item.id];
                 return (
                   <div key={item.id} style={{
@@ -273,7 +299,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                 Assign Grade
               </div>
               <div style={{ display: "flex", gap: 9 }}>
-                {GRADES.map(g => (
+                {grades.map(g => (
                   <button key={g.value} onClick={() => setGrade(g.value)} style={{
                     flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
                     background:  grade === g.value ? `linear-gradient(135deg,${gradeColor(g.value)},${gradeColor(g.value)}bb)` : "rgba(255,255,255,0.05)",
@@ -287,7 +313,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                 ))}
               </div>
               <div style={{ color: "rgba(255,255,255,0.25)", fontSize: 10, marginTop: 7 }}>
-                {GRADES.find(g => g.value === grade)?.label}
+                {grades.find(g => g.value === grade)?.label}
               </div>
             </div>
           )}
@@ -337,7 +363,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                   {failCount > 0 ? (
                     <div style={{ color: t.red, fontSize: 12, fontWeight: 700 }}>{failCount} failure{failCount>1?"s":""}</div>
                   ) : (
-                    <div style={{ color: t.green, fontSize: 12, fontWeight: 700 }}>{passCount}/{CHECKLIST.length} passed</div>
+                    <div style={{ color: t.green, fontSize: 12, fontWeight: 700 }}>{passCount}/{checklistItems.length} passed</div>
                   )}
                   <SPill status={finalGrade === "Rejected" ? "Rejected" : "pass"} label={finalGrade === "Rejected" ? "Rejected" : `Grade ${finalGrade}`} />
                 </div>
@@ -433,7 +459,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                     </div>
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
                       <SPill status={statusKey} label={statusLabel} />
-                      {!b.qcGrade && (b.actual ?? 0) > 0 && (
+                      {!b.qcGrade && (b.actual ?? 0) > 0 && canInspect && (
                         <SBtn
                           v="primary" color={COLOR}
                           onClick={() => startInspection(b)}
@@ -455,8 +481,9 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
       {/* ── Recent QC logs ─────────────────────────────────────── */}
       {!selected && Array.isArray(qcLogs) && qcLogs.length > 0 && (
         <div style={{ marginTop: 28 }}>
-          <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 12 }}>
-            Recent Inspections
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Recent Inspections</div>
+            {canExport && <SBtn v="ghost" color={COLOR} sm onClick={() => exportQCCSV(qcLogs)}>⬇ Export CSV</SBtn>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {qcLogs.slice(0, 5).map(log => {
@@ -479,7 +506,13 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                       {log.failCount > 0 && <span style={{ color: t.red, marginLeft: 6 }}>· {log.failCount} fail{log.failCount > 1 ? "s" : ""}</span>}
                     </div>
                   </div>
-                  <SPill status={log.grade === "Rejected" ? "Rejected" : "pass"} label={log.grade === "Rejected" ? "Rejected" : `Grade ${log.grade}`} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <SPill status={log.grade === "Rejected" ? "Rejected" : "pass"} label={log.grade === "Rejected" ? "Rejected" : `Grade ${log.grade}`} />
+                    {canDelete && (
+                      <button onClick={() => setQcLogs(prev => prev.filter(l => l.id !== log.id))} title="Delete log"
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,80,80,0.5)", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>🗑</button>
+                    )}
+                  </div>
                 </div>
               );
             })}

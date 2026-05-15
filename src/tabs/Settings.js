@@ -22,7 +22,6 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
             {id:"invoice",icon:"🧾",label:"Invoice"},
             {id:"account",icon:"👤",label:"Account"},
             {id:"staff",icon:"👥",label:"Staff"},
-            {id:"staffatt",icon:"🕐",label:"Attendance"},
             {id:"machines",icon:"⚙️",label:"Machines"},
             {id:"vehicles",icon:"🚐",label:"Vehicles"},
             {id:"products",icon:"📦",label:"Products"},
@@ -598,7 +597,310 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
             const deptOpts=settings?.staffDepartments||["Production","Delivery","Packaging","Cleaning","Admin","Other"];
             const roleOpts=settings?.staffRoles||["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"];
 
+
+            // ── helpers ──
+            const sp = settings?.staffPortal || {};
+            const upd = (key,val) => setSettings(s=>({...s,staffPortal:{...(s.staffPortal||{}),[key]:val}}));
+            const updArr = (key,arr) => upd(key,arr);
+
+            // ── editable list helper ──
+            function EditList({label,icon,settingKey,defaults,color}){
+              const items = sp[settingKey] || defaults;
+              const [draft,setDraft] = React.useState("");
+              return <Card dm={dm}><div className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span style={{fontSize:18}}>{icon}</span>
+                  <p style={{color:t.text,fontWeight:700,fontSize:13}}>{label}</p>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                  {items.map((item,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:color+"18",border:`1.5px solid ${color}44`,borderRadius:99,padding:"4px 10px"}}>
+                      <span style={{color,fontSize:12,fontWeight:700}}>{item}</span>
+                      <button onClick={()=>updArr(settingKey,items.filter((_,j)=>j!==i))}
+                        style={{color,background:"none",border:"none",cursor:"pointer",fontSize:13,lineHeight:1,padding:"0 2px"}}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <Inp dm={dm} value={draft} onChange={e=>setDraft(e.target.value)}
+                    placeholder={`Add ${label.toLowerCase()}…`}
+                    onKeyDown={e=>{if(e.key==="Enter"&&draft.trim()){updArr(settingKey,[...items,draft.trim()]);setDraft("");}}}/>
+                  <Btn dm={dm} v="primary" onClick={()=>{if(draft.trim()){updArr(settingKey,[...items,draft.trim()]);setDraft("");}}} style={{whiteSpace:"nowrap"}}>+ Add</Btn>
+                </div>
+              </div></Card>;
+            }
+
+            // ── toggle row helper ──
+            function TRow({label,desc,settingKey,defOn=false}){
+              const on = sp[settingKey]!==undefined ? sp[settingKey] : defOn;
+              return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 0",borderBottom:`1px solid ${t.border}`}}>
+                <div style={{flex:1,minWidth:0,marginRight:16}}>
+                  <p style={{color:t.text,fontSize:13,fontWeight:600}}>{label}</p>
+                  {desc&&<p style={{color:t.sub,fontSize:11,marginTop:2}}>{desc}</p>}
+                </div>
+                <Tog dm={dm} on={on} onChange={()=>upd(settingKey,!on)}/>
+              </div>;
+            }
+
+            // ── text field helper ──
+            function TField({label,settingKey,placeholder,sub}){
+              return <div style={{marginBottom:12}}>
+                <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>{label}</p>
+                {sub&&<p style={{color:t.sub,fontSize:10,marginBottom:6}}>{sub}</p>}
+                <Inp dm={dm} value={sp[settingKey]||""} onChange={e=>upd(settingKey,e.target.value)} placeholder={placeholder}/>
+              </div>;
+            }
+
+            // ── qty preset adder — must be a component (not IIFE) to legally use hooks ──
+            function QtyPresetAdder(){
+              const [draft,setDraft]=React.useState("");
+              const presets=sp.productionQtyPresets||[250,500,750,1000];
+              return(
+                <div style={{display:"flex",gap:6}}>
+                  <input type="number" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="e.g. 1500"
+                    onKeyDown={e=>{if(e.key==="Enter"&&+draft>0){upd("productionQtyPresets",[...presets,+draft]);setDraft("");}}}
+                    style={{background:t.inp||"#f0f3fa",border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:13,flex:1,outline:"none"}}/>
+                  <button onClick={()=>{if(+draft>0){upd("productionQtyPresets",[...presets,+draft]);setDraft("");}}}
+                    style={{background:"#f97316",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ Add</button>
+                </div>
+              );
+            }
+
             return <>
+
+              {/* ════════════════════════════════════════════
+                  STAFF PORTAL — Feature controls for staff-side tabs
+                  All settings stored at settings.staffPortal and
+                  read live by Delivery, QC, Inventory, Packing tabs
+                  ════════════════════════════════════════════ */}
+              <div style={{marginTop:8,marginBottom:4}}>
+                <p style={{color:t.text,fontWeight:900,fontSize:15,marginBottom:2}}>📱 Staff Portal Settings</p>
+                <p style={{color:t.sub,fontSize:11}}>Control every feature, label, and list visible to staff in their portal. Changes save to cloud and appear immediately.</p>
+              </div>
+              {/* ── BRANDING ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>🎨 Staff App Branding</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Customize labels and text shown to staff in their portal.</p>
+                <TRow label="☀️ Light Mode for Staff App" desc="Staff portal uses a light theme instead of dark" settingKey="staffLightMode" defOn={false}/>
+                <TField label="Staff Tab Title" settingKey="staffTabTitle" placeholder="e.g. My Shift" sub="Header shown at top of the staff home tab"/>
+                <TField label="Staff Tab Subtitle" settingKey="staffTabSubtitle" placeholder="e.g. Track your work today" sub="Small description below the title"/>
+                <TField label="Clock-In Button Label" settingKey="clockInLabel" placeholder="Clock In"/>
+                <TField label="Clock-Out Button Label" settingKey="clockOutLabel" placeholder="Clock Out"/>
+                <TField label="Break Button Label" settingKey="breakLabel" placeholder="Take Break"/>
+              </div></Card>
+
+              {/* ── DELIVERY TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>🚚 Delivery Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Control what delivery staff can see and do.</p>
+                <TRow label="Show Delivery Tab" settingKey="showDeliveryTab" defOn={true}/>
+                <TRow label="Allow Log Entry" desc="Staff can log new deliveries" settingKey="deliveryCanAdd" defOn={true}/>
+                <TRow label="Allow Dispatch" desc="Staff can mark orders as dispatched" settingKey="deliveryCanDispatch" defOn={true}/>
+                <TRow label="Allow Mark Delivered" desc="Staff can advance order to delivered" settingKey="deliveryCanMarkDone" defOn={true}/>
+                <TRow label="Allow Cancel" desc="Staff can cancel a delivery" settingKey="deliveryCanCancel" defOn={false}/>
+                <TRow label="Show Customer Phone" desc="Phone number visible on delivery card" settingKey="deliveryShowPhone" defOn={true}/>
+                <TRow label="Show Prices to Staff" desc="Staff can see order totals and prices" settingKey="deliveryShowPrices" defOn={false}/>
+                <TRow label="Require GPS on Dispatch" desc="Staff must share location to dispatch" settingKey="deliveryRequireGPS" defOn={false}/>
+              </div></Card>
+
+              {/* ── QC TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>🔬 QC Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Configure quality control checklist and grading for staff.</p>
+                <TRow label="Show QC Tab" settingKey="showQCTab" defOn={true}/>
+                <TRow label="Allow Inspect" desc="Staff can start QC inspections" settingKey="qcCanInspect" defOn={true}/>
+                <TRow label="Allow Export QC Reports" settingKey="qcCanExport" defOn={false}/>
+                <Hr dm={dm}/>
+                <EditList label="QC Checklist Items" icon="✅" settingKey="qcChecklist"
+                  defaults={["Visual check","Weight check","Packaging seal","Label correct","Temperature OK"]}
+                  color="#14b8a6"/>
+                <div style={{marginTop:12}}/>
+                <EditList label="QC Grade Options" icon="🏅" settingKey="qcGrades"
+                  defaults={["A","B","C","Reject"]}
+                  color="#8b5cf6"/>
+              </div></Card>
+
+              {/* ── INVENTORY TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>📦 Inventory Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Control inventory access and actions for staff.</p>
+                <TRow label="Show Inventory Tab" settingKey="showInventoryTab" defOn={true}/>
+                <TRow label="Allow Add Stock" settingKey="inventoryCanAdd" defOn={true}/>
+                <TRow label="Allow Edit Stock" settingKey="inventoryCanEdit" defOn={true}/>
+                <TRow label="Allow Delete Stock" settingKey="inventoryCanDelete" defOn={false}/>
+                <TRow label="Show Stock Values" desc="Staff can see ₹ cost of inventory" settingKey="inventoryShowValues" defOn={false}/>
+                <TField label="Inventory Tab Title" settingKey="inventoryTabTitle" placeholder="Inventory"/>
+              </div></Card>
+
+              {/* ── PACKING TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>📦 Packing Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Configure packing slip options and presets for staff.</p>
+                <TRow label="Show Packing Tab" settingKey="showPackingTab" defOn={true}/>
+                <TRow label="Allow Edit Packing" settingKey="packingCanEdit" defOn={true}/>
+                <TRow label="Show Price on Packing Slip" settingKey="packingShowPrice" defOn={false}/>
+                <Hr dm={dm}/>
+                <EditList label="Packing Presets (qty)" icon="🔢" settingKey="packingPresets"
+                  defaults={["50","100","200","500"]}
+                  color="#f59e0b"/>
+              </div></Card>
+
+              {/* ── PRODUCTION TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>🏭 Production Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>What production staff can log and view.</p>
+
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Visibility</p>
+                <TRow label="Show Production Tab" settingKey="showProductionTab" defOn={true}/>
+
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:14,marginBottom:6}}>Permissions</p>
+                <TRow label="Allow Start Batch" desc="Staff can start new production batches" settingKey="productionCanAdd" defOn={true}/>
+                <TRow label="Allow Edit Batch" desc="Staff can edit existing batch details" settingKey="productionCanEdit" defOn={false}/>
+                <TRow label="Allow Delete Batch" desc="Staff can remove batches (⚠ use with care)" settingKey="productionCanDelete" defOn={false}/>
+                <TRow label="Allow Put on Hold" desc="Staff can pause a batch mid-run" settingKey="productionCanHold" defOn={true}/>
+                <TRow label="Allow Mark Complete" desc="Staff can mark batch as done" settingKey="productionCanComplete" defOn={true}/>
+
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:14,marginBottom:6}}>Display</p>
+                <TRow label="Show Production Targets" desc="Display daily KG/unit targets to staff" settingKey="productionShowTargets" defOn={true}/>
+                <TRow label="Show Batch History" desc="Staff can see past batches in summary" settingKey="productionShowHistory" defOn={true}/>
+                <TRow label="Show Production Preview" desc="Show Est. Time, Raw Input, Workers estimates" settingKey="productionShowPreview" defOn={true}/>
+                <TRow label="Show Worker Count" desc="Display required workers on each batch" settingKey="productionShowWorkers" defOn={true}/>
+                <TRow label="Show Machine Field" desc="Let staff pick which machine to use" settingKey="productionShowMachine" defOn={true}/>
+                <TRow label="Show Shift Selector" desc="Let staff pick their current shift" settingKey="productionShowShift" defOn={true}/>
+                <TRow label="Show QC Grade on Batch" desc="Display QC grade result on batch cards" settingKey="productionShowQCGrade" defOn={true}/>
+
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:14,marginBottom:6}}>Batch Label</p>
+                <div style={{marginBottom:12}}>
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:5}}>Batch ID Prefix</p>
+                  <input value={sp.batchPrefix||"PR"} onChange={e=>upd("batchPrefix",e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))}
+                    maxLength={6} placeholder="PR"
+                    style={{background:t.inp||"#f0f3fa",border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:"100%",outline:"none",fontFamily:"monospace",fontWeight:700,letterSpacing:"0.08em"}}/>
+                  <p style={{color:t.sub,fontSize:10,marginTop:4}}>Labels will look like: {sp.batchPrefix||"PR"}-2026-A3F2. Letters/numbers only, max 6.</p>
+                </div>
+
+                <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:14,marginBottom:6}}>Qty Presets (KG)</p>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {(sp.productionQtyPresets||[250,500,750,1000]).map((v,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:"#f9731618",border:"1.5px solid #f9731644",borderRadius:99,padding:"4px 10px"}}>
+                      <span style={{color:"#f97316",fontSize:12,fontWeight:700}}>{v} KG</span>
+                      <button onClick={()=>upd("productionQtyPresets",(sp.productionQtyPresets||[250,500,750,1000]).filter((_,j)=>j!==i))}
+                        style={{color:"#f97316",background:"none",border:"none",cursor:"pointer",fontSize:13,lineHeight:1,padding:"0 2px"}}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <QtyPresetAdder/>
+              </div></Card>
+
+              {/* ── PRODUCTION: Editable product/machine lists ── */}
+              <EditList label="Products (Production Items)" icon="🫓" settingKey="prodItems_names"
+                defaults={["Malabar Paratha","Lachha Paratha","Plain Paratha","Family Pack 20pcs","Mini Paratha","Garlic Paratha"]}
+                color="#f97316"/>
+              <EditList label="Machine Options" icon="⚙️" settingKey="productionMachines"
+                defaults={["Machine 1","Machine 2","Machine 3","Machine 4"]}
+                color="#8b5cf6"/>
+              <EditList label="Shift Options (Production)" icon="🕐" settingKey="productionShifts"
+                defaults={["Shift A (06:00 AM - 02:00 PM)","Shift B (02:00 PM - 10:00 PM)","Shift C (10:00 PM - 06:00 AM)"]}
+                color="#3b82f6"/>
+
+              {/* Default workers per shift */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>👷 Default Workers Required</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>How many workers are expected per batch by default</p>
+                <input type="number" min="1" max="200" value={sp.productionDefaultWorkers??12}
+                  onChange={e=>upd("productionDefaultWorkers",Number(e.target.value))}
+                  style={{background:t.inp||"#f0f3fa",border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:120,outline:"none"}}/>
+                <p style={{color:t.sub,fontSize:10,marginTop:4}}>Staff will see this on the production preview panel</p>
+              </div></Card>
+
+              {/* ── REPORTS TAB ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>📊 Reports Tab</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Control what staff can see in reports.</p>
+                <TRow label="Show Reports Tab" settingKey="showReportsTab" defOn={true}/>
+                <TRow label="Allow Export PDF" settingKey="reportsCanExportPDF" defOn={false}/>
+                <TRow label="Allow Export CSV" settingKey="reportsCanExportCSV" defOn={false}/>
+                <TRow label="Show Revenue Data" desc="Staff can see revenue and price charts" settingKey="reportsShowRevenue" defOn={false}/>
+              </div></Card>
+
+              {/* ── ATTENDANCE / CLOCK ── */}
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:14,marginBottom:4}}>🕐 Attendance & Clock</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:14}}>Fine-tune how staff clock in/out in their portal.</p>
+                <TRow label="Allow Clock In/Out" settingKey="clockEnabled" defOn={true}/>
+                <TRow label="Allow Break Logging" settingKey="breakEnabled" defOn={true}/>
+                <TRow label="Require GPS on Clock-In" settingKey="clockRequireGPS" defOn={false}/>
+                <TRow label="Show Earnings to Staff" desc="Staff can see their daily earnings" settingKey="showEarnings" defOn={false}/>
+                <TRow label="Show Attendance History" desc="Staff can view their own past attendance" settingKey="showAttHistory" defOn={true}/>
+              </div></Card>
+
+              {/* ── SHIFTS / ROLES / DEPTS (editable lists) ── */}
+              <EditList label="Shift Options" icon="🌅" settingKey="shifts"
+                defaults={["Morning","Afternoon","Evening","Night"]}
+                color="#3b82f6"/>
+              <EditList label="Job Role Options" icon="🔧" settingKey="staffRoles"
+                defaults={["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"]}
+                color="#a855f7"/>
+              <EditList label="Department Options" icon="🏢" settingKey="staffDepartments"
+                defaults={["Production","Delivery","Packaging","Cleaning","Admin","Other"]}
+                color="#10b981"/>
+              <EditList label="Attendance Statuses" icon="🔵" settingKey="staffStatuses"
+                defaults={["Present","Absent","Half Day","Late","On Leave"]}
+                color="#0ea5e9"/>
+              <EditList label="Employment Types" icon="📄" settingKey="staffEmploymentTypes"
+                defaults={["Full-time","Part-time","Contract","Daily Wage"]}
+                color="#f59e0b"/>
+              <EditList label="Salary Types" icon="💰" settingKey="staffSalaryTypes"
+                defaults={["Monthly","Weekly","Daily","Per Hour","Per Piece"]}
+                color="#10b981"/>
+
+              {/* ── ATTENDANCE CONFIG ── */}
+              <Card dm={dm}><div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text,fontWeight:700,fontSize:14}}>🕐 Staff Attendance & Shift Log</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:2}}>Enable attendance tracking and configure the log form</p>
+                  </div>
+                  <Tog dm={dm} on={settings?.featureStaffAttendance===true} onChange={()=>setSettings(s=>({...s,featureStaffAttendance:!s?.featureStaffAttendance}))}/>
+                </div>
+                {!settings?.featureStaffAttendance&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:10,padding:"10px 12px",marginBottom:8}}><p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>⚠️ Attendance feature is off. Enable above to show it.</p></div>}
+                {[
+                  {key:"staffRequireInOutTime",label:"Require In/Out Time",desc:"Make clock-in and clock-out times mandatory",defOn:false},
+                  {key:"staffAllowCustomName",label:"Allow Custom (Unlisted) Names",desc:"Let staff log under a name not in the roster",defOn:true},
+                  {key:"staffShowDepartment",label:"Show Department Field",desc:"Display a department selector on the attendance form",defOn:true},
+                  {key:"staffShowBreakDuration",label:"Show Break Duration",desc:"Allow logging break time in minutes",defOn:false},
+                  {key:"staffShowTask",label:"Show Task / Assignment",desc:"Let managers note what task the staff member was on",defOn:false},
+                  {key:"staffShowOvertimeReason",label:"Show Overtime Reason",desc:"Require a reason when overtime hours are detected",defOn:false},
+                  {key:"staffShowTemperature",label:"Show Temperature Field",desc:"Record body temperature for health compliance logs",defOn:false},
+                  {key:"staffShowSalaryType",label:"Show Salary Type in Roster",desc:"Display salary type (daily/monthly) on staff cards",defOn:false},
+                  {key:"staffShowNotes",label:"Show Notes Field",desc:"Allow adding free-text notes to each attendance record",defOn:true},
+                ].map(({key,label,desc,defOn})=>(
+                  <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
+                    <div className="flex-1 pr-4"><p style={{color:t.text}} className="text-sm font-semibold">{label}</p><p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p></div>
+                    <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
+                  </div>
+                ))}
+                <div className="mt-3">
+                  <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>⏱ Overtime Threshold (hrs/day)</p>
+                  <input type="number" min="1" max="24" value={settings?.staffOvertimeThresholdHrs??9}
+                    onChange={e=>setSettings(s=>({...s,staffOvertimeThresholdHrs:Number(e.target.value)}))}
+                    style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:100,outline:"none"}}/>
+                  <p style={{color:t.sub,fontSize:11,marginTop:4}}>Shifts exceeding this many hours will show an overtime indicator</p>
+                </div>
+              </div></Card>
+
+              <Card dm={dm}><div className="p-4">
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>📅 Default Shift</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Pre-selected shift when logging a new attendance record</p>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(sh=>(
+                    <button key={sh} onClick={()=>setSettings(s=>({...s,staffDefaultShift:sh}))}
+                      style={{background:(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.inp,color:(settings?.staffDefaultShift||"Morning")===sh?t.accentFg:t.sub,border:`1.5px solid ${(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.border}`,borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      {sh}
+                    </button>
+                  ))}
+                </div>
+              </div></Card>
+
               {/* ── STAFF MANAGEMENT ── */}
               {allStaff.length>0&&<Card dm={dm}><div className="p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -664,87 +966,6 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
                 tabDef={agentTabDef} fpDef={agentFpDef} tabDefKey="agentDefaultPerms" fpDefKey="agentFinePermsDef" accounts={agentUsers}/>
             </>;
           })()}
-
-          {/* ── STAFF ATTENDANCE SETTINGS ── */}
-          {settingsSection==="staffatt"&&<>
-            <Card dm={dm}><div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>🕐 Staff Attendance & Shift Log</p>
-                  <p style={{color:t.sub,fontSize:11,marginTop:2}}>Configure the Staff tab and attendance tracking</p>
-                </div>
-                <Tog dm={dm} on={settings?.featureStaffAttendance===true} onChange={()=>setSettings(s=>({...s,featureStaffAttendance:!s?.featureStaffAttendance}))}/>
-              </div>
-              {!settings?.featureStaffAttendance&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:10,padding:"10px 12px",marginBottom:8}}><p style={{color:"#f59e0b",fontSize:12,fontWeight:600}}>⚠️ Staff tab is hidden. Enable the toggle above to show it.</p></div>}
-            </div></Card>
-
-            <Card dm={dm}><div className="p-4">
-              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:12}}>📋 Log Form Fields</p>
-              {[
-                {key:"staffRequireInOutTime",label:"Require In/Out Time",desc:"Make clock-in and clock-out times mandatory",defOn:false},
-                {key:"staffAllowCustomName",label:"Allow Custom (Unlisted) Names",desc:"Let staff log under a name not in the roster",defOn:true},
-                {key:"staffShowDepartment",label:"Show Department Field",desc:"Display a department selector on the attendance form",defOn:true},
-                {key:"staffShowBreakDuration",label:"Show Break Duration",desc:"Allow logging break time in minutes",defOn:false},
-                {key:"staffShowTask",label:"Show Task / Assignment",desc:"Let managers note what task the staff member was on",defOn:false},
-                {key:"staffShowOvertimeReason",label:"Show Overtime Reason",desc:"Require a reason when overtime hours are detected",defOn:false},
-                {key:"staffShowTemperature",label:"Show Temperature Field",desc:"Record body temperature for health compliance logs",defOn:false},
-                {key:"staffShowSalaryType",label:"Show Salary Type in Roster",desc:"Display salary type (daily/monthly) on staff cards",defOn:false},
-                {key:"staffShowNotes",label:"Show Notes Field",desc:"Allow adding free-text notes to each attendance record",defOn:true},
-              ].map(({key,label,desc,defOn})=>(
-                <div key={key} className="flex items-center justify-between py-2.5" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <div className="flex-1 pr-4"><p style={{color:t.text}} className="text-sm font-semibold">{label}</p><p style={{color:t.sub}} className="text-[11px] mt-0.5">{desc}</p></div>
-                  <Tog dm={dm} on={settings?.[key]!==undefined?settings[key]:defOn} onChange={()=>setSettings(s=>({...s,[key]:!(s?.[key]!==undefined?s[key]:defOn)}))}/>
-                </div>
-              ))}
-              <div className="mt-3">
-                <p style={{color:t.sub,fontSize:11,fontWeight:700,marginBottom:6}}>⏱ Overtime Threshold (hrs/day)</p>
-                <input type="number" min="1" max="24" value={settings?.staffOvertimeThresholdHrs??9}
-                  onChange={e=>setSettings(s=>({...s,staffOvertimeThresholdHrs:Number(e.target.value)}))}
-                  style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:100,outline:"none"}}/>
-                <p style={{color:t.sub,fontSize:11,marginTop:4}}>Shifts exceeding this many hours will show an overtime indicator</p>
-              </div>
-            </div></Card>
-
-            <Card dm={dm}><div className="p-4">
-              <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>📅 Default Shift</p>
-              <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Pre-selected shift when logging a new attendance record</p>
-              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(sh=>(
-                  <button key={sh} onClick={()=>setSettings(s=>({...s,staffDefaultShift:sh}))}
-                    style={{background:(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.inp,color:(settings?.staffDefaultShift||"Morning")===sh?t.accentFg:t.sub,border:`1.5px solid ${(settings?.staffDefaultShift||"Morning")===sh?t.accent:t.border}`,borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    {sh}
-                  </button>
-                ))}
-              </div>
-            </div></Card>
-
-            {[
-              {key:"staffStatuses",label:"Attendance Statuses",desc:"Status options shown as pill buttons on the attendance log form",icon:"🔵",defaults:["Present","Absent","Half Day","Late","On Leave"]},
-              {key:"staffDepartments",label:"Departments",desc:"Department options available in the log form and staff roster",icon:"🏢",defaults:["Production","Delivery","Packaging","Cleaning","Admin","Other"]},
-              {key:"staffEmploymentTypes",label:"Employment Types",desc:"Contract types available when adding a staff member",icon:"📄",defaults:["Full-time","Part-time","Contract","Daily Wage"]},
-              {key:"staffSalaryTypes",label:"Salary Types",desc:"Pay-cycle options for staff members",icon:"💰",defaults:["Monthly","Weekly","Daily","Per Hour","Per Piece"]},
-              {key:"staffRoles",label:"Roles / Designations",desc:"Job roles available when adding a staff member",icon:"🔧",defaults:["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"]},
-            ].map(({key,label,desc,icon,defaults})=>(
-              <Card key={key} dm={dm}><div className="p-4">
-                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{icon} {label}</p>
-                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>{desc}</p>
-                <div className="flex flex-col gap-2 mb-3">
-                  {(settings?.[key]||defaults).map((v,i)=>(
-                    <div key={i} className="flex items-center gap-2">
-                      <input value={v} onChange={e=>{const arr=[...(settings?.[key]||defaults)];arr[i]=e.target.value;setSettings(s=>({...s,[key]:arr}));}}
-                        style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,flex:1,borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none"}}/>
-                      <button onClick={()=>{const arr=(settings?.[key]||defaults).filter((_,j)=>j!==i);setSettings(s=>({...s,[key]:arr}));}}
-                        style={{background:"#ef444420",border:"1px solid #ef444430",color:"#ef4444",borderRadius:8,width:32,height:32,fontSize:14,fontWeight:700,cursor:"pointer",flexShrink:0}}>✕</button>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={()=>setSettings(s=>({...s,[key]:[...(s[key]||defaults),""]}))}
-                  style={{border:`1.5px dashed ${t.border}`,color:t.sub,width:"100%",borderRadius:10,padding:"8px",fontSize:13,fontWeight:600,cursor:"pointer",background:"transparent"}}>
-                  + Add
-                </button>
-              </div></Card>
-            ))}
-          </>}
 
           {/* ── MACHINE MAINTENANCE SETTINGS ── */}
           {settingsSection==="machines"&&<>
@@ -2035,6 +2256,7 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
 
 
       {/* ── INLINE RECEIPT CARD — tap 🧾 Receipt button OR shown after collection ── */}
+
       <Sheet dm={dm} open={!!lastReceiptData} onClose={()=>setLastReceiptData(null)} title={lastReceiptData?.viewOnly?"🧾 Delivery Receipt":"✅ Collection Confirmed"}>
         {lastReceiptData&&(()=>{
           const {delivery:rd,amt,note,customer,ts:rts,viewOnly}=lastReceiptData;

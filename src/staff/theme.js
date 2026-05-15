@@ -2,7 +2,60 @@
 // staff/theme.js — REVAMPED v3 · Premium factory worker design language
 // ============================================================
 
-export const ST = () => ({
+export const ST = (lightMode = false) => {
+  if (lightMode) return {
+    // ── Light mode backgrounds
+    bg:      "#f4f6fb",
+    bg2:     "#eef1f8",
+    bg3:     "#e8ecf5",
+    card:    "#ffffff",
+    cardHov: "#f0f3fa",
+    cardAlt: "#f8faff",
+    sidebar: "#ffffff",
+    header:  "#ffffff",
+    inp:     "#f0f3fa",
+    modal:   "#ffffff",
+
+    // ── Light borders
+    border:  "#dde3f0",
+    border2: "#c8d1e8",
+    border3: "#b8c4dd",
+
+    // ── Light text
+    text:  "#111827",
+    sub:   "#6b7280",
+    muted: "#9ca3af",
+
+    // ── Accents (same vivid colours, light bg makes them pop)
+    blue:    "#2563eb", blueL:   "rgba(37,99,235,0.10)",  blueG:   "linear-gradient(135deg,#1d4ed8,#3b82f6)",
+    green:   "#059669", greenL:  "rgba(5,150,105,0.10)",  greenG:  "linear-gradient(135deg,#047857,#10B981)",
+    orange:  "#ea580c", orangeL: "rgba(234,88,12,0.10)",  orangeG: "linear-gradient(135deg,#c2410c,#f97316)",
+    yellow:  "#d97706", yellowL: "rgba(217,119,6,0.10)",  yellowG: "linear-gradient(135deg,#b45309,#F59E0B)",
+    purple:  "#7c3aed", purpleL: "rgba(124,58,237,0.10)", purpleG: "linear-gradient(135deg,#6d28d9,#8B5CF6)",
+    red:     "#dc2626", redL:    "rgba(220,38,38,0.10)",  redG:    "linear-gradient(135deg,#b91c1c,#ef4444)",
+    cyan:    "#0891b2", cyanL:   "rgba(8,145,178,0.10)",  cyanG:   "linear-gradient(135deg,#0369a1,#06b6d4)",
+    teal:    "#0d9488", tealL:   "rgba(13,148,136,0.10)", tealG:   "linear-gradient(135deg,#0f766e,#14B8A6)",
+    pink:    "#db2777", pinkL:   "rgba(219,39,119,0.10)", pinkG:   "linear-gradient(135deg,#be185d,#ec4899)",
+
+    // ── Semantic
+    success: "#059669",
+    warning: "#d97706",
+    danger:  "#dc2626",
+    info:    "#2563eb",
+
+    // ── Shadows (softer in light mode)
+    shadow:  "0 4px 24px rgba(0,0,0,0.10)",
+    shadow2: "0 2px 10px rgba(0,0,0,0.07)",
+    glow:    (color) => `0 0 20px ${color}25, 0 0 6px ${color}10`,
+
+    // ── Radii
+    r: "16px", r2: "12px", r3: "8px", r4: "6px", rFull: "999px",
+
+    // ── Fonts
+    fontMono: "'JetBrains Mono', 'Fira Code', monospace",
+  };
+
+  return {
   // ── Backgrounds
   bg:      "#060910",
   bg2:     "#090d16",
@@ -52,7 +105,8 @@ export const ST = () => ({
 
   // ── Fonts
   fontMono: "'JetBrains Mono', 'Fira Code', monospace",
-});
+  };
+};
 
 export const TAB_ACCENT = {
   home:      { solid:"#3b82f6", light:"rgba(59,130,246,0.1)",  gradient:"linear-gradient(135deg,#1d4ed8,#3b82f6)",  glow:"0 4px 24px rgba(59,130,246,0.4)"  },

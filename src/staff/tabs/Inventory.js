@@ -9,6 +9,7 @@
 import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SSheet, SQtyPicker } from "../components/ui.js";
+import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.inventory.solid;
 const GRAD  = TAB_ACCENT.inventory.gradient;
@@ -25,8 +26,22 @@ function useBreakpoint() {
   return { isMobile: w < 600, isTablet: w >= 600 && w < 900, w };
 }
 
-export function InventoryTab({ t, inventory = [], setInventory, sess, notify = () => {} }) {
+export function InventoryTab({ t, inventory = [], setInventory, sess, notify = () => {}, settings }) {
   const { isMobile } = useBreakpoint();
+
+  // ── Staff Portal settings ─────────────────────────────────
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
+
+  // ── Perms (role-based + portal) ───────────────────────────
+  const canReceive = hasPerm(sess, "sup_add")      && spOn("inventoryCanAdd",    true);
+  const canDeduct  = hasPerm(sess, "sup_edit")     && spOn("inventoryCanEdit",   true);
+  const canDelete  = hasPerm(sess, "sup_delete")   && spOn("inventoryCanDelete", false);
+  const canSeeCost = hasPerm(sess, "sup_seeCost")  && spOn("inventoryShowValues",false);
+
+  // ── Settings-driven labels ─────────────────────────────────
+  const tabTitle    = sp.inventoryTabTitle    || settings?.inventoryTabTitle    || "Raw Materials";
+  const tabSubtitle = settings?.inventoryTabSubtitle || "Live stock levels · synced with admin";
 
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState("all");
@@ -137,18 +152,20 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
             <span style={{ fontSize:10 }}>🏭</span>
             <span style={{ color:COLOR, fontSize:9, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase" }}>INVENTORY</span>
           </div>
-          <div style={{ color:t.text, fontSize: isMobile ? 20 : 24, fontWeight:900, letterSpacing:"-0.03em", lineHeight:1.1 }}>Raw Materials</div>
-          <div style={{ color:t.sub, fontSize:12, marginTop:4 }}>Live stock levels · synced with admin</div>
+          <div style={{ color:t.text, fontSize: isMobile ? 20 : 24, fontWeight:900, letterSpacing:"-0.03em", lineHeight:1.1 }}>{tabTitle}</div>
+          <div style={{ color:t.sub, fontSize:12, marginTop:4 }}>{tabSubtitle}</div>
         </div>
         <div style={{ display:"flex", gap:9, flexWrap:"wrap" }}>
-          {/* Usage Entry — now opens a real sheet */}
+          {canDeduct && (
           <SBtn v="ghost" color={COLOR} onClick={() => { setUsageItem(safe[0] || null); setUsageQty(0); setUsageReason(""); setUsageOpen(true); }}>
             Usage Entry
           </SBtn>
-          {/* Receive Material — now opens a real sheet */}
+          )}
+          {canReceive && (
           <SBtn v="primary" color={COLOR} onClick={() => { setReceiveItem(safe[0] || null); setReceiveQty(0); setReceiveSrc(""); setReceiveOpen(true); }}>
             + Receive Material
           </SBtn>
+          )}
         </div>
       </div>
 
@@ -233,8 +250,8 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       {(viewMode === "table" || isMobile) && !isMobile && (
         <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
           <div style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, overflow:"hidden", backdropFilter:"blur(20px)", boxShadow:"0 4px 32px rgba(0,0,0,0.3)", minWidth:560 }}>
-            <div style={{ display:"grid", gridTemplateColumns:"2fr 0.8fr 0.8fr 0.8fr 1fr 90px", padding:"10px 18px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.03)" }}>
-              {["MATERIAL","STOCK","MIN","UNIT","USAGE","STATUS"].map(h => (
+            <div style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"10px 18px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.03)" }}>
+              {["MATERIAL","STOCK","MIN","UNIT","USAGE",...(canSeeCost?["COST"]:[]),"STATUS",...(canDelete?[""]:[])].map(h => (
                 <div key={h} style={{ color:"rgba(255,255,255,0.28)", fontSize:8, fontWeight:800, letterSpacing:"0.1em" }}>{h}</div>
               ))}
             </div>
@@ -252,7 +269,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                 const stockPct = item.minStock > 0 ? Math.min(100, Math.round((item.stock / (item.minStock * 3)) * 100)) : 100;
                 return (
                   <div key={item.id} onClick={() => { setSelected(item); setDeductQty(0); setDeductOpen(true); }}
-                    style={{ display:"grid", gridTemplateColumns:"2fr 0.8fr 0.8fr 0.8fr 1fr 90px", padding:"13px 18px", borderBottom: i < filtered.length-1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor:"pointer", transition:"all 0.15s", alignItems:"center" }}
+                    style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"13px 18px", borderBottom: i < filtered.length-1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor:"pointer", transition:"all 0.15s", alignItems:"center" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.035)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = ""; }}
                   >
@@ -269,9 +286,19 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                       </div>
                       <div style={{ color:"rgba(255,255,255,0.25)", fontSize:8, marginTop:4, fontWeight:700 }}>{stockPct}%</div>
                     </div>
+                    {canSeeCost && (
+                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontVariantNumeric:"tabular-nums" }}>
+                        {item.costPer != null ? `₹${item.costPer}/${item.unit||"u"}` : "—"}
+                      </div>
+                    )}
                     <div>
                       <span style={{ background:`${sc}12`, color:sc, border:`1px solid ${sc}28`, borderRadius:"999px", padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-block", boxShadow:`0 0 12px ${sc}20` }}>{statusLabel(item._status)}</span>
                     </div>
+                    {canDelete && (
+                      <div onClick={e => handleDeleteItem(item.id, e)} style={{ cursor:"pointer", color:"rgba(255,80,80,0.55)", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }} title="Delete item">
+                        🗑
+                      </div>
+                    )}
                   </div>
                 );
               })

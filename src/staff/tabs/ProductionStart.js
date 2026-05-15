@@ -12,6 +12,7 @@ import {
 } from "../components/ui.js";
 import { useStore } from "../../lib/store.js";
 import { onBatchComplete } from "../../lib/workflowEngine.js";
+import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.production?.solid || "#f97316";
 const GRAD  = TAB_ACCENT.production?.gradient || "linear-gradient(135deg,#c2410c,#f97316)";
@@ -70,10 +71,15 @@ function useIsMobile(bp = 700) {
 }
 
 // ─────────────────────────────────────────────────────────────
-export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }) {
-  const [settings] = useStore("tas10_settings", D_SETTINGS);
+export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, settings: settingsProp, logActivity }) {
+  const [settingsStore] = useStore("tas10_settings", D_SETTINGS);
+  const settings = settingsProp ?? settingsStore;
   const [, setPackingTasks]  = useStore("tas9_pack", []);
   const [, setProdTargets]   = useStore("tas9_prodtargets", []);
+
+  // ── staffPortal toggles ──────────────────────────────────────
+  const sp    = settings?.staffPortal || {};
+  const spOn  = (key, def) => sp[key] !== undefined ? sp[key] : def;
 
   const prodItems   = settings?.prodItems        ?? D_SETTINGS.prodItems;
   const machines    = settings?.machines         ?? D_SETTINGS.machines;
@@ -100,10 +106,16 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
   const completedBatches = safe.filter(b => (b.actual ?? 0) >= (b.target ?? 0));
   const inProgressCount  = safe.filter(b => (b.actual ?? 0) > 0 && (b.actual ?? 0) < (b.target ?? 0)).length;
   const workers  = workerReq?.[selectedProduct?.id] ?? workerReq?.default ?? 12;
+
+  // Perm AND portal toggle — both must pass
+  const canView  = (hasPerm(sess, "prod_add") || hasPerm(sess, "prod_edit")) && spOn("productionCanAdd", true);
+  const canStart = hasPerm(sess, "prod_add") && spOn("productionCanAdd", true);
+  const canEdit  = hasPerm(sess, "prod_edit") && spOn("productionCanEdit", false);
+  const showTargets = spOn("productionShowTargets", true);
   const isReady  = selectedProduct && quantity > 0 && machine && shift;
   const accent   = selectedProduct?.color || COLOR;
 
-  const totalTarget = safe.reduce((s, b) => s + (b.target ?? 0), 0);
+  const totalTarget = showTargets ? safe.reduce((s, b) => s + (b.target ?? 0), 0) : 0;
   const totalActual = safe.reduce((s, b) => s + (b.actual ?? 0), 0);
   const overallPct  = totalTarget > 0 ? Math.min(100, Math.round((totalActual / totalTarget) * 100)) : 69;
 
@@ -134,6 +146,18 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
       status:     "active",
     };
     setBatches(prev => [...(Array.isArray(prev) ? prev : []), newBatch]);
+
+    // ── Activity broadcast ───────────────────────────────────────
+    if (typeof logActivity === "function") {
+      logActivity("production_batch_started", {
+        tab:        "production",
+        batchLabel: newBatch.batchLabel,
+        product:    newBatch.product,
+        qty:        newBatch.target,
+        machine:    newBatch.machine,
+        shift:      newBatch.shift,
+      });
+    }
 
     // ── Mirror to tas9_prodtargets so CRM admin Production tab can see this batch ──
     const prodTarget = {
@@ -168,7 +192,20 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
   return (
     <div style={{ background: t.bg, minHeight: "100vh", padding: isMobile ? "14px" : "20px", animation: "fadeIn 0.3s ease" }}>
 
-      {/* ── Page Header ─────────────────────────────────────── */}
+      {/* ── Access Wall ──────────────────────────────────────── */}
+      {!canView && (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          minHeight: "60vh", gap: 16, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 48 }}>🔒</div>
+          <div style={{ color: t.text, fontSize: 18, fontWeight: 800 }}>Access Restricted</div>
+          <div style={{ color: t.sub, fontSize: 13, maxWidth: 280 }}>
+            You don't have permission to access Production. Contact your admin to request access.
+          </div>
+        </div>
+      )}
+      {canView && <>
       <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10,
@@ -299,22 +336,28 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
               ))}
             </div>
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <SQtyPicker value={quantity} onChange={setQuantity} min={0} t={t} color={accent || COLOR} />
+              <SQtyPicker value={quantity} onChange={canEdit ? setQuantity : () => {}} min={0} t={t} color={accent || COLOR} disabled={!canEdit} />
             </div>
           </div>
 
           <SHr t={t} />
 
+          {!canEdit && (
+            <div style={{ background: "rgba(255,165,0,0.08)", border: "1px solid rgba(255,165,0,0.2)", borderRadius: 10, padding: "8px 12px", marginBottom: 12, color: "rgba(255,165,0,0.8)", fontSize: 11, textAlign: "center" }}>
+              🔒 View only — editing disabled by admin
+            </div>
+          )}
           <div style={{ marginBottom: 12 }}>
             <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
               ⚙️ Machine
             </div>
             <SSel
               value={machine}
-              onChange={setMachine}
+              onChange={canEdit ? setMachine : () => {}}
               placeholder="Select machine..."
               options={(machines || []).map(m => ({ value: m, label: m }))}
               t={t}
+              disabled={!canEdit}
             />
           </div>
 
@@ -324,10 +367,11 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
             </div>
             <SSel
               value={shift}
-              onChange={setShift}
+              onChange={canEdit ? setShift : () => {}}
               placeholder="Select shift..."
               options={(shifts || []).map(s => ({ value: s, label: s }))}
               t={t}
+              disabled={!canEdit}
             />
           </div>
 
@@ -363,21 +407,22 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
           {/* CTA */}
           <button
             onClick={() => {
+              if (!canStart) { notify("You don't have permission to start production", "warning"); return; }
               if (isReady) setConfirmOpen(true);
               else notify("Complete all fields to start", "warning");
             }}
             style={{
               width: "100%", padding: "14px 0", borderRadius: 12, border: "none",
-              cursor: isReady ? "pointer" : "not-allowed",
-              background: isReady ? GRAD : "rgba(255,255,255,0.06)",
-              color: isReady ? "#fff" : t.muted,
+              cursor: (isReady && canStart) ? "pointer" : "not-allowed",
+              background: (isReady && canStart) ? GRAD : "rgba(255,255,255,0.06)",
+              color: (isReady && canStart) ? "#fff" : t.muted,
               fontWeight: 800, fontSize: 14, fontFamily: "inherit",
-              boxShadow: isReady ? GLOW : "none",
+              boxShadow: (isReady && canStart) ? GLOW : "none",
               transition: "all 0.2s", display: "flex", alignItems: "center",
               justifyContent: "center", gap: 8,
             }}
           >
-            ▶ Start Production
+            {canStart ? "▶ Start Production" : spOn("productionCanAdd", true) ? "🔒 No Permission to Start" : "🔒 Disabled by Admin"}
           </button>
         </div>
 
@@ -487,6 +532,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify }
         <div style={{ height: 10 }} />
         <SBtn v="ghost" color={t.sub} onClick={() => setConfirmOpen(false)} full>Cancel</SBtn>
       </SSheet>
+      </>}
     </div>
   );
 }

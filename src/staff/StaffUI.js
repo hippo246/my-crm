@@ -58,7 +58,6 @@ function useIsMobile() {
 }
 
 export function StaffUI({ sess, onLogout }) {
-  const t = ST();
   const time = useClock();
   const isMobile = useIsMobile();
 
@@ -72,11 +71,52 @@ export function StaffUI({ sess, onLogout }) {
   const [staffList,  setStaffList]  = useStore("tas9_staff_list", []);
   const [qcLogs,     setQcLogs]     = useStore("tas9_qclogs",     []);
   const [settings]                  = useStore("tas10_settings",  D_SETTINGS);
+  const [activityLog, setActivityLog] = useStore("tas10_activity_log", []);
+
+  // ── THEME (light/dark from staffPortal) ─────────────────────
+  const lightMode = !!(settings?.staffPortal?.staffLightMode);
+  const t = ST(lightMode);
 
   const notify = useCallback((msg, type = "success") => {
     setToast({ msg, type, visible:true });
     setTimeout(() => setToast(s => ({ ...s, visible:false })), 2800);
   }, []);
+
+  // ── ACTIVITY BROADCAST ───────────────────────────────────────
+  // Call this from any staff tab when an entry is made.
+  // Written to tas10_activity_log — admin reads it in real-time.
+  const logActivity = useCallback((action, detail = {}) => {
+    const entry = {
+      id: `act_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+      ts: new Date().toISOString(),
+      staffId:   sess?.id   || "unknown",
+      staffName: sess?.name || "Staff",
+      staffRole: sess?.role || "",
+      shift:     sess?.shift || "",
+      action,   // e.g. "qc_inspection", "delivery_dispatched", "inventory_receive"
+      ...detail, // tab, item, qty, batchId, etc.
+    };
+    setActivityLog(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      // Keep latest 200 entries so the log doesn't grow unbounded
+      return [entry, ...arr].slice(0, 200);
+    });
+  }, [sess, setActivityLog]);
+
+  // ── TAB VISIBILITY (staffPortal toggles) ────────────────────
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def) => sp[key] !== undefined ? sp[key] : def;
+  const visibleTabs = TABS.filter(tab => {
+    switch (tab.id) {
+      case "delivery":   return spOn("showDeliveryTab",   true);
+      case "qc":         return spOn("showQCTab",         true);
+      case "inventory":  return spOn("showInventoryTab",  true);
+      case "packing":    return spOn("showPackingTab",    true);
+      case "production": return spOn("showProductionTab", true);
+      case "reports":    return spOn("showReportsTab",    true);
+      default:           return true;
+    }
+  });
 
   const activeTabObj = TABS.find(tab => tab.id === activeTab) || TABS[0];
   const formatTime = d => d.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" });
@@ -152,7 +192,7 @@ export function StaffUI({ sess, onLogout }) {
               NAVIGATION
             </div>
           )}
-          {TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const isActive = activeTab === tab.id;
             const badge = badgeCounts[tab.id];
             return (
@@ -391,13 +431,13 @@ export function StaffUI({ sess, onLogout }) {
     return (
       <div style={{
         position:"fixed", bottom:0, left:0, right:0,
-        background:"rgba(8,12,21,0.97)",
+        background: lightMode ? "rgba(255,255,255,0.97)" : "rgba(8,12,21,0.97)",
         borderTop:`1px solid ${t.border}`,
         backdropFilter:"blur(32px)",
         display:"flex", zIndex:200, height:64,
         paddingBottom:"env(safe-area-inset-bottom)",
       }}>
-        {TABS.map(tab => {
+        {visibleTabs.map(tab => {
           const isActive = activeTab === tab.id;
           const badge = badgeCounts[tab.id];
           return (
@@ -432,14 +472,14 @@ export function StaffUI({ sess, onLogout }) {
     const shared = { t, sess, notify, settings };
     switch (activeTab) {
       case "home":       return <HomeTab            {...shared} batches={batches} inventory={inventory} deliveries={deliveries} staffList={staffList} qcLogs={qcLogs} setActiveTab={setActiveTab} />;
-      case "production": return <ProductionStartTab {...shared} batches={batches} setBatches={setBatches} />;   // ← NEW
+      case "production": return <ProductionStartTab {...shared} batches={batches} setBatches={setBatches} logActivity={logActivity} />;   // ← NEW
       case "packing":    return <PackingTab         {...shared} batches={batches} setBatches={setBatches} />;
       case "inventory":  return <InventoryTab       {...shared} inventory={inventory} setInventory={setInventory} />;
       case "delivery":   return <DeliveryTab        {...shared} deliveries={deliveries} setDeliveries={setDeliveries} />;
       case "qc":         return <QCTab             {...shared} batches={batches} setBatches={setBatches} qcLogs={qcLogs} setQcLogs={setQcLogs} />;
       case "staff":      return <StaffTab           {...shared} staffList={staffList} setStaffList={setStaffList} />;
       case "management": return <StaffManagementTab {...shared} staffList={staffList} setStaffList={setStaffList} />;
-      case "reports":    return <ReportsTab         {...shared} batches={batches} inventory={inventory} deliveries={deliveries} staffList={staffList} qcLogs={qcLogs} />;
+      case "reports":    return <ReportsTab         {...shared} batches={batches} inventory={inventory} deliveries={deliveries} staffList={staffList} qcLogs={qcLogs} logActivity={logActivity} />;
       case "settings":   return <SettingsTab        {...shared} />;
       default:           return null;
     }
@@ -449,7 +489,7 @@ export function StaffUI({ sess, onLogout }) {
     <div style={{
       display:"flex", height:"100vh",
       background:t.bg,
-      backgroundImage:[
+      backgroundImage: lightMode ? "none" : [
         "radial-gradient(ellipse 80% 50% at 12% -8%, rgba(29,78,216,0.07) 0%, transparent 55%)",
         "radial-gradient(ellipse 60% 40% at 88% 108%, rgba(109,40,217,0.06) 0%, transparent 55%)",
         "radial-gradient(ellipse 40% 30% at 55% 50%, rgba(16,185,129,0.02) 0%, transparent 60%)",
@@ -465,8 +505,8 @@ export function StaffUI({ sess, onLogout }) {
         * { box-sizing:border-box; }
         ::-webkit-scrollbar { width:3px; height:3px; }
         ::-webkit-scrollbar-track { background:transparent; }
-        ::-webkit-scrollbar-thumb { background:#1e2840; border-radius:3px; }
-        ::-webkit-scrollbar-thumb:hover { background:#273350; }
+        ::-webkit-scrollbar-thumb { background:${lightMode ? "#c8d1e8" : "#1e2840"}; border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:${lightMode ? "#b8c4dd" : "#273350"}; }
         button { font-family: inherit; }
         input, textarea, select { font-family: inherit; }
       `}</style>
