@@ -3,6 +3,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { T } from "../lib/theme";
 import { safeArr, safeO, lineTotal, lineRows, inr, today, ts, uid, mapU } from "../lib/utils";
 import { exportPDF, exportDeliveryInvoice, exportDeliveryReceipt, exportTabExcel, shareWhatsApp } from "../lib/exports";
+import { DeliveryAuditLog } from "./DeliveryAuditLog";
 import { Btn, Inp, Sel, Hr, Sheet, Pill } from "./ui";
 
 function DetailModal({modal, onClose, dm, customers, deliveries, expenses, supplies, wastage, products, settings, setDetailModal, setEsh, setEf, setDsh, setDf, delE, delD, setPaySh, setPayAmt, isAdmin, sess, invRegistry}) {
@@ -292,6 +293,11 @@ function DetailModal({modal, onClose, dm, customers, deliveries, expenses, suppl
               <Row label="Collected" val={inr(+d.partialPayment.amount)} color="#10b981"/>
               {d.partialPayment.note&&<p style={{color:t.sub,fontSize:11,marginTop:6,fontStyle:"italic"}}>"{d.partialPayment.note}"</p>}
             </div>}
+            {/* Audit Log */}
+            <div style={{margin:"16px 0 8px"}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Activity Log</p>
+              <DeliveryAuditLog deliveryId={d.id} t={t} compact={true}/>
+            </div>
             {/* Customer quick-link */}
             {cust.id&&<button onClick={()=>setDetailModal({type:"customer",data:cust})} style={{width:"100%",padding:"12px",borderRadius:12,background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer",marginTop:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <span>👤 View {cust.name}'s full history</span><span style={{color:t.sub}}>→</span>

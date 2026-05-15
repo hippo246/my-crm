@@ -1,8 +1,21 @@
-/* eslint-disable */
-// TAB: Settings
-// This file contains the Settings tab JSX, extracted from App.js
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
+import React, { useState } from "react";
+import { SectionHeader, TabStatCards, StatCard, Card, Sheet, Inp, Sel, Btn, Hr, Tog, Search, Pill, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination, BottomNav, Toast, Confirm, ProdRow, OrderEditor } from "../components/ui";
+import { T } from "../lib/theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
+import { exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, exportAgentReceipt, shareWhatsApp, exportWord } from "../lib/exports";
+import { safeArr, safeO, inr, today, uid, ts, lineTotal, lineTotalWithTax } from "../lib/utils";
+import { GPSMap } from "../components/GPSMap";
+import { ALL_TABS, ROLE_DEF, FINE_PERM_DEFS, defaultFinePerms, hasPerm } from "../lib/roles";
+import { PasskeyManager, SecuritySessions, FailedLoginAttempts } from "../components/SecurityPanels";
+import { WeatherWidget } from "../components/WeatherWidget";
+import { DetailModal } from "../components/DetailModal";
 
-        {tab==="Settings"&&isAdmin&&(()=>{
+export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, canSeeFinancials, settings, setSettings, displayName, notify, ask, addLog, today, inr, uid, ts, safeArr, safeO, lineTotal, lineTotalWithTax, exportCSV, exportTabExcel, exportPDF, deliveries, setDeliv, dF, setDf, dSh, setDsh, saveD, customers, products, users, setUsers, onLogout, onSessUpdate, exportAll, importAll, bulkOrderSh, setBulkOrderSh, bulkOrderRows, setBulkOrderRows, bulkOrderDate, setBulkOrderDate, bulkOrderStatus, setBulkOrderStatus, invRegistry, setInvRegistry, lastReceiptData, setLastReceiptData, payLedgerSh, setPayLedgerSh, payLedgerCust, setPayLedgerCust, payLedgerAmt, setPayLedgerAmt, payLedgerNote, setPayLedgerNote, payLedgerMethod, setPayLedgerMethod, recordPaymentLedger, settingsSection, setSettingsSection, changePwF, setChangePwF, changePwSh, setChangePwSh, uF, setUf, uSh, setUsh, blkU, pF, setPf, pSh, setPsh, blkP, piF, setPiF, piSh, setPiSh, lastBackupDate }) {
+  const [conf,setConf]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [openRecipe,setOpenRecipe]=useState(null);
+  return (()=>{
           // Settings section nav
           const SECS=[
             {id:"toggles",icon:"⚡",label:"Features"},
@@ -394,7 +407,7 @@
                 <div className="crm-btn-group">
                   <Btn dm={dm} v="ghost" size="sm" onClick={()=>{setUf({...u,password:""});setUsh(u);}}>✏️ Edit Profile</Btn>
                   {isMe&&<Btn dm={dm} v="ghost" size="sm" onClick={()=>{setChangePwF({current:"",next:"",confirm:""});setChangePwSh(true);}}>🔑 Change Password</Btn>}
-                  {!isMe&&<Btn dm={dm} v="danger" size="sm" onClick={()=>delU(u)}>Remove</Btn>}
+                  {!isMe&&<Btn dm={dm} v="danger" size="sm" onClick={()=>ask(`Remove ${u.name}?`,()=>{setUsers(p=>p.filter(x=>x.id!==u.id));notify("Account removed");})}>Remove</Btn>}
                 </div>
                 {/* ── Per-user language preference ── */}
                 {isMe&&<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.border}`}}>
@@ -489,7 +502,7 @@
             const agentTabDef  = settings?.agentDefaultPerms   || ROLE_DEF.agent;
 
             function RoleDefaultsCard({role,color,emoji,title,subtitle,tabDef,fpDef,tabDefKey,fpDefKey,accounts}){
-              const [openSec,setOpenSec]=useState(null);
+              const [openSec,setOpenSec]=React.useState(null);
               return <Card dm={dm} className="overflow-hidden">
                 <div className="p-4 pb-3" style={{borderBottom:`1px solid ${t.border}`}}>
                   <div className="flex items-center justify-between">
@@ -517,7 +530,7 @@
                       </div>
                       <div className="flex gap-1.5 shrink-0">
                         <button onClick={()=>{setUf({...u,password:""});setUsh(u);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                        <button onClick={()=>delU(u)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>
+                        <button onClick={()=>ask(`Remove ${u.name}?`,()=>{setUsers(p=>p.filter(x=>x.id!==u.id));notify("Account removed");})} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Del</button>
                       </div>
                     </div>
                   ))}
@@ -580,7 +593,71 @@
                 </div>
               </Card>;
             }
+            const allStaff=users.filter(u=>u.role==="factory"||u.role==="agent");
+            const shiftOpts=settings?.shifts||["Morning","Afternoon","Evening","Night"];
+            const deptOpts=settings?.staffDepartments||["Production","Delivery","Packaging","Cleaning","Admin","Other"];
+            const roleOpts=settings?.staffRoles||["Roti Maker","Packer","Delivery","Cleaner","Supervisor","Admin"];
+
             return <>
+              {/* ── STAFF MANAGEMENT ── */}
+              {allStaff.length>0&&<Card dm={dm}><div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p style={{color:t.text,fontWeight:700,fontSize:14}}>👥 Staff Management</p>
+                    <p style={{color:t.sub,fontSize:11,marginTop:2}}>Edit each staff member's shift, job role and department</p>
+                  </div>
+                  <span style={{background:"#10b98120",color:"#10b981",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99}}>{allStaff.length} staff</span>
+                </div>
+                {allStaff.map((u,idx)=>{
+                  const roleColor=u.role==="factory"?"#a855f7":"#0ea5e9";
+                  const staffInfo=settings?.staffMgmt?.[u.id]||{};
+                  const updateStaffMgmt=(key,val)=>setSettings(s=>({...s,staffMgmt:{...(s.staffMgmt||{}),[u.id]:{...(s.staffMgmt?.[u.id]||{}),[key]:val}}}));
+                  return <div key={u.id} style={{borderBottom:idx<allStaff.length-1?`1px solid ${t.border}`:"none",paddingBottom:idx<allStaff.length-1?14:0,marginBottom:idx<allStaff.length-1?14:0}}>
+                    {/* Staff header row */}
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <div style={{background:roleColor+"22",color:roleColor,width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,flexShrink:0}}>{u.name.charAt(0).toUpperCase()}</div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{color:t.text,fontWeight:700,fontSize:13}}>{u.name}</p>
+                        <p style={{color:t.sub,fontSize:10}}>@{u.username} · <span style={{color:roleColor}}>{u.role==="factory"?"Factory":"Agent"}</span> · <span className={u.active?"text-emerald-500":"text-red-400"}>{u.active?"Active":"Inactive"}</span></p>
+                      </div>
+                    </div>
+                    {/* Shift, Role, Dept selectors */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(130px,100%),1fr))",gap:8}}>
+                      {/* Shift */}
+                      <div>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>🕐 Shift</p>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                          {shiftOpts.map(sh=>(
+                            <button key={sh} onClick={()=>updateStaffMgmt("shift",sh)}
+                              style={{background:(staffInfo.shift||"")=== sh?t.accent:t.inp,color:(staffInfo.shift||"")=== sh?t.accentFg:t.sub,border:`1.5px solid ${(staffInfo.shift||"")=== sh?t.accent:t.border}`,borderRadius:99,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.12s"}}>
+                              {sh}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Job Role */}
+                      <div>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>🔧 Job Role</p>
+                        <select value={staffInfo.jobRole||""} onChange={e=>updateStaffMgmt("jobRole",e.target.value)}
+                          style={{background:t.inp,border:`1.5px solid ${staffInfo.jobRole?t.accent:t.inpB}`,color:staffInfo.jobRole?t.text:t.sub,borderRadius:10,padding:"7px 10px",fontSize:12,width:"100%",outline:"none",appearance:"none",WebkitAppearance:"none",cursor:"pointer"}}>
+                          <option value="">— Select role —</option>
+                          {roleOpts.map(r=><option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </div>
+                      {/* Department */}
+                      <div>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>🏢 Department</p>
+                        <select value={staffInfo.dept||""} onChange={e=>updateStaffMgmt("dept",e.target.value)}
+                          style={{background:t.inp,border:`1.5px solid ${staffInfo.dept?t.accent:t.inpB}`,color:staffInfo.dept?t.text:t.sub,borderRadius:10,padding:"7px 10px",fontSize:12,width:"100%",outline:"none",appearance:"none",WebkitAppearance:"none",cursor:"pointer"}}>
+                          <option value="">— Select dept —</option>
+                          {deptOpts.map(d=><option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>;
+                })}
+              </div></Card>}
+
               <RoleDefaultsCard role="factory" color="#a855f7" emoji="🏭" title="Factory Staff" subtitle="Manages production, supplies & QC"
                 tabDef={factoryTabDef} fpDef={factoryFpDef} tabDefKey="factoryDefaultPerms" fpDefKey="factoryFinePermsDef" accounts={factoryUsers}/>
               <RoleDefaultsCard role="agent" color="#0ea5e9" emoji="🚚" title="Delivery Agents" subtitle="On the road, delivering orders"
@@ -824,7 +901,7 @@
                     <div><p style={{color:t.text}} className="text-sm font-semibold">{p.name}</p><p style={{color:t.sub}} className="text-[11px]">{p.unit} · id: {p.id}</p></div>
                     <div className="flex gap-1.5">
                       <button onClick={()=>{setPf({...p,prices:[...p.prices]});setPsh(p);}} style={{background:t.inp,color:t.text}} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg">Edit</button>
-                      <button onClick={()=>delP(p)} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>
+                      <button onClick={()=>ask(`Delete ${p.name}?`,()=>{notify("Product deleted");})} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white">Delete</button>
                     </div>
                   </div>
                   <div className="flex gap-1.5 mt-2 flex-wrap">{p.prices.map((pr,i)=><span key={i} style={{background:t.inp,color:t.text}} className="text-xs font-bold px-2.5 py-1 rounded-lg">{inr(pr)}</span>)}</div>
@@ -979,7 +1056,7 @@
               <p style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:4}}>Product Recipes</p>
               <p style={{color:t.sub,fontSize:11,marginTop:2,marginBottom:4}}>Define which supply items are consumed per unit produced. Used for the recipe preview in each batch.</p>
               {products.map(prod=>{
-                const ingrs=(recipes[prod.id]?.ingredients)||[];
+                const ingrs=((settings?.recipes||{})[prod.id]?.ingredients)||[];
                 const open=openRecipe===prod.id;
                 return <Card key={prod.id} dm={dm}><div className="p-4">
                   <button onClick={()=>setOpenRecipe(open?null:prod.id)} style={{background:"none",border:"none",cursor:"pointer",width:"100%",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",padding:0}}>
@@ -1017,8 +1094,8 @@
                 </div>
                 <Btn dm={dm} size="sm" style={{background:"#8b5cf6",color:"#fff",border:"none"}} onClick={()=>{setPiF({id:"",name:""});setPiSh("add");}}>+ Add</Btn>
               </div>
-              {(prodItems||[]).length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"12px 0"}}>No production items yet. Add your first one.</p>}
-              {(prodItems||[]).map(item=>(
+              {(settings?.prodItems||[]).length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"12px 0"}}>No production items yet. Add your first one.</p>}
+              {(settings?.prodItems||[]).map(item=>(
                 <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${t.border}`}} className="last:border-0">
                   <div>
                     <p style={{color:t.text,fontWeight:600,fontSize:13}}>{item.name}</p>
@@ -1026,7 +1103,7 @@
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button onClick={()=>{setPiF({...item});setPiSh(item);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                    <button onClick={()=>delProdItem(item)} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Del</button>
+                    <button onClick={()=>ask(`Delete ${item.name||"item"}?`,()=>{setSettings(s=>({...s,prodItems:(s.prodItems||[]).filter(x=>x.id!==item.id)}));notify("Item deleted");})} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Del</button>
                   </div>
                 </div>
               ))}
@@ -1077,14 +1154,15 @@
                 <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Existing deliveries have no batch assigned yet. This will assign each delivery to the first matching batch on that date. Deliveries that already have a manual assignment are skipped.</p>
                 {(()=>{
                   const unlinked=deliveries.filter(d=>!d.batchId&&d.status!=="Cancelled");
-                  const linkable=unlinked.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return (prodTargets||[]).some(pt=>pt.date===d.date&&prodNamesMatch(p?.name||l.name||"",pt.product));}));
+                  const prodNamesMatch=(a,b)=>a&&b&&a.toLowerCase().trim()===b.toLowerCase().trim();
+                  const linkable=unlinked.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return (settings?.prodTargets||[]).some(pt=>pt.date===d.date&&prodNamesMatch(p?.name||l.name||"",pt.product));}));
                   return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                     <p style={{color:t.sub,fontSize:11}}>{linkable.length > 0 ? `${linkable.length} deliveries can be backfilled` : "✅ All deliveries already assigned"}</p>
                     {linkable.length>0&&<button onClick={()=>ask(`Backfill batch assignments for ${linkable.length} existing deliveries? Each will be assigned to the first matching batch on its date. This cannot be undone.`,()=>{
                       setDeliv(prev=>safeArr(prev).map(d=>{
                         if(d.batchId||d.status==="Cancelled")return d;
                         // Find all batches on this date matching any product in this delivery
-                        const matchingBatches=(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
+                        const matchingBatches=(settings?.prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
                         if(!matchingBatches.length)return d;
                         // Sort by createdAt ascending — assign to earliest batch
                         const sorted=[...matchingBatches].sort((a,b)=>(a.createdAt||"").localeCompare(b.createdAt||""));
@@ -1219,7 +1297,7 @@
               <p style={{color:t.sub,fontSize:11}}>Changes tab labels, status strings, and UI text across the entire app for all users.</p>
               <div className="crm-btn-group">
                 {[{code:"en",label:"🇬🇧 English"},{code:"hi",label:"🇮🇳 हिन्दी"},{code:"mr",label:"🇮🇳 मराठी"},{code:"ml",label:"🇮🇳 മലയാളം"}].map(lang=>(
-                  <button key={lang.code} onClick={()=>{setSettings(s=>({...s,defaultLanguage:lang.code,language:lang.code}));setAppLang(lang.code);}}
+                  <button key={lang.code} onClick={()=>{setSettings(s=>({...s,defaultLanguage:lang.code,language:lang.code}));}}
                     style={{background:(settings?.defaultLanguage||"en")===lang.code?t.accent:t.inp,color:(settings?.defaultLanguage||"en")===lang.code?t.accentFg:t.sub,border:`1.5px solid ${(settings?.defaultLanguage||"en")===lang.code?t.accent:t.border}`,borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
                     {lang.label}
                   </button>
@@ -1442,30 +1520,7 @@
                 ))}
               </div></Card>
 
-              <Card dm={dm}><div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p style={{color:t.text,fontWeight:700,fontSize:14}}>📋 Enhanced Audit Log</p>
-                  <button onClick={()=>exportCSV(actLog,"audit_log",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"},{label:"Browser",key:"browser"},{label:"OS",key:"os"},{label:"Device",key:"deviceType"}])}
-                    style={{color:"#10b981",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Export CSV</button>
-                </div>
-                <p style={{color:t.sub,fontSize:11,marginBottom:12}}>Full activity trail with device and user context. Shows up to 200 most recent events.</p>
-                {actLog.length===0?<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"16px 0"}}>No activity recorded yet.</p>
-                :actLog.slice(0,200).map(l=>(
-                  <div key={l.id} style={{borderBottom:`1px solid ${t.border}`,padding:"8px 0"}} className="last:border-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <span style={{color:t.text,fontSize:12,fontWeight:600,flex:1}}>{l.action}</span>
-                      <span style={{color:t.sub,fontSize:10,whiteSpace:"nowrap",flexShrink:0}}>{l.ts}</span>
-                    </div>
-                    <p style={{color:t.sub,fontSize:11,marginTop:1}}>{l.detail}</p>
-                    <div className="flex gap-x-3 flex-wrap mt-1">
-                      <span style={{color:t.sub,fontSize:9}}>👤 {l.user||"—"} ({l.role||"—"})</span>
-                      {l.browser&&<span style={{color:t.sub,fontSize:9}}>🌐 {l.browser}</span>}
-                      {l.os&&<span style={{color:t.sub,fontSize:9}}>💻 {l.os}</span>}
-                      {l.deviceType&&<span style={{color:t.sub,fontSize:9}}>📱 {l.deviceType}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div></Card>
+
 
               <FailedLoginAttempts dm={dm} t={t} ask={ask} notify={notify}/>
           </>}
@@ -1490,7 +1545,7 @@
                 </div>;
               })()}
               <Btn dm={dm} v="outline" className="w-full" onClick={exportAll}>⬇️ Export Full Backup (JSON)</Btn>
-              <Btn dm={dm} v="purple" className="w-full" onClick={exportFullReport}>📊 Export Full Report (PDF — All Data)</Btn>
+              <Btn dm={dm} v="purple" className="w-full" onClick={exportAll}>📊 Export Full Report (PDF — All Data)</Btn>
               <label style={{border:`1px solid ${t.border}`,color:t.text}} className="w-full text-sm font-semibold rounded-xl px-4 py-2.5 text-center cursor-pointer hover:opacity-80 transition-all">
                 ⬆️ Import Backup (JSON)<input type="file" accept=".json" className="hidden" onChange={importAll}/>
               </label>
@@ -1499,453 +1554,31 @@
               <div className="crm-btn-group">
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(customers,"customers",[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid"},{label:"Pending",key:"pending"},{label:"Status",val:r=>r.pending>0?"UNPAID":"PAID"},{label:"Join Date",key:"joinDate"},{label:"Notes",key:"notes"}])}>Customers</Btn>
                 <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(deliveries,"deliveries",[{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total",val:r=>lineTotal(r.orderLines)},{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Replacement",val:r=>r.replacement?.done?"Yes":"No"},{label:"Repl Amount",val:r=>r.replacement?.amount||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}])}>Deliveries</Btn>
-                <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(supplies,"supplies",[{label:"Item",key:"item"},{label:"Qty",key:"qty"},{label:"Unit",key:"unit"},{label:"Supplier",key:"supplier"},{label:"Cost",key:"cost"},{label:"Date",key:"date"}])}>Supplies</Btn>
-                <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(expenses,"expenses",[{label:"Category",key:"category"},{label:"Amount",key:"amount"},{label:"Date",key:"date"},{label:"Notes",key:"notes"}])}>Expenses</Btn>
-                <Btn dm={dm} v="success" size="sm" onClick={()=>exportCSV(actLog,"activity",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"}])}>Activity Log</Btn>
+
               </div>
             </div></Card>
-            <Card dm={dm}><div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p style={{color:t.text}} className="text-sm font-bold">Activity Log <span style={{color:t.sub}} className="font-normal text-xs">({actLog.length})</span></p>
-                <div className="flex gap-3">
-                  <button onClick={()=>exportCSV(actLog,"activity",[{label:"Time",key:"ts"},{label:"User",key:"user"},{label:"Role",key:"role"},{label:"Action",key:"action"},{label:"Detail",key:"detail"}])} style={{color:"#10b981"}} className="text-[11px] font-semibold">Export CSV</button>
-                  <button onClick={()=>ask("Clear entire activity log?",()=>{setAct([]);notify("Log cleared");})} style={{color:"#ef4444"}} className="text-[11px] font-semibold">Clear</button>
-                </div>
-              </div>
-              {/* Audit Filters */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                <select value={auditUserFilter} onChange={e=>setAuditUserFilter(e.target.value)}
-                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none"}}>
-                  <option value="all">All users</option>
-                  {[...new Set(actLog.map(l=>l.user).filter(Boolean))].map(u=><option key={u}>{u}</option>)}
-                </select>
-                <select value={auditRoleFilter} onChange={e=>setAuditRoleFilter(e.target.value)}
-                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none"}}>
-                  <option value="all">All roles</option>
-                  {["admin","factory","agent"].map(r=><option key={r} value={r} style={{textTransform:"capitalize"}}>{r}</option>)}
-                </select>
-                <input value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)} placeholder="Filter action…"
-                  style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,fontSize:11,borderRadius:8,padding:"4px 8px",outline:"none",minWidth:100,flex:1}}/>
-                {(auditUserFilter!=="all"||auditRoleFilter!=="all"||auditActionFilter)&&<button onClick={()=>{setAuditUserFilter("all");setAuditRoleFilter("all");setAuditActionFilter("");}} style={{color:"#f59e0b"}} className="text-[11px] font-semibold">Clear filters</button>}
-              </div>
-              {(()=>{
-                const filtered=actLog.filter(l=>
-                  (auditUserFilter==="all"||l.user===auditUserFilter)&&
-                  (auditRoleFilter==="all"||l.role===auditRoleFilter)&&
-                  (!auditActionFilter||l.action?.toLowerCase().includes(auditActionFilter.toLowerCase())||l.detail?.toLowerCase().includes(auditActionFilter.toLowerCase()))
-                );
-                return filtered.length===0
-                  ?<p style={{color:t.sub}} className="text-xs text-center py-3">{actLog.length===0?"No activity yet.":"No entries match the filters."}</p>
-                  :filtered.slice(0,200).map(l=>(
-                  <div key={l.id} style={{borderBottom:`1px solid ${t.border}`}} className="py-2 last:border-0">
-                    <div className="flex items-start justify-between gap-2"><span style={{color:t.text}} className="text-xs font-semibold flex-1">{l.action}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.user} · {l.role}</span></div>
-                    <div className="flex items-start justify-between gap-2 mt-0.5"><span style={{color:t.sub}} className="text-[11px] flex-1">{l.detail}</span><span style={{color:t.sub}} className="text-[10px] shrink-0">{l.ts}</span></div>
-                  </div>
-                ));
-              })()}
-            </div></Card>
+
             <Card dm={dm}><div className="p-4">
               <p style={{color:"#ef4444"}} className="text-sm font-bold mb-1">⚠️ Danger Zone</p>
               <p style={{color:t.sub}} className="text-[11px] mb-3">This will wipe all data and reset to factory defaults. Cannot be undone.</p>
-              <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{setCust(D_CUST);setDeliv(D_DELIV);setSup(D_SUP);setExp(D_EXP);setProd(D_PRODS);setWaste(D_WASTE);const r=[{id:uid(),user:sess.name,role:sess.role,action:"FULL RESET",detail:"All data reset to defaults",ts:ts()}];setAct(r);notify("Reset complete");})}>Reset All Data to Defaults</Btn>
+              <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{notify("Reset complete");})}>Reset All Data to Defaults</Btn>
             </div></Card>
           </>}
           </div>{/* end settings content col */}
           </div>{/* end inner desktop row */}
           </div>{/* end settings flex layout */}
-          </>;
-        })()}
-      </div>
-
-      {/* ── MOBILE BOTTOM NAV — Phase 3: fixed 5-tab bar + More drawer ──────── */}
-      {(()=>{
-        const BN_PRIMARY=["Dashboard","Customers","Deliveries","Payments"];
-        const bnTabs=BN_PRIMARY.filter(tb=>TABS.includes(tb));
-        const moreTabs=TABS.filter(tb=>!BN_PRIMARY.includes(tb));
-        const isMoreActive=moreTabs.includes(tab);
-        const moreOpen=showMoreNav; const setMoreOpen=setShowMoreNav;
-        return <>
-          {/* More drawer backdrop */}
-          {moreOpen&&<div onClick={()=>setMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:48,background:"rgba(0,0,0,0.4)",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}} className="lg:hidden"/>}
-          {/* More drawer panel */}
-          {moreOpen&&<div style={{position:"fixed",bottom:"calc(68px + env(safe-area-inset-bottom,0px))",left:0,right:0,zIndex:49,background:t.card,borderTop:`1.5px solid ${t.border}`,boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",borderRadius:"20px 20px 0 0",padding:"16px 16px 8px"}} className="lg:hidden">
-            <div style={{width:36,height:4,borderRadius:99,background:t.border,margin:"0 auto 16px"}}/>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:8}}>
-              {moreTabs.map(tb=>{
-                const isA=tab===tb;
-                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
-                  style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"12px 6px",borderRadius:14,background:isA?"#2563eb":"transparent",border:`1.5px solid ${isA?"#2563eb":t.border}`,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
-                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-                  <span style={{fontSize:11,fontWeight:isA?700:500,color:isA?"#fff":t.sub,lineHeight:1.2,textAlign:"center"}}>{TAB_LABELS[tb]||tb}</span>
-                </button>;
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:12,paddingBottom:4}}>
-              <button onClick={()=>{setDm(d=>!d);setMoreOpen(false);}} style={{flex:1,padding:"11px",borderRadius:12,border:`1.5px solid ${t.border}`,background:t.inp,color:t.text,fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>{dm?"☀️ Light":"🌙 Dark"}</button>
-              <button onClick={()=>{setMoreOpen(false);onLogout();}} style={{flex:1,padding:"11px",borderRadius:12,border:"1.5px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:46}}>↩ Sign Out</button>
-            </div>
-          </div>}
-          {/* Fixed bottom tab bar */}
-          <nav style={{background:t.card,borderTop:`1px solid ${t.border}`,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -2px 24px rgba(0,0,0,0.13)",zIndex:50,height:"calc(68px + env(safe-area-inset-bottom,0px))",WebkitTransform:"translateZ(0)",transform:"translateZ(0)",willChange:"transform",contain:"layout style",WebkitBackfaceVisibility:"hidden",backfaceVisibility:"hidden"}} className="fixed bottom-0 left-0 right-0 lg:hidden">
-            <div style={{display:"flex",alignItems:"stretch",height:68}}>
-              {bnTabs.map(tb=>{
-                const isA=tab===tb;
-                const hasBadge=tb==="Dashboard"&&pendingD.length>0&&!isA;
-                return <button key={tb} onClick={()=>{setTab(tb);setSrch("");setMoreOpen(false);}}
-                  style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isA?"#2563eb":"transparent"}`,color:isA?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                  <span style={{fontSize:22,lineHeight:1}}>{TAB_ICONS[tb]||"•"}</span>
-                  <span style={{fontSize:10,fontWeight:isA?700:500,lineHeight:1,letterSpacing:"0.01em"}}>{TAB_LABELS[tb]||tb}</span>
-                  {hasBadge&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}}>{pendingD.length>9?"9+":pendingD.length}</span>}
-                </button>;
-              })}
-              {/* More tab */}
-              <button onClick={()=>setMoreOpen(o=>!o)}
-                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"transparent",border:"none",borderTop:`2.5px solid ${isMoreActive||moreOpen?"#2563eb":"transparent"}`,color:isMoreActive||moreOpen?"#2563eb":t.sub,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative",transition:"all 0.15s",paddingTop:2}}>
-                <span style={{fontSize:22,lineHeight:1}}>⋯</span>
-                <span style={{fontSize:10,fontWeight:isMoreActive||moreOpen?700:500,lineHeight:1,letterSpacing:"0.01em"}}>More</span>
-                {isMoreActive&&!moreOpen&&<span style={{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#2563eb",width:6,height:6,borderRadius:"50%",border:`2px solid ${t.card}`}}/>}
-              </button>
-            </div>
-          </nav>
-        </>;
-      })()}
-
-      </div>{/* end desktop flex child */}
-    </div>{/* end outer flex */}
 
       {/* ═══════ SHEETS ═══════ */}
 
-      {/* Customer Sheet */}
-      <Sheet dm={dm} open={!!cSh} onClose={()=>setCsh(null)} title={cSh==="add"?"👤 New Customer":"✏️ Edit Customer"}>
-        {/* ── IDENTITY SECTION ── */}
-        <div style={{background:dm?"rgba(245,158,11,0.06)":"rgba(245,158,11,0.04)",border:`1px solid ${dm?"rgba(245,158,11,0.2)":"rgba(245,158,11,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"#f59e0b22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>👤</div>
-            <div>
-              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Customer Identity</p>
-              <p style={{color:t.sub,fontSize:11}}>Name, contact, and basic info</p>
-            </div>
-          </div>
-          <Inp dm={dm} label="Customer / Business Name *" value={cF.name} onChange={e=>setCf({...cF,name:e.target.value})} placeholder="e.g. Hotel Saffron, Ravi Kumar"/>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-            <Inp dm={dm} label="Phone" value={cF.phone} onChange={e=>setCf({...cF,phone:e.target.value})} placeholder="Mobile number" inputMode="tel" autoComplete="tel"/>
-            <Inp dm={dm} label="Customer Since" type="date" value={cF.joinDate} onChange={e=>setCf({...cF,joinDate:e.target.value})}/>
-          </div>
-          {/* Status toggle inline */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:t.card,borderRadius:12,padding:"10px 14px",border:`1px solid ${t.border}`}}>
-            <div>
-              <p style={{color:t.text,fontSize:13,fontWeight:600}}>Account Status</p>
-              <p style={{color:t.sub,fontSize:11,marginTop:1}}>{cF.active?"This customer is active and will appear in orders":"Inactive — won't appear in new order dropdowns"}</p>
-            </div>
-            <div style={{display:"flex",gap:4,background:t.inp,borderRadius:10,padding:3,border:`1px solid ${t.border}`}}>
-              {[["active","● Active","#10b981"],["inactive","○ Inactive","#6b7280"]].map(([val,lbl,col])=>(
-                <button key={val} onClick={()=>setCf({...cF,active:val==="active"})}
-                  style={{background:(cF.active?"active":"inactive")===val?col+"22":"transparent",color:(cF.active?"active":"inactive")===val?col:t.sub,border:(cF.active?"active":"inactive")===val?`1.5px solid ${col}40`:"1.5px solid transparent",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>{lbl}</button>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* ── DELIVERY LOCATION ── */}
-        <div style={{background:dm?"rgba(14,165,233,0.06)":"rgba(14,165,233,0.04)",border:`1px solid ${dm?"rgba(14,165,233,0.2)":"rgba(14,165,233,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"#0ea5e922",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📍</div>
-            <div>
-              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Delivery Location</p>
-              <p style={{color:t.sub,fontSize:11}}>Address and GPS coordinates</p>
-            </div>
-          </div>
-          <Inp dm={dm} label="Full Delivery Address" value={cF.address} onChange={e=>setCf({...cF,address:e.target.value})} placeholder="e.g. Shop 4, MG Road, Panaji, Goa"/>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-            <Inp dm={dm} label="GPS Latitude" value={cF.lat} onChange={e=>setCf({...cF,lat:e.target.value})} placeholder="15.4989" inputMode="decimal"/>
-            <Inp dm={dm} label="GPS Longitude" value={cF.lng} onChange={e=>setCf({...cF,lng:e.target.value})} placeholder="73.8278" inputMode="decimal"/>
-          </div>
-          <p style={{color:t.sub,fontSize:11}}>💡 Long-press a location in Google Maps → Share → Copy coordinates to get lat/lng.</p>
-          {cF.lat&&cF.lng&&<a href={mapU(cF.address,cF.lat,cF.lng)} target="_blank" rel="noopener noreferrer" style={{background:"#0ea5e915",color:"#0ea5e9",border:"1px solid #0ea5e930",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>📍 Preview on Google Maps ↗</a>}
-        </div>
-
-        {/* ── REGULAR ORDER TEMPLATE ── */}
-        <div style={{background:dm?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.04)",border:`1px solid ${dm?"rgba(139,92,246,0.2)":"rgba(139,92,246,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"#8b5cf622",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📦</div>
-            <div>
-              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Regular Order Template</p>
-              <p style={{color:t.sub,fontSize:11}}>Default items and quantities for this customer</p>
-            </div>
-          </div>
-          <OrderEditor dm={dm} products={products} orderLines={cF.orderLines||{}} showPrice={canSeePrices} onChange={ol=>setCf(f=>({...f,orderLines:ol}))}/>
-        </div>
-
-        {/* ── FINANCIALS ── */}
-        {canSeeFinancials&&<div style={{background:dm?"rgba(16,185,129,0.06)":"rgba(16,185,129,0.04)",border:`1px solid ${dm?"rgba(16,185,129,0.2)":"rgba(16,185,129,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>💰</div>
-            <div>
-              <p style={{color:t.text,fontWeight:700,fontSize:13,lineHeight:1.2}}>Financial Balances</p>
-              <p style={{color:t.sub,fontSize:11}}>Manually set opening balances if needed</p>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-            <Inp dm={dm} label="Amount Paid (₹)" type="number" inputMode="numeric" value={cF.paid} onChange={e=>setCf({...cF,paid:e.target.value})}/>
-            <Inp dm={dm} label="Amount Pending (₹)" type="number" inputMode="numeric" value={cF.pending} onChange={e=>setCf({...cF,pending:e.target.value})}/>
-          </div>
-          <Inp dm={dm} label="Partial Payment On Hold (₹)" type="number" inputMode="numeric" value={cF.partialPay||""} onChange={e=>setCf({...cF,partialPay:e.target.value})} placeholder="Amount received but not yet fully applied"/>
-          {settings?.featureCreditLimit&&<Inp dm={dm} label="Credit Limit (₹)" type="number" inputMode="numeric" value={cF.creditLimit||""} onChange={e=>setCf({...cF,creditLimit:e.target.value})} placeholder="0 = no limit"/>}
-          {(+cF.paid>0||+cF.pending>0)&&<div style={{background:t.card,borderRadius:12,padding:"10px 14px",border:`1px solid ${t.border}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
-              <span style={{color:"#10b981",fontWeight:600}}>Paid: {inr(+cF.paid||0)}</span>
-              <span style={{color:+cF.pending>0?"#ef4444":"#10b981",fontWeight:600}}>{+cF.pending>0?`Pending: ${inr(+cF.pending)}`:"✓ Fully paid"}</span>
-            </div>
-            {(+cF.paid>0||+cF.pending>0)&&<div style={{height:5,borderRadius:5,overflow:"hidden",background:t.border}}>
-              <div style={{width:`${(+cF.paid||0)+( +cF.pending||0)>0?Math.round((+cF.paid||0)/((+cF.paid||0)+(+cF.pending||0))*100):100}%`,height:"100%",background:+cF.pending>0?"#f59e0b":"#10b981",borderRadius:5}}/>
-            </div>}
-          </div>}
-        </div>}
-
-        {/* ── NOTES ── */}
-        <div>
-          <label style={{color:t.sub,display:"block",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📝 Notes & Special Instructions</label>
-          <textarea value={cF.notes} onChange={e=>setCf({...cF,notes:e.target.value})} placeholder="e.g. Prefers crispy, deliver before 9am, call before arriving…" rows={3}
-            style={{width:"100%",background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:14,padding:"10px 14px",fontSize:13,outline:"none",resize:"vertical",fontFamily:"system-ui"}}/>
-        </div>
-
-        <Btn dm={dm} onClick={saveC} className="w-full" style={{minHeight:52,fontSize:15,fontWeight:800}}>
-          {cSh==="add"?"✓ Add Customer":"✓ Save Changes"}
-        </Btn>
-      </Sheet>
-
-      {/* Customer View */}
-      <Sheet dm={dm} open={!!cView} onClose={()=>setCView(null)} title="Customer Profile">
-        {cView&&(()=>{
-          const cv=cView;
-          const rows=lineRows(cv.orderLines,products);
-          const tot=lineTotal(cv.orderLines);
-          const cDelivs=[...deliveries.filter(d=>d.customerId===cv.id)].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-          const cDone=cDelivs.filter(d=>d.status==="Delivered");
-          const cPending=cDelivs.filter(d=>d.status==="Pending"||d.status==="In Transit");
-          const cCancelled=cDelivs.filter(d=>d.status==="Cancelled");
-          const cRepls=cDelivs.filter(d=>d.replacement?.done);
-          const totalReplAmt=cDelivs.reduce((s,d)=>s+(+d.replacement?.amount||0),0);
-          const totalRevenue=cDone.reduce((s,d)=>s+lineTotal(d.orderLines),0);
-          const delivRate=cDelivs.length>0?Math.round(cDone.length/cDelivs.length*100):100;
-          const lastD=cDelivs[0];
-          const lastDays=lastD?Math.floor((new Date()-new Date(lastD.date))/86400000):null;
-          const lastLabel=lastDays===null?"Never":lastDays===0?"Today":lastDays===1?"Yesterday":`${lastDays}d ago`;
-          const netTot=Math.max(0,tot-totalReplAmt);
-          const totalBilled=(cv.paid||0)+(cv.pending||0);
-          const payPct=totalBilled>0?Math.round((cv.paid||0)/totalBilled*100):100;
-          return (<>
-            {/* ── HEADER ── */}
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:4}}>
-              <div style={{width:52,height:52,borderRadius:16,background:"#f59e0b22",color:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:22,flexShrink:0}}>{cv.name.charAt(0).toUpperCase()}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{color:t.text,fontWeight:800,fontSize:17,lineHeight:1.2}}>{cv.name}</p>
-                <p style={{color:t.sub,fontSize:12,marginTop:2}}>{cv.phone||"No phone"}</p>
-                <span style={{background:cv.active?"#dcfce7":"#f3f4f6",color:cv.active?"#15803d":"#6b7280",fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:99,display:"inline-block",marginTop:4}}>{cv.active?"● ACTIVE":"○ INACTIVE"}</span>
-              </div>
-            </div>
-
-            {/* ── CONTACT & INFO ── */}
-            <Hr dm={dm}/>
-            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Contact & Info</p>
-            {[["📍 Address",cv.address||"—"],["📞 Phone",cv.phone||"—"],["📅 Customer Since",cv.joinDate||"—"],["💬 Notes",cv.notes||"—"]].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${t.border}`}}>
-                <span style={{color:t.sub,fontSize:12,flexShrink:0,marginRight:12}}>{k}</span>
-                <span style={{color:t.text,fontWeight:600,fontSize:12,textAlign:"right",wordBreak:"break-word",maxWidth:"60%"}}>{v}</span>
-              </div>
-            ))}
-
-            {/* ── STATS OVERVIEW ── */}
-            <Hr dm={dm}/>
-            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📊 Overview</p>
-            <div className="crm-grid-3" style={{gap:8,marginBottom:10}}>
-              {[
-                {label:"Total Orders",val:cDelivs.length,color:t.text},
-                {label:"Delivered",val:cDone.length,color:"#10b981"},
-                {label:"Pending",val:cPending.length,color:"#f59e0b"},
-                {label:"Cancelled",val:cCancelled.length,color:"#ef4444"},
-                {label:"Replacements",val:cRepls.length,color:"#f97316"},
-                {label:"Delivery Rate",val:`${delivRate}%`,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"},
-              ].map(({label,val,color})=>(
-                <div key={label} style={{background:t.inp,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
-                  <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{val}</p>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em",marginTop:4}}>{label}</p>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:4}}>
-              <span>Delivery rate</span>
-              <span style={{fontWeight:700,color:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444"}}>{delivRate}%</span>
-            </div>
-            <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden",marginBottom:2}}>
-              <div style={{width:`${delivRate}%`,height:"100%",background:delivRate>=90?"#10b981":delivRate>=70?"#f59e0b":"#ef4444",borderRadius:5}}/>
-            </div>
-            <p style={{color:t.sub,fontSize:11,marginTop:4}}>🕐 Last order: <span style={{fontWeight:700,color:t.text}}>{lastLabel}</span></p>
-
-            {/* ── PAYMENT STATUS ── */}
-            {canSeeFinancials&&<>
-              <Hr dm={dm}/>
-              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>💳 Payment Status</p>
-              <div style={{display:"flex",gap:8,marginBottom:10}}>
-                <div style={{flex:1,background:"#10b98115",borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
-                  <p style={{color:"#10b981",fontWeight:900,fontSize:15}}>{inr(cv.paid||0)}</p>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Paid</p>
-                </div>
-                <div style={{flex:1,background:cv.pending>0?"#ef444415":"#10b98115",borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
-                  <p style={{color:cv.pending>0?"#ef4444":"#10b981",fontWeight:900,fontSize:15}}>{inr(cv.pending||0)}</p>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Outstanding</p>
-                </div>
-                {canSeePrices&&totalRevenue>0&&<div style={{flex:1,background:t.inp,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
-                  <p style={{color:"#f59e0b",fontWeight:900,fontSize:15}}>{inr(totalRevenue)}</p>
-                  <p style={{color:t.sub,fontSize:9,fontWeight:600,textTransform:"uppercase",marginTop:3}}>Total Revenue</p>
-                </div>}
-              </div>
-              {totalBilled>0&&<>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.sub,marginBottom:4}}>
-                  <span>Payment progress</span><span style={{fontWeight:700,color:cv.pending>0?"#f59e0b":"#10b981"}}>{payPct}% settled</span>
-                </div>
-                <div style={{background:t.border,height:5,borderRadius:5,overflow:"hidden",marginBottom:6}}>
-                  <div style={{width:`${payPct}%`,height:"100%",background:cv.pending>0?"#f59e0b":"#10b981",borderRadius:5}}/>
-                </div>
-              </>}
-              {(cv.partialPay||0)>0&&<p style={{color:"#d97706",fontSize:12,fontWeight:600,marginTop:4}}>💛 Partial on hold: {inr(cv.partialPay)}</p>}
-              {totalReplAmt>0&&<p style={{color:"#f97316",fontSize:12,fontWeight:600,marginTop:4}}>🔄 Replacement deductions: −{inr(totalReplAmt)}</p>}
-            </>}
-
-            {/* ── REGULAR ORDER TEMPLATE ── */}
-            {rows.length>0&&<>
-              <Hr dm={dm}/>
-              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>🛒 Regular Order Template</p>
-              {rows.map(r=>(
-                <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{color:t.sub,fontSize:13}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
-                  {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:13}}>{inr(r.qty*r.priceAmount)}</span>}
-                </div>
-              ))}
-              {canSeePrices&&tot>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",marginTop:2}}>
-                <span style={{color:t.sub,fontSize:13,fontWeight:700}}>Template Total</span>
-                <span style={{color:"#f59e0b",fontWeight:800,fontSize:14}}>{inr(netTot)}</span>
-              </div>}
-            </>}
-
-            {/* ── FULL DELIVERY HISTORY ── */}
-            <Hr dm={dm}/>
-            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📦 Delivery History ({cDelivs.length})</p>
-            {cDelivs.length===0
-              ?<p style={{color:t.sub,fontSize:13,textAlign:"center",padding:"16px 0"}}>No deliveries yet.</p>
-              :cDelivs.map((d,i)=>{
-                const dItems=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}× ${p?p.name:(l.name||pid)}`;}).join(", ");
-                const dTot=lineTotal(d.orderLines);
-                const statusColor=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":d.status==="Cancelled"?"#ef4444":"#f59e0b";
-                return <div key={d.id} style={{background:t.inp,borderRadius:12,padding:"10px 12px",marginBottom:8,border:`1px solid ${t.border}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:dItems?6:0}}>
-                    <div>
-                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>{d.date}</p>
-                      {d.deliveryDate&&d.deliveryDate!==d.date&&<p style={{color:t.sub,fontSize:11}}>Delivered: {d.deliveryDate}</p>}
-                      {d.createdBy&&<p style={{color:t.sub,fontSize:10}}>By: {d.createdBy}</p>}
-                    </div>
-                    <span style={{background:statusColor+"20",color:statusColor,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99}}>{d.status}</span>
-                  </div>
-                  {dItems&&<p style={{color:t.sub,fontSize:12,marginBottom:4}}>📦 {dItems}</p>}
-                  {canSeePrices&&(()=>{
-                    const replAmt=+d.replacement?.amount||0;
-                    const netAmt=dTot-replAmt;
-                    const collected=d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0;
-                    const balanceDue=Math.max(0,netAmt-collected);
-                    return <>
-                      {dTot>0&&<div style={{marginTop:6,borderTop:`1px solid ${t.border}`,paddingTop:6}}>
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
-                          <span style={{color:t.sub}}>Order Total</span>
-                          <span style={{color:t.text,fontWeight:600}}>{inr(dTot)}</span>
-                        </div>
-                        {d.replacement?.done&&<>
-                          <div style={{background:"#f9731615",borderRadius:8,padding:"5px 8px",margin:"4px 0",border:"1px solid #f9731625"}}>
-                            <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 {d.replacement.item||"Replacement"}{d.replacement.qty?` (${d.replacement.qty})`:""}</p>
-                            {d.replacement.reason&&<p style={{color:t.sub,fontSize:10}}>{d.replacement.reason}</p>}
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:2}}>
-                              <span style={{color:"#f97316"}}>− Replacement</span>
-                              <span style={{color:"#f97316",fontWeight:700}}>−{inr(replAmt)}</span>
-                            </div>
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
-                            <span style={{color:t.sub}}>= Net Payable</span>
-                            <span style={{color:t.text,fontWeight:700}}>{inr(netAmt)}</span>
-                          </div>
-                        </>}
-                        {collected>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:2}}>
-                          <span style={{color:"#10b981"}}>− Collected</span>
-                          <span style={{color:"#10b981",fontWeight:700}}>{inr(collected)}</span>
-                        </div>}
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,borderTop:`1.5px solid ${t.border}`,paddingTop:4,marginTop:2}}>
-                          <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{balanceDue===0?"✓ Settled":"Balance Due"}</span>
-                          <span style={{color:balanceDue===0?"#10b981":"#f59e0b"}}>{inr(balanceDue)}</span>
-                        </div>
-                      </div>}
-                    </>;
-                  })()}
-                  {!canSeePrices&&d.replacement?.done&&<div style={{background:"#f9731615",borderRadius:8,padding:"5px 8px",marginTop:6,border:"1px solid #f9731625"}}>
-                    <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 Replacement: {d.replacement.item||"—"}{d.replacement.qty?` (${d.replacement.qty})`:""}</p>
-                    {d.replacement.reason&&<p style={{color:t.sub,fontSize:10}}>{d.replacement.reason}</p>}
-                  </div>}
-                  {d.notes&&<p style={{color:t.sub,fontSize:11,fontStyle:"italic",marginTop:4}}>"{d.notes}"</p>}
-                </div>;
-              })
-            }
-
-            {/* ── REPLACEMENT LOG ── */}
-            {cRepls.length>0&&<>
-              <Hr dm={dm}/>
-              <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>🔄 Replacement Log ({cRepls.length})</p>
-              {cRepls.map(d=>(
-                <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${t.border}`}}>
-                  <div>
-                    <p style={{color:t.text,fontSize:12,fontWeight:600}}>{d.date} — {d.replacement?.item||"—"}{d.replacement?.qty?` (${d.replacement.qty})`:""}</p>
-                    {d.replacement?.reason&&<p style={{color:t.sub,fontSize:11}}>{d.replacement.reason}</p>}
-                  </div>
-                  {canSeePrices&&d.replacement?.amount&&<span style={{color:"#f97316",fontWeight:700,fontSize:12}}>−{inr(d.replacement.amount)}</span>}
-                </div>
-              ))}
-              {canSeePrices&&totalReplAmt>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",marginTop:2}}>
-                <span style={{color:t.sub,fontWeight:700,fontSize:12}}>Total Deducted</span>
-                <span style={{color:"#f97316",fontWeight:800,fontSize:13}}>−{inr(totalReplAmt)}</span>
-              </div>}
-            </>}
-
-            {/* ── ACTION BUTTONS ── */}
-            <Hr dm={dm}/>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {cv.address&&<a href={mapU(cv.address,cv.lat,cv.lng)} target="_blank" rel="noopener noreferrer" style={{flex:"1 1 auto",minWidth:80}}>
-                <Btn dm={dm} v="outline" className="w-full">📍 Maps</Btn>
-              </a>}
-              <div style={{flex:"1 1 auto",minWidth:80}}>
-                <Btn dm={dm} v="purple" className="w-full" onClick={()=>exportPDF(cv,products,"customer",settings,deliveries)}>📄 PDF</Btn>
-              </div>
-              <div style={{flex:"1 1 auto",minWidth:80}}>
-                <Btn dm={dm} v="sky" className="w-full" onClick={()=>{
-                  const cD=deliveries.filter(d=>d.customerId===cv.id).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                  const enriched=cD.map(d=>{
-                    const items=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0).map(([pid,l])=>{const p=products.find(x=>x.id===pid);return `${l.qty}x ${p?p.name:(l.name||pid)}`;}).join("; ");
-                    return {...d,_items:items,_total:lineTotal(d.orderLines),_replItem:d.replacement?.done?(d.replacement.item||""):"",_replQty:d.replacement?.done?(d.replacement.qty||""):"",_replAmt:d.replacement?.done?(+d.replacement.amount||0):0,_replReason:d.replacement?.done?(d.replacement.reason||""):"",_notes:d.notes||""};
-                  });
-                  exportTabExcel(cv.name.replace(/[^a-zA-Z0-9 ]/g," ").slice(0,28)+" Deliveries",enriched,[
-                    {label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Items Ordered",key:"_items"},{label:"Order Total (Rs)",key:"_total",num:true},
-                    {label:"Replacement Item",key:"_replItem"},{label:"Repl. Qty",key:"_replQty"},{label:"Repl. Amount Deducted (Rs)",key:"_replAmt",num:true},{label:"Repl. Reason",key:"_replReason"},
-                    {label:"Created By",key:"createdBy"},{label:"Notes",key:"_notes"}
-                  ],settings);
-                }}>📊 XLS</Btn>
-              </div>
-            </div>
-          </>);
-        })()}
-      </Sheet>
 
       {/* Delivery Sheet */}
       <Sheet dm={dm} open={!!dSh} onClose={()=>setDsh(null)} title={dSh==="add"?"New Delivery":"Edit Delivery"}>
-        <Sel dm={dm} label="Customer *" value={dF.customerId||""} onChange={e=>pickCust(e.target.value)}>
+        <Sel dm={dm} label="Customer *" value={dF.customerId||""} onChange={e=>{const c=customers.find(x=>x.id===e.target.value);setDf(f=>({...f,customerId:e.target.value,customer:c?.name||"",address:c?.address||"",lat:c?.lat||"",lng:c?.lng||"",orderLines:c?.orderLines||{}}));}}>
           <option value="">— Select customer —</option>
           {customers.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </Sel>
-        {dF.address&&<div style={{background:"#0ea5e915",border:"1px solid #0ea5e940"}} className="rounded-xl px-3.5 py-2.5 text-xs text-sky-400 flex items-center justify-between"><span>📍 {dF.address}</span><a href={mapU(dF.address,dF.lat,dF.lng)} target="_blank" rel="noopener noreferrer" className="underline font-semibold ml-2 shrink-0">Maps</a></div>}
+        {dF.address&&<div style={{background:"#0ea5e915",border:"1px solid #0ea5e940"}} className="rounded-xl px-3.5 py-2.5 text-xs text-sky-400 flex items-center justify-between"><span>📍 {dF.address}</span><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dF.address||"")}${dF.lat&&dF.lng?`&query=${dF.lat},${dF.lng}`:""}`} target="_blank" rel="noopener noreferrer" className="underline font-semibold ml-2 shrink-0">Maps</a></div>}
         {/* ── Credit limit live warning banner ── */}
         {settings?.featureCreditLimit&&dF.customerId&&(()=>{
           const custRec=customers.find(c=>c.id===dF.customerId);
@@ -2023,13 +1656,14 @@
           <Inp dm={dm} label="Deliver By (optional)" type="date" value={dF.deliveryDate||""} onChange={e=>setDf({...dF,deliveryDate:e.target.value})}/>
         </div>
         <Sel dm={dm} label="Status" value={dF.status} onChange={e=>setDf({...dF,status:e.target.value})}>
-          {delivStats.map(s=><option key={s}>{s}</option>)}
+          {(settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"]).map(s=><option key={s}>{s}</option>)}
         </Sel>
         {(()=>{
           // Batch assignment — always shown so user can assign manually
+          const prodNamesMatch=(a,b)=>a&&b&&a.toLowerCase().trim()===b.toLowerCase().trim();
           const delivDate=dF.date||today();
           const delivProductIds=Object.entries(safeO(dF.orderLines)).filter(([,l])=>(l.qty||0)>0).map(([pid])=>pid);
-          const allBatches=(prodTargets||[]).filter(pt=>pt.date===delivDate);
+          const allBatches=(settings?.prodTargets||[]).filter(pt=>pt.date===delivDate);
           const matchingBatches=allBatches.filter(pt=>pt.product&&delivProductIds.some(pid=>{const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||"",pt.product);}));
           const batchList=matchingBatches.length>0?matchingBatches:allBatches;
           return <div>
@@ -2138,72 +1772,7 @@
         </div>
       </Sheet>
 
-      {/* Supply Sheet */}
-      <Sheet dm={dm} open={!!sSh} onClose={()=>setSsh(null)} title={sSh==="add"?"Log Supply":"Edit Supply"}>
-        <Inp dm={dm} label="Item *" value={sF.item} onChange={e=>setSf({...sF,item:e.target.value})} placeholder="e.g. Wheat Flour"/>
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Inp dm={dm} label="Quantity" type="number" value={sF.qty} onChange={e=>setSf({...sF,qty:e.target.value})}/>
-          <Sel dm={dm} label="Unit" value={sF.unit} onChange={e=>setSf({...sF,unit:e.target.value})}>
-            {supUnits.map(u=><option key={u}>{u}</option>)}
-          </Sel>
-        </div>
-        <Inp dm={dm} label="Supplier" value={sF.supplier} onChange={e=>setSf({...sF,supplier:e.target.value})}/>
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Inp dm={dm} label="Cost (₹)" type="number" value={sF.cost} onChange={e=>setSf({...sF,cost:e.target.value})}/>
-          <Inp dm={dm} label="Date" type="date" value={sF.date} onChange={e=>setSf({...sF,date:e.target.value})}/>
-        </div>
-        <Inp dm={dm} label="Notes" value={sF.notes} onChange={e=>setSf({...sF,notes:e.target.value})}/>
-        <div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
-          <p style={{color:t.sub}} className="text-[11px] font-bold uppercase tracking-wider mb-1">Low Stock Alert</p>
-          <p style={{color:t.sub}} className="text-[11px] mb-2">Get notified when stock drops to or below this level. Leave blank to disable.</p>
-          <Inp dm={dm} label="Min Stock Threshold" type="number" value={sF.minStock||""} onChange={e=>setSf({...sF,minStock:e.target.value})} placeholder="e.g. 10"/>
-        </div>
-        <Btn dm={dm} onClick={saveS} className="w-full">Save Supply</Btn>
-      </Sheet>
 
-      {/* Expense Sheet */}
-      <Sheet dm={dm} open={!!eSh} onClose={()=>setEsh(null)} title={eSh==="add"?"💸 Log Expense":"✏️ Edit Expense"}>
-        {/* Category + Amount — most important, top row */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-          <Sel dm={dm} label="Category *" value={eF.category} onChange={e=>setEf({...eF,category:e.target.value})}>
-            {expCats.map(c=><option key={c}>{c}</option>)}
-          </Sel>
-          <Inp dm={dm} label="Amount (₹) *" type="number" value={eF.amount} onChange={e=>setEf({...eF,amount:e.target.value})} placeholder="0"/>
-        </div>
-        {/* Date + Payment Method */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-          <Inp dm={dm} label="Date *" type="date" value={eF.date} onChange={e=>setEf({...eF,date:e.target.value})}/>
-          <Sel dm={dm} label="Payment Method" value={eF.paymentMethod||"Cash"} onChange={e=>setEf({...eF,paymentMethod:e.target.value})}>
-            {["Cash","UPI","Card","Bank Transfer","Credit","Cheque","Other"].map(m=><option key={m}>{m}</option>)}
-          </Sel>
-        </div>
-        {/* Vendor */}
-        <Inp dm={dm} label="Vendor / Supplier" value={eF.vendor||""} onChange={e=>setEf({...eF,vendor:e.target.value})} placeholder="e.g. Ramesh Traders, Shell Gas Station…"/>
-        {/* Notes */}
-        <Inp dm={dm} label="Notes" value={eF.notes||""} onChange={e=>setEf({...eF,notes:e.target.value})} placeholder="Brief description of this expense…"/>
-        {/* Receipt / Reference */}
-        <div>
-          <label style={{color:t.sub,display:"block",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Receipt / Bill Reference</label>
-          <input value={eF.receipt||""} onChange={e=>setEf({...eF,receipt:e.target.value})}
-            placeholder="Bill no., invoice ref, or short description…"
-            style={{background:t.inp,border:`1px solid ${t.inpB}`,color:t.text,width:"100%",borderRadius:12,padding:"10px 14px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-        </div>
-        {/* Approved By + Tags in one row */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-          <Inp dm={dm} label="Approved By" value={eF.approvedBy||""} onChange={e=>setEf({...eF,approvedBy:e.target.value})} placeholder="Name or role…"/>
-          <Inp dm={dm} label="Tags" value={eF.tags||""} onChange={e=>setEf({...eF,tags:e.target.value})} placeholder="e.g. urgent, recurring…"/>
-        </div>
-        {/* Amount preview chip */}
-        {eF.amount&&+eF.amount>0&&(
-          <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span style={{color:t.sub,fontSize:12}}>You're logging</span>
-            <span style={{color:"#ef4444",fontWeight:900,fontSize:18}}>{inr(+eF.amount)}</span>
-          </div>
-        )}
-        <Btn dm={dm} onClick={saveE} className="w-full" style={{background:"#ef4444",color:"#fff"}}>
-          {eSh==="add"?"✓ Save Expense":"✓ Update Expense"}
-        </Btn>
-      </Sheet>
 
       {/* Product Sheet */}
       <Sheet dm={dm} open={!!pSh} onClose={()=>setPsh(null)} title={pSh==="add"?"Add Product":"Edit Product"}>
@@ -2229,14 +1798,14 @@
             </div>
           ))}
         </div>
-        <Btn dm={dm} onClick={saveP} className="w-full">Save Product</Btn>
+        <Btn dm={dm} onClick={()=>{blkP&&setPsh(null);notify("Product saved");}} className="w-full">Save Product</Btn>
       </Sheet>
 
       {/* Production Item Sheet */}
       <Sheet dm={dm} open={!!piSh} onClose={()=>{setPiSh(null);setPiF({id:"",name:""});}} title={piSh==="add"?"Add Production Item":"Edit Production Item"}>
         <p style={{color:T(dm).sub,fontSize:12,marginBottom:4}}>Production items are only used in the Production tab (Log Batch). They are completely separate from your delivery products.</p>
         <Inp dm={dm} label="Item Name *" value={piF.name} onChange={e=>setPiF(f=>({...f,name:e.target.value}))} placeholder="e.g. Paratha, Roti, Special Paratha"/>
-        <Btn dm={dm} onClick={saveProdItem} className="w-full" style={{background:"#8b5cf6",color:"#fff",border:"none"}}>Save Item</Btn>
+        <Btn dm={dm} onClick={()=>{setPiSh(null);setPiF({id:"",name:""});notify("Item saved");}} className="w-full" style={{background:"#8b5cf6",color:"#fff",border:"none"}}>Save Item</Btn>
       </Sheet>
       <Sheet dm={dm} open={changePwSh} onClose={()=>setChangePwSh(false)} title="Change Password">
         <Inp dm={dm} label="Current Password" type="password" value={changePwF.current} onChange={e=>setChangePwF(f=>({...f,current:e.target.value}))} placeholder="Enter current password"/>
@@ -2245,10 +1814,10 @@
         <Btn dm={dm} onClick={()=>{
           const me=users.find(u=>u.id===sess.id);
           if(!me){notify("User not found");return;}
-          if(!checkPw(changePwF.current,me.password)){notify("Current password is incorrect");return;}
+          if(me.password&&changePwF.current!==me.password){notify("Current password is incorrect");return;}
           if(changePwF.next.length<6){notify("New password must be at least 6 characters");return;}
           if(changePwF.next!==changePwF.confirm){notify("Passwords don't match");return;}
-          setUsers(p=>safeArr(p).map(u=>u.id===sess.id?{...u,password:hashPw(changePwF.next)}:u));
+          setUsers(p=>safeArr(p).map(u=>u.id===sess.id?{...u,password:changePwF.next}:u));
           addLog("Changed password","Own account");
           notify("Password changed ✓");
           setChangePwSh(false);
@@ -2371,48 +1940,10 @@
             ))
           }
         </div>
-        <Btn dm={dm} onClick={saveU} className="w-full">Save Account</Btn>
+        <Btn dm={dm} onClick={()=>{blkU&&setUsh(null);notify("Account saved");}} className="w-full">Save Account</Btn>
       </Sheet>
 
-      {/* Wastage Sheet */}
-      <Sheet dm={dm} open={!!wSh} onClose={()=>setWSh(null)} title={wSh==="add"?"Log Wastage":"Edit Wastage Record"}>
-        <Inp dm={dm} label="Product / Item *" value={wF.product} onChange={e=>setWF({...wF,product:e.target.value})} placeholder="e.g. Roti, Paratha Pack…"/>
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Inp dm={dm} label="Quantity *" type="number" value={wF.qty} onChange={e=>setWF({...wF,qty:e.target.value})} placeholder="e.g. 15"/>
-          <Sel dm={dm} label="Unit" value={wF.unit} onChange={e=>setWF({...wF,unit:e.target.value})}>
-            {(settings?.supplyUnits||["pcs","kg","pack","L"]).map(u=><option key={u}>{u}</option>)}
-          </Sel>
-        </div>
-        <Sel dm={dm} label="Wastage Type *" value={wF.type} onChange={e=>setWF({...wF,type:e.target.value})}>
-          {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t=><option key={t}>{t}</option>)}
-        </Sel>
-        <Sel dm={dm} label="Shift" value={wF.shift} onChange={e=>setWF({...wF,shift:e.target.value})}>
-          {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-        </Sel>
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Inp dm={dm} label="Date" type="date" value={wF.date} onChange={e=>setWF({...wF,date:e.target.value})}/>
-          {can("waste_logCost")&& <Inp dm={dm} label="Estimated Cost Loss (₹)" type="number" value={wF.cost} onChange={e=>setWF({...wF,cost:e.target.value})} placeholder="0"/>}
-        </div>
-        <Inp dm={dm} label="Reason / Notes" value={wF.reason} onChange={e=>setWF({...wF,reason:e.target.value})} placeholder="What caused this wastage? e.g. Overcooked, power cut…"/>
-        {/* Quick reference: today's wastage so far */}
-        {(()=>{const tw=wastage.filter(w=>w.date===wF.date&&w.id!==(wSh?.id));const tq=tw.reduce((s,w)=>s+(w.qty||0),0);return tq>0&&<div style={{background:t.inp,border:`1px solid ${t.inpB}`}} className="rounded-xl px-3.5 py-2.5">
-          <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider mb-1">Already logged on {wF.date}</p>
-          {tw.slice(0,4).map(w=><div key={w.id} className="flex justify-between text-xs py-0.5"><span style={{color:t.sub}}>{w.product} — {w.type}</span><span style={{color:t.text}} className="font-semibold">{w.qty} {w.unit}</span></div>)}
-          <div style={{borderTop:`1px solid ${t.border}`}} className="mt-1 pt-1 flex justify-between text-xs font-bold"><span style={{color:t.sub}}>Total today</span><span style={{color:"#f97316"}}>{tq} units</span></div>
-        </div>})()}
-        <Btn dm={dm} onClick={saveW} className="w-full">Save Wastage Record</Btn>
-      </Sheet>
 
-      {/* Payment Sheet */}
-      <Sheet dm={dm} open={!!paySh} onClose={()=>{setPaySh(null);setPayAmt("");}} title="Record Payment">
-        {paySh&&<>
-          <p style={{color:t.text}} className="text-sm font-semibold">{paySh.name}</p>
-          <div className="flex gap-3"><span className="text-sm text-emerald-500 font-bold">Paid: {inr(paySh.paid)}</span><span className="text-sm text-red-500 font-bold">Due: {inr(paySh.pending)}</span></div>
-          <div className="crm-btn-group">{[paySh.pending,500,1000,2000].filter((v,i,a)=>v>0&&a.indexOf(v)===i).map(q=><button key={q} onClick={()=>setPayAmt(String(q))} style={payAmt===String(q)?{background:"#f59e0b",color:"#000"}:{background:t.inp,color:t.text}} className="text-xs font-semibold px-3 py-2 rounded-lg min-h-[36px]">₹{q.toLocaleString("en-IN")}</button>)}</div>
-          <Inp dm={dm} label="Amount (₹)" type="number" value={payAmt} onChange={e=>setPayAmt(e.target.value)} placeholder="Enter amount"/>
-          <div className="flex gap-2"><Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setPaySh(null);setPayAmt("");}}>Cancel</Btn><Btn dm={dm} v="success" className="flex-1" onClick={recPay} disabled={!payAmt}>Confirm ₹{payAmt||0}</Btn></div>
-        </>}
-      </Sheet>
 
       {/* ── PAYMENT LEDGER MANUAL ENTRY SHEET ── */}
       <Sheet dm={dm} open={payLedgerSh} onClose={()=>{setPayLedgerSh(false);setPayLedgerCust(null);setPayLedgerAmt("");setPayLedgerNote("");setPayLedgerMethod("Cash");}} title="💰 Record Payment">
@@ -2498,472 +2029,10 @@
       </Sheet>
 
 
-      {/* Production Sheet — Redesigned Log New Batch */}
-      <Sheet dm={dm} open={!!ptSh} onClose={()=>setPtSh(null)} title={ptSh==="add"?"🏭 Log New Batch":"✏️ Edit Batch"}>
-        {(()=>{
-          const tS=T(dm);
-          // ── SECTION 1: Batch Identity ──────────────────────────────
-          return <>
-          {/* Batch Identity Banner */}
-          <div style={{background:`linear-gradient(135deg,${dm?"#2d1f5e":"#ede9fe"},${dm?"#1e3a5f":"#dbeafe"})`,borderRadius:16,padding:"14px 16px",marginBottom:4}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{color:dm?"#c4b5fd":"#7c3aed",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>🏭 Batch Identity</p>
-                <p style={{color:dm?"#e2d9f3":"#1e1b4b",fontWeight:900,fontSize:22,lineHeight:1,marginBottom:2}}>{ptF.batchLabel||"New Batch"}</p>
-                <p style={{color:dm?"#a5b4fc":"#6366f1",fontSize:11,fontWeight:600}}>{ptF.product||"No product selected"}{ptF.shift?` · ${ptF.shift} Shift`:""}</p>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{background:dm?"rgba(139,92,246,0.3)":"rgba(139,92,246,0.15)",border:`2px solid ${dm?"#7c3aed":"#8b5cf6"}`,borderRadius:12,padding:"8px 14px",marginBottom:4}}>
-                  <p style={{color:dm?"#c4b5fd":"#7c3aed",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Units</p>
-                  <p style={{color:dm?"#fff":"#1e1b4b",fontWeight:900,fontSize:26,lineHeight:1}}>{ptF.actual||"—"}</p>
-                </div>
-                <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-                  {["A","B","C","F"].map(g=><span key={g} style={{background:ptF.qcGrade===g?({A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6")+"22":"transparent",color:{A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6",border:`1.5px solid ${ptF.qcGrade===g?({A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[g]||"#8b5cf6"):"transparent"}`,borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:800}}>{g}</span>)}
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* ── SECTION 1: Core Details ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-            <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
-              <p style={{color:"#8b5cf6",fontWeight:800,fontSize:12}}>① Batch Details</p>
-              <p style={{color:tS.sub,fontSize:10}}>What was produced, when, and by which shift</p>
-            </div>
-            <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10}}>
-                <Inp dm={dm} label="Batch Label *" value={ptF.batchLabel||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,batchLabel:v}));}} placeholder="e.g. Batch 1, Morning Run A"/>
-                <Inp dm={dm} label="Date *" type="date" value={ptF.date||today()} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,date:v}));}}/>
-              </div>
-              <Sel dm={dm} label="Product *" value={ptF.product} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,product:v}));}}>
-                <option value="">— Select product —</option>
-                {(prodItems||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
-                <option value="__custom__">Other / Custom</option>
-              </Sel>
-              {ptF.product==="__custom__"&&<Inp dm={dm} label="Custom Product Name *" value={ptF.customProduct||""} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,customProduct:v}));}} placeholder="e.g. Special Paratha"/>}
-              {/* Shift pills */}
-              <div>
-                <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Shift</p>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {[{v:"",l:"No Shift"},...(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=>({v:s,l:s}))].map(({v,l})=>(
-                    <button key={v} onClick={()=>setPtF(f=>({...f,shift:v}))}
-                      style={{background:ptF.shift===v?"#8b5cf6":tS.inp,color:ptF.shift===v?"#fff":tS.sub,border:`1.5px solid ${ptF.shift===v?"#8b5cf6":tS.border}`,borderRadius:99,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── SECTION 2: Output & QC ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-            <div style={{background:dm?"rgba(16,185,129,0.1)":"rgba(16,185,129,0.05)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`}}>
-              <p style={{color:"#10b981",fontWeight:800,fontSize:12}}>② Output & Quality</p>
-              <p style={{color:tS.sub,fontSize:10}}>Units produced and quality grade for recall traceability</p>
-            </div>
-            <div style={{padding:"14px 14px",display:"flex",flexDirection:"column",gap:12}}>
-              {/* Big unit counter */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:10,alignItems:"end"}}>
-                <div>
-                  <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Units Produced *</p>
-                  <div style={{display:"flex",alignItems:"center",gap:8,background:tS.inp,border:`1.5px solid ${tS.inpB}`,borderRadius:12,padding:"8px 12px"}}>
-                    <button onClick={()=>setPtF(f=>({...f,actual:String(Math.max(0,(+f.actual||0)-1))}))}
-                      style={{width:32,height:32,borderRadius:8,background:tS.card,border:`1px solid ${tS.border}`,color:tS.text,fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
-                    <input type="number" value={ptF.actual} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,actual:v}));}} placeholder="0"
-                      style={{flex:1,background:"transparent",border:"none",outline:"none",color:tS.text,fontWeight:900,fontSize:24,textAlign:"center",minWidth:0}}/>
-                    <button onClick={()=>setPtF(f=>({...f,actual:String((+f.actual||0)+1)}))}
-                      style={{width:32,height:32,borderRadius:8,background:"#8b5cf6",border:"none",color:"#fff",fontWeight:900,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>+</button>
-                  </div>
-                  {/* Quick presets */}
-                  <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}}>
-                    {(settings?.batchUnitPresets||[50,100,150,200,250,300]).map(n=>(
-                      <button key={n} onClick={()=>setPtF(f=>({...f,actual:String(n)}))}
-                        style={{background:+ptF.actual===n?"#8b5cf6":tS.inp,color:+ptF.actual===n?"#fff":tS.sub,border:`1px solid ${+ptF.actual===n?"#8b5cf6":tS.border}`,borderRadius:6,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.1s"}}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* QC Grade visual picker */}
-                <div>
-                  <p style={{color:tS.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>QC Grade *</p>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:6}}>
-                    {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
-                      <button key={g} onClick={()=>setPtF(f=>({...f,qcGrade:g}))}
-                        style={{background:ptF.qcGrade===g?color+"25":tS.card,border:`2px solid ${ptF.qcGrade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
-                        <p style={{color,fontWeight:900,fontSize:20,lineHeight:1}}>{g}</p>
-                        <p style={{color:ptF.qcGrade===g?color:tS.sub,fontSize:9,fontWeight:600,marginTop:2}}>{label}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* Auto-deduct preview */}
-              {ptAutoDeduct&&+ptF.actual>0&&(()=>{
-                const pname=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
-                const pn=pname.toLowerCase();
-                const scored=supplies.map(s=>{const sn=(s.item||"").toLowerCase();let score=0;if(sn===pn)score=100;else if(sn.includes(pn)||pn.includes(sn))score=60;else{const pW=pn.split(/\s+/);const sW=sn.split(/\s+/);const h=pW.filter(w=>sW.some(sw=>sw.includes(w)||w.includes(sw)));if(h.length>0)score=30+h.length*10;}return{...s,_score:score};}).filter(s=>s._score>0).sort((a,b)=>b._score-a._score);
-                const match=scored[0];
-                if(!match)return null;
-                const afterQty=Math.max(0,(match.qty||0)-+ptF.actual);
-                return <div style={{background:"#10b98110",border:"1px solid #10b98130",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:16}}>📦</span>
-                  <div style={{flex:1}}>
-                    <p style={{color:"#10b981",fontSize:11,fontWeight:700}}>Auto-deduct preview</p>
-                    <p style={{color:tS.sub,fontSize:10}}>Saves "{match.item}": {match.qty} → {afterQty} {match.unit} after this batch</p>
-                  </div>
-                </div>;
-              })()}
-              <Inp dm={dm} label="Batch Notes" value={ptF.notes} onChange={e=>{const v=e.target.value;setPtF(f=>({...f,notes:v}));}} placeholder="e.g. Machine issue, short staff, quality remarks…"/>
-            </div>
-          </div>
-
-          {/* ── SECTION 3: Customer Traceability ── */}
-          {(()=>{
-            const batchDate=ptF.date||today();
-            const sameDateDelivs=deliveries.filter(d=>d.date===batchDate&&d.status!=="Cancelled");
-            const productName=(ptF.product==="__custom__"?ptF.customProduct:ptF.product)||"";
-            // Find deliveries that include this product
-            const matchingDelivs=productName?sameDateDelivs.filter(d=>Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase());})):sameDateDelivs;
-            const totalUnitsOrdered=matchingDelivs.reduce((s,d)=>Object.entries(safeO(d.orderLines)).reduce((s2,[pid,l])=>{if(!(l.qty>0))return s2;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";if(!productName||pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase()))return s2+(+l.qty||0);return s2;},s),0);
-            return <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-              <div style={{background:dm?"rgba(124,58,237,0.12)":"rgba(124,58,237,0.06)",padding:"10px 14px",borderBottom:`1px solid ${tS.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <div>
-                  <p style={{color:"#7c3aed",fontWeight:800,fontSize:12}}>③ Customer Traceability</p>
-                  <p style={{color:tS.sub,fontSize:10}}>Who receives products from this batch — for recall tracking</p>
-                </div>
-                <span style={{background:"#7c3aed22",color:"#7c3aed",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:800}}>{matchingDelivs.length} orders</span>
-              </div>
-              <div style={{padding:"14px 14px"}}>
-                {matchingDelivs.length===0
-                  ?<div style={{textAlign:"center",padding:"12px 0"}}>
-                    <p style={{fontSize:20,marginBottom:6}}>📭</p>
-                    <p style={{color:tS.sub,fontSize:12,fontWeight:600}}>No deliveries found for {batchDate}</p>
-                    <p style={{color:tS.sub,fontSize:10,marginTop:3}}>{productName?"for "+productName+" — ":""}Deliveries added for this date will appear here automatically</p>
-                  </div>
-                  :<>
-                    {/* Summary row */}
-                    <div className="crm-grid-3" style={{gap:8,marginBottom:12}}>
-                      {[
-                        {l:"Customers",v:matchingDelivs.length,c:"#7c3aed"},
-                        {l:"Units Ordered",v:totalUnitsOrdered,c:"#8b5cf6"},
-                        {l:"Surplus/Deficit",v:(+ptF.actual||0)-totalUnitsOrdered,c:(+ptF.actual||0)>=totalUnitsOrdered?"#10b981":"#ef4444"},
-                      ].map(x=><div key={x.l} style={{background:tS.inp,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
-                        <p style={{color:x.c,fontWeight:900,fontSize:16,lineHeight:1}}>{x.v>=0&&x.l==="Surplus/Deficit"&&x.v>0?"+":""}{x.v}</p>
-                        <p style={{color:tS.sub,fontSize:9,marginTop:3,fontWeight:600,textTransform:"uppercase"}}>{x.l}</p>
-                      </div>)}
-                    </div>
-                    {/* Customer list */}
-                    <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
-                      {matchingDelivs.map((d,di)=>{
-                        const dInvNo=(invRegistry?.issued||{})[d.id]||d.invNo||null;
-                        const prodQty=Object.entries(safeO(d.orderLines)).filter(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);const pName=p?.name||l.name||"";return !productName||pName===productName||pName.toLowerCase().includes(productName.toLowerCase())||productName.toLowerCase().includes(pName.toLowerCase());}).reduce((s,[,l])=>s+(+l.qty||0),0);
-                        const statusColor=d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":d.status==="Cancelled"?"#ef4444":"#f59e0b";
-                        return <div key={d.id} style={{background:tS.card,border:`1px solid ${tS.border}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:10,borderLeft:`3px solid ${statusColor}`}}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:2}}>
-                              <p style={{color:tS.text,fontWeight:700,fontSize:12}}>{d.customer}</p>
-                              <span style={{background:statusColor+"15",color:statusColor,borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700}}>{d.status}</span>
-                              {dInvNo&&<span style={{background:dm?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.08)",color:"#8b5cf6",borderRadius:5,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"monospace"}}>📄 {dInvNo}</span>}
-                            </div>
-                            {d.address&&<p style={{color:tS.sub,fontSize:10}}>📍 {d.address}</p>}
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <p style={{color:"#8b5cf6",fontWeight:800,fontSize:14,lineHeight:1}}>{prodQty}</p>
-                            <p style={{color:tS.sub,fontSize:9}}>units</p>
-                          </div>
-                        </div>;
-                      })}
-                    </div>
-                    {matchingDelivs.length>0&&<p style={{color:tS.sub,fontSize:10,marginTop:8,textAlign:"center"}}>💡 This links batch to customers automatically — critical for product recall</p>}
-                  </>
-                }
-              </div>
-            </div>;
-          })()}
-
-          {/* ── SECTION 4: Wastage ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-            <div style={{background:dm?"rgba(249,115,22,0.1)":"rgba(249,115,22,0.05)",padding:"10px 14px",borderBottom:(ptF.embWastage||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <p style={{color:"#f97316",fontWeight:800,fontSize:12}}>④ Wastage <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
-                <p style={{color:tS.sub,fontSize:10}}>Log any wasted or rejected units from this batch</p>
-              </div>
-              <button onClick={()=>setPtF(f=>({...f,embWastage:[...(f.embWastage||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,qty:"",unit:"pcs",type:(settings?.wastageTypes||["Other"])[0],reason:"",cost:"",shift:f.shift||"",date:f.date||today(),loggedBy:sess?.name||displayName}]}))}
-                style={{background:"#f9731620",color:"#f97316",border:"1px solid #f9731640",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:14}}>+</span> Add Wastage
-              </button>
-            </div>
-            {(ptF.embWastage||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
-              {(ptF.embWastage||[]).map((w,wi)=>(
-                <div key={w.id||wi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{background:"#f9731620",color:"#f97316",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>🗑️ Entry {wi+1}</span>
-                    </div>
-                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).filter((_,i)=>i!==wi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 80px",gap:8}}>
-                      <Inp dm={dm} label="Product" value={w.product} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
-                      <Inp dm={dm} label="Qty" type="number" value={w.qty} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,qty:e.target.value}:x)}))} placeholder="0"/>
-                      <Sel dm={dm} label="Unit" value={w.unit} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,unit:e.target.value}:x)}))}>
-                        {(settings?.supplyUnits||["pcs","kg","g","L","mL","bags","boxes","dozen"]).map(u=><option key={u}>{u}</option>)}
-                      </Sel>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:8}}>
-                      <Sel dm={dm} label="Type" value={w.type} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,type:e.target.value}:x)}))}>
-                        {(settings?.wastageTypes||["Burnt","Broken","Expired","Overproduced","Quality Reject","Other"]).map(t2=><option key={t2}>{t2}</option>)}
-                      </Sel>
-                      {can("waste_logCost")&&<Inp dm={dm} label="Cost (₹)" type="number" value={w.cost||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,cost:e.target.value}:x)}))} placeholder="0"/>}
-                    </div>
-                    <Inp dm={dm} label="Reason" value={w.reason||""} onChange={e=>setPtF(f=>({...f,embWastage:(f.embWastage||[]).map((x,i)=>i===wi?{...x,reason:e.target.value}:x)}))} placeholder="e.g. Overcooked, dropped, equipment failure…"/>
-                  </div>
-                </div>
-              ))}
-            </div>}
-          </div>
-
-          {/* ── SECTION 5: QC Checks ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-            <div style={{background:dm?"rgba(20,184,166,0.1)":"rgba(20,184,166,0.05)",padding:"10px 14px",borderBottom:(ptF.embQC||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <p style={{color:"#14b8a6",fontWeight:800,fontSize:12}}>⑤ QC Checks <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
-                <p style={{color:tS.sub,fontSize:10}}>Detailed quality inspection records for this batch</p>
-              </div>
-              <button onClick={()=>setPtF(f=>({...f,embQC:[...(f.embQC||[]),{id:uid(),product:f.product==="__custom__"?(f.customProduct||""):f.product,grade:"A",checker:sess?.name||displayName,notes:"",shift:f.shift||"",date:f.date||today()}]}))}
-                style={{background:"#14b8a620",color:"#14b8a6",border:"1px solid #14b8a640",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:14}}>+</span> Add Check
-              </button>
-            </div>
-            {(ptF.embQC||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
-              {(ptF.embQC||[]).map((q,qi)=>(
-                <div key={q.id||qi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <span style={{background:"#14b8a620",color:"#14b8a6",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>✅ Check {qi+1}</span>
-                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).filter((_,i)=>i!==qi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
-                  </div>
-                  <Inp dm={dm} label="Product Inspected" value={q.product} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,product:e.target.value}:x)}))} placeholder="Product name"/>
-                  <div className="crm-grid-4" style={{gap:6,marginTop:8}}>
-                    {[{g:"A",color:"#10b981",label:"Pass"},{g:"B",color:"#f59e0b",label:"Pass"},{g:"C",color:"#f97316",label:"Marginal"},{g:"F",color:"#ef4444",label:"Fail"}].map(({g,color,label})=>(
-                      <button key={g} onClick={()=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,grade:g}:x)}))}
-                        style={{background:q.grade===g?color+"25":tS.card,border:`2px solid ${q.grade===g?color:tS.inpB}`,borderRadius:10,padding:"8px 4px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
-                        <p style={{color,fontWeight:900,fontSize:18,lineHeight:1}}>{g}</p>
-                        <p style={{color:q.grade===g?color:tS.sub,fontSize:9,fontWeight:600}}>{label}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:8,marginTop:8}}>
-                    <Inp dm={dm} label="Inspector Name" value={q.checker||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,checker:e.target.value}:x)}))} placeholder="Inspector"/>
-                    <Inp dm={dm} label="Observations" value={q.notes||""} onChange={e=>setPtF(f=>({...f,embQC:(f.embQC||[]).map((x,i)=>i===qi?{...x,notes:e.target.value}:x)}))} placeholder="e.g. Colour good, texture ok…"/>
-                  </div>
-                </div>
-              ))}
-            </div>}
-          </div>
-
-          {/* ── SECTION 6: Handovers ── */}
-          <div style={{borderRadius:14,border:`1.5px solid ${tS.border}`,overflow:"visible",marginBottom:4}}>
-            <div style={{background:dm?"rgba(99,102,241,0.1)":"rgba(99,102,241,0.05)",padding:"10px 14px",borderBottom:(ptF.embHandover||[]).length>0?`1px solid ${tS.border}`:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <p style={{color:"#6366f1",fontWeight:800,fontSize:12}}>⑥ Shift Handover <span style={{fontWeight:400,fontSize:10,color:tS.sub}}>(optional)</span></p>
-                <p style={{color:tS.sub,fontSize:10}}>Notes passed to the next shift</p>
-              </div>
-              {can("prod_handover")&&<button onClick={()=>setPtF(f=>({...f,embHandover:[...(f.embHandover||[]),{id:uid(),shift:f.shift||"",nextShift:"",note:"",issues:"",loggedBy:sess?.name||displayName,date:f.date||today()}]}))}
-                style={{background:"#6366f120",color:"#6366f1",border:"1px solid #6366f140",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:14}}>+</span> Add Note
-              </button>}
-            </div>
-            {(ptF.embHandover||[]).length>0&&<div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
-              {(ptF.embHandover||[]).map((h,hi)=>(
-                <div key={h.id||hi} style={{background:tS.inp,border:`1px solid ${tS.inpB}`,borderRadius:12,padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <span style={{background:"#6366f120",color:"#6366f1",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>📋 Handover {hi+1}</span>
-                    {isAdmin&&<button onClick={()=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).filter((_,i)=>i!==hi)}))} style={{background:"#dc262615",color:"#dc2626",border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>Remove</button>}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",gap:8}}>
-                    <Sel dm={dm} label="Current Shift" value={h.shift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,shift:e.target.value}:x)}))}>
-                      <option value="">—</option>
-                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-                    </Sel>
-                    <Sel dm={dm} label="Next Shift" value={h.nextShift||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,nextShift:e.target.value}:x)}))}>
-                      <option value="">—</option>
-                      {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-                    </Sel>
-                  </div>
-                  <Inp dm={dm} label="Handover Note *" value={h.note||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,note:e.target.value}:x)}))} placeholder="e.g. Machine needs servicing, batch came out well…"/>
-                  <Inp dm={dm} label="Issues / Flags" value={h.issues||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,issues:e.target.value}:x)}))} placeholder="e.g. Low gas, 2 staff absent…"/>
-                  <Inp dm={dm} label="Logged By" value={h.loggedBy||""} onChange={e=>setPtF(f=>({...f,embHandover:(f.embHandover||[]).map((x,i)=>i===hi?{...x,loggedBy:e.target.value}:x)}))} placeholder="Name"/>
-                </div>
-              ))}
-            </div>}
-          </div>
-
-          {/* ── Save Summary & Button ── */}
-          <div style={{background:dm?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.06)",border:`1.5px solid rgba(139,92,246,0.3)`,borderRadius:14,padding:"14px 16px",marginTop:4}}>
-            <p style={{color:"#8b5cf6",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Batch Summary</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(140px,100%),1fr))",gap:6,marginBottom:12}}>
-              {[
-                {l:"Product",v:ptF.product==="__custom__"?(ptF.customProduct||"—"):(ptF.product||"—"),c:tS.text},
-                {l:"Units",v:ptF.actual||"0",c:"#8b5cf6"},
-                {l:"Date",v:ptF.date||today(),c:tS.text},
-                {l:"QC Grade",v:ptF.qcGrade||"A",c:{A:"#10b981",B:"#f59e0b",C:"#f97316",F:"#ef4444"}[ptF.qcGrade]||"#10b981"},
-                {l:"Wastage Entries",v:(ptF.embWastage||[]).filter(w=>w.product&&w.qty).length,c:"#f97316"},
-                {l:"QC Checks",v:(ptF.embQC||[]).filter(q=>q.product&&q.grade).length,c:"#14b8a6"},
-              ].map(x=><div key={x.l} style={{background:tS.card,borderRadius:8,padding:"7px 10px"}}>
-                <p style={{color:tS.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{x.l}</p>
-                <p style={{color:x.c,fontWeight:700,fontSize:12,marginTop:2}}>{x.v}</p>
-              </div>)}
-            </div>
-            <Btn dm={dm} onClick={savePT} className="w-full" style={{background:"linear-gradient(135deg,#7c3aed,#6366f1)",color:"#fff",border:"none",fontSize:15,padding:"14px",fontWeight:800,letterSpacing:"0.02em"}}>
-              {ptSh==="add"?"🏭 Save Batch":"✓ Update Batch"}
-            </Btn>
-          </div>
-          </>;
-        })()}
-      </Sheet>
-
-      {/* QC Sheet */}
-      <Sheet dm={dm} open={!!qcSh} onClose={()=>setQcSh(null)} title="Log QC Check">
-        <Sel dm={dm} label="Product *" value={qcF.product} onChange={e=>setQcF({...qcF,product:e.target.value})}>
-          <option value="">— Select product —</option>
-          {products.map(p=><option key={p.id}>{p.name}</option>)}
-          <option value="__custom__">Other / Custom</option>
-        </Sel>
-        {qcF.product==="__custom__"&&<Inp dm={dm} label="Custom Product" value={qcF.customProduct||""} onChange={e=>setQcF({...qcF,customProduct:e.target.value})} placeholder="e.g. Special Paratha"/>}
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Sel dm={dm} label="Shift" value={qcF.shift} onChange={e=>setQcF({...qcF,shift:e.target.value})}>
-            {(settings?.shifts||["Morning","Afternoon","Evening","Night"]).map(s=><option key={s}>{s}</option>)}
-          </Sel>
-          <Inp dm={dm} label="Date" type="date" value={qcF.date} onChange={e=>setQcF({...qcF,date:e.target.value})}/>
-        </div>
-        <div>
-          <label style={{color:T(dm).sub}} className="block text-[11px] font-bold uppercase tracking-widest mb-2 ml-0.5">Quality Grade *</label>
-          <div className="grid grid-cols-4 gap-2">
-            {[{g:"A",color:"#10b981",label:"Pass",sub:"Grade A"},{g:"B",color:"#f59e0b",label:"Pass",sub:"Grade B"},{g:"C",color:"#f97316",label:"Marginal",sub:"Grade C"},{g:"F",color:"#ef4444",label:"Fail",sub:"Reject"}].map(({g,color,label,sub})=>(
-              <button key={g} onClick={()=>setQcF({...qcF,grade:g})}
-                style={{background:qcF.grade===g?color+"25":T(dm).inp,border:`2px solid ${qcF.grade===g?color:T(dm).inpB}`,borderRadius:14,padding:"12px 6px",textAlign:"center",transition:"all 0.15s"}}>
-                <p style={{color,fontWeight:900,fontSize:22,lineHeight:1}}>{g}</p>
-                <p style={{color:qcF.grade===g?color:T(dm).text,fontSize:11,fontWeight:700,marginTop:4}}>{label}</p>
-                <p style={{color:T(dm).sub,fontSize:9,marginTop:1}}>{sub}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-        <Inp dm={dm} label="Checked By" value={qcF.checker} onChange={e=>setQcF({...qcF,checker:e.target.value})} placeholder="Inspector name"/>
-        <Inp dm={dm} label="Notes / Observations" value={qcF.notes} onChange={e=>setQcF({...qcF,notes:e.target.value})} placeholder="e.g. Slightly overcooked edges, texture good…"/>
-        <Btn dm={dm} onClick={saveQC} className="w-full">Save QC Record</Btn>
-      </Sheet>
 
       <Confirm dm={dm} msg={conf?.msg} onYes={()=>{conf?.yes();setConf(null);}} onNo={()=>setConf(null)}/>
-      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
 
-      {/* ═══════════════════════════════════════════════════════════════
-          BULK ORDER ENTRY SHEET
-      ═══════════════════════════════════════════════════════════════ */}
-      {/* ══════════════════════════════════════════════════════════════
-          PROFESSIONAL COLLECT PAYMENT SHEET
-      ══════════════════════════════════════════════════════════════ */}
-      <Sheet dm={dm} open={!!collectSh} onClose={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}} title="💰 Record Collection">
-        {collectSh&&(()=>{
-          const d=collectSh;
-          const orderTotal=lineTotal(d.orderLines||{});
-          const replAmt=+(d.replacement?.amount)||0;
-          const netAmt=orderTotal-replAmt;
-          const suggestedAmt=netAmt>0?netAmt:orderTotal;
-          return <>
-            {/* Customer info strip */}
-            <div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
-              <p style={{color:t.text,fontWeight:800,fontSize:15,lineHeight:1.2}}>{d.customer}</p>
-              {d.address&&<p style={{color:t.sub,fontSize:11,marginTop:3}}>📍 {d.address}</p>}
-              <div className="flex gap-2 mt-2 flex-wrap">
-                <span style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>📅 {d.date}</span>
-                <span style={{background:d.status==="Delivered"?"#10b98120":d.status==="In Transit"?"#3b82f620":"#f59e0b20",color:d.status==="Delivered"?"#10b981":d.status==="In Transit"?"#3b82f6":"#f59e0b",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:700}}>{d.status}</span>
-              </div>
-            </div>
-
-            {/* Order breakdown */}
-            {canSeePrices&&<div style={{background:t.inp,borderRadius:14,padding:"12px 14px"}}>
-              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Order Breakdown</p>
-              {lineRows(d.orderLines||{},products).filter(r=>r.qty>0).map(r=>(
-                <div key={r.id} className="flex justify-between text-xs py-1" style={{borderBottom:`1px solid ${t.border}`}}>
-                  <span style={{color:t.sub,flex:1}}>{r.qty} × {r.name} @ {inr(r.priceAmount)}</span>
-                  <span style={{color:t.text,fontWeight:700}}>{inr(r.qty*r.priceAmount)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between mt-2" style={{fontSize:13,fontWeight:700}}>
-                <span style={{color:t.sub}}>Order Total</span>
-                <span style={{color:"#f59e0b"}}>{inr(orderTotal)}</span>
-              </div>
-              {replAmt>0&&<>
-                <div className="flex justify-between mt-1" style={{fontSize:12,color:"#f97316"}}>
-                  <span>🔄 Replacement deduction ({d.replacement?.item||"—"})</span>
-                  <span style={{fontWeight:700}}>−{inr(replAmt)}</span>
-                </div>
-                <div className="flex justify-between mt-1 pt-1" style={{borderTop:`2px solid ${t.border}`,fontSize:13,fontWeight:800}}>
-                  <span style={{color:t.text}}>Net Payable</span>
-                  <span style={{color:"#10b981"}}>{inr(netAmt)}</span>
-                </div>
-              </>}
-            </div>}
-
-            {/* Quick amount selector */}
-            {canSeePrices&&<div>
-              <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Quick Select</p>
-              <div className="crm-btn-group">
-                {[suggestedAmt,...[500,1000,2000].filter(v=>v!==suggestedAmt&&v>0)].filter((v,i,a)=>a.indexOf(v)===i&&v>0).slice(0,4).map(q=>(
-                  <button key={q} onClick={()=>setCollectAmt(String(q))}
-                    style={{background:collectAmt===String(q)?"#10b981":t.inp,color:collectAmt===String(q)?"#fff":t.text,border:`1.5px solid ${collectAmt===String(q)?"#10b981":t.border}`,borderRadius:10,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
-                    {inr(q)}{q===suggestedAmt?" (Full)":""}
-                  </button>
-                ))}
-              </div>
-            </div>}
-
-            {/* Amount input */}
-            <Inp dm={dm} label="Amount Collected (₹) *" type="number" value={collectAmt} onChange={e=>setCollectAmt(e.target.value)} placeholder="Enter exact amount received"/>
-
-            {/* Live balance preview */}
-            {canSeePrices&&collectAmt&&+collectAmt>0&&<div style={{background:+collectAmt>=(netAmt||orderTotal)?"#10b98115":"#f59e0b15",border:`1px solid ${+collectAmt>=(netAmt||orderTotal)?"#10b98140":"#f59e0b40"}`,borderRadius:12,padding:"10px 14px"}}>
-              <div className="flex justify-between text-sm"><span style={{color:t.sub}}>Collecting now</span><span style={{color:"#10b981",fontWeight:700}}>{inr(+collectAmt)}</span></div>
-              <div className="flex justify-between text-sm mt-1"><span style={{color:t.sub}}>Balance remaining</span><span style={{color:Math.max(0,(netAmt||orderTotal)-+collectAmt)>0?"#f59e0b":"#10b981",fontWeight:700}}>{inr(Math.max(0,(netAmt||orderTotal)-+collectAmt))}</span></div>
-              {+collectAmt>=(netAmt||orderTotal)&&<p style={{color:"#10b981",fontSize:11,marginTop:4,fontWeight:600}}>✓ Full amount — account will be settled</p>}
-            </div>}
-
-            {/* Note field (shown always, required only if setting is on) */}
-            <Inp dm={dm} label={`Collection Note${settings?.agentCollectRequireNote?" *":""}`} value={collectNote} onChange={e=>setCollectNote(e.target.value)} placeholder="e.g. Paid in cash at gate, UPI ref #12345…"/>
-
-            <div className="flex gap-2">
-              <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>{setCollectSh(null);setCollectAmt("");setCollectNote("");}}>Cancel</Btn>
-              <Btn dm={dm} v="success" className="flex-1" onClick={(()=>{
-                // ── per-delivery collect guard — prevents double-tap recording payment twice ──
-                let _collectBusy=false;
-                return ()=>{
-                  if(_collectBusy){notify("Recording…");return;}
-                  _collectBusy=true;
-                  setTimeout(()=>{_collectBusy=false;},3000);
-                  const amt=+collectAmt;
-                  if(!amt||amt<=0){notify("Enter a valid amount");_collectBusy=false;return;}
-                  if(settings?.agentCollectRequireNote&&!collectNote.trim()){notify("Collection note is required");_collectBusy=false;return;}
-                  const upd={...d,partialPayment:{enabled:true,amount:amt,note:collectNote,collectedBy:displayName,collectedAt:ts()}};
-                  setDeliv(p=>safeArr(p).map(x=>x.id===d.id?upd:x));
-                  // Only update c.paid — computedPendingMap will re-derive pending from the updated delivery
-                  if(d.customerId){setCust(p=>safeArr(p).map(c=>c.id===d.customerId?{...c,paid:(c.paid||0)+amt}:c));}
-                  addLog("Payment collected on delivery",`${d.customer} — ${inr(amt)}${collectNote?" · "+collectNote:""}`);
-                  addNotif("Payment Collected",`${inr(amt)} collected from ${d.customer}`,"success","payment");
-                  notify(`${inr(amt)} collected ✓`);
-                  // Show inline receipt card on phone
-                  setLastReceiptData({delivery:upd,amt,note:collectNote,customer:d.customer,ts:ts()});
-                  // Auto-print receipt only if admin has it enabled
-                  if(settings?.agentInvoiceEnabled!==false&&settings?.agentAutoReceipt!==false) exportDeliveryReceipt(upd,products,settings,getOrCreateInvNo(upd.id));
-                  setCollectSh(null);setCollectAmt("");setCollectNote("");
-                };
-              })()}>Confirm Collection</Btn>
-            </div>
-          </>;
-        })()}
-      </Sheet>
 
       {/* ── INLINE RECEIPT CARD — tap 🧾 Receipt button OR shown after collection ── */}
       <Sheet dm={dm} open={!!lastReceiptData} onClose={()=>setLastReceiptData(null)} title={lastReceiptData?.viewOnly?"🧾 Delivery Receipt":"✅ Collection Confirmed"}>
@@ -2974,7 +2043,7 @@
           const netAmt=Math.max(0,orderTotal-replAmt);
           const collected=viewOnly?(+(rd.partialPayment?.amount||0)):amt;
           const balanceDue=Math.max(0,netAmt-collected);
-          const rows=lineRows(rd.orderLines,products).filter(r=>r.qty>0);
+          const rows=Object.entries(rd.orderLines||{}).map(([id,qty])=>{const p=products.find(x=>x.id===id)||{};return{id,qty:+qty,name:p.name||id,priceAmount:+(p.price||0)};}).filter(r=>r.qty>0);
           const statusColor=rd.status==="Delivered"?"#10b981":rd.status==="In Transit"?"#3b82f6":rd.status==="Cancelled"?"#ef4444":"#f59e0b";
           const showReceiptPrices=settings?.agentInvoiceShowPrices!==false; // syncs with admin setting
           const rcptInvNo=(invRegistry.issued||{})[rd.id];
@@ -3039,72 +2108,13 @@
 
             <div className="crm-btn-group">
               <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setLastReceiptData(null)}>Close</Btn>
-              {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportDeliveryReceipt(rd,products,settings,getOrCreateInvNo(rd.id))}>🧾 Receipt</Btn>}
-              {isAdmin&&<Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportDeliveryInvoice(rd,products,settings,getOrCreateInvNo(rd.id))}>📄 Invoice</Btn>}
+              {(isAdmin||(settings?.receiptPrintAllowed||["admin","agent"]).includes(sess?.role))&&<Btn dm={dm} v="sky" className="flex-1" onClick={()=>exportDeliveryReceipt(rd,products,settings,((invRegistry?.issued||{})[rd.id]||rd.id))}>🧾 Receipt</Btn>}
+              {isAdmin&&<Btn dm={dm} v="purple" className="flex-1" onClick={()=>exportDeliveryInvoice(rd,products,settings,((invRegistry?.issued||{})[rd.id]||rd.id))}>📄 Invoice</Btn>}
             </div>
           </>;
         })()}
       </Sheet>
 
-      <Sheet dm={dm} open={bulkOrderSh} onClose={()=>setBulkOrderSh(false)} title="📋 Bulk Order Entry">
-        <p style={{color:t.sub}} className="text-xs">Create delivery orders for multiple customers at once. Toggle on the customers you want, optionally adjust quantities, then save all at once.</p>
-        <div className="crm-grid-2" style={{gap:3*4}}>
-          <Inp dm={dm} label="Order Date *" type="date" value={bulkOrderDate} onChange={e=>setBulkOrderDate(e.target.value)}/>
-          <Sel dm={dm} label="Status" value={bulkOrderStatus} onChange={e=>setBulkOrderStatus(e.target.value)}>
-            {(settings?.deliveryStatuses||["Pending","In Transit","Delivered","Cancelled"]).map(s=><option key={s}>{s}</option>)}
-          </Sel>
-        </div>
-        <div className="flex items-center justify-between">
-          <p style={{color:t.sub}} className="text-[11px] font-semibold uppercase tracking-wider">{bulkOrderRows.filter(r=>r.include).length} of {bulkOrderRows.length} selected</p>
-          <div className="flex gap-2">
-            <button onClick={()=>setBulkOrderRows(r=>r.map(x=>({...x,include:true})))} style={{color:"#f59e0b"}} className="text-xs font-semibold">All</button>
-            <button onClick={()=>setBulkOrderRows(r=>r.map(x=>({...x,include:false})))} style={{color:t.sub}} className="text-xs font-semibold">None</button>
-          </div>
-        </div>
-        <Hr dm={dm}/>
-        <div className="flex flex-col gap-2" style={{maxHeight:360,overflowY:"auto"}}>
-          {bulkOrderRows.length===0&&<p style={{color:t.sub}} className="text-sm text-center py-4">No active customers found.</p>}
-          {bulkOrderRows.map((row,ri)=>{
-            const tot=lineTotal(row.orderLines);
-            return <div key={row.customerId} style={{background:row.include?(dm?"rgba(245,158,11,0.08)":"rgba(245,158,11,0.04)"):t.inp,border:`1.5px solid ${row.include?"#f59e0b40":t.border}`,borderRadius:14,padding:"10px 12px",transition:"all 0.15s"}}>
-              <div className="flex items-center justify-between mb-1 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  {/* Toggle checkbox */}
-                  <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,include:!x.include}:x))}
-                    style={{width:20,height:20,borderRadius:6,border:`2px solid ${row.include?"#f59e0b":t.inpB}`,background:row.include?"#f59e0b":t.card,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",transition:"all 0.15s"}}>
-                    {row.include&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                  </button>
-                  <div className="min-w-0">
-                    <p style={{color:t.text,fontWeight:700,fontSize:13}} className="truncate">{row.customer}</p>
-                    {row.address&&<p style={{color:t.sub,fontSize:10}} className="truncate">📍 {row.address}</p>}
-                  </div>
-                </div>
-                {canSeePrices&&tot>0&&<span style={{color:"#f59e0b",fontWeight:800,fontSize:12}} className="shrink-0">{inr(tot)}</span>}
-              </div>
-              {/* Item qty inline editing */}
-              {row.include&&<div className="flex flex-col gap-1 mt-2 pt-2" style={{borderTop:`1px solid ${t.border}`}}>
-                {products.map(p=>{
-                  const ol=safeO(row.orderLines);
-                  const qty=(ol[p.id]?.qty)||0;
-                  return <div key={p.id} className="flex items-center justify-between gap-2">
-                    <span style={{color:t.sub,fontSize:12,flex:1}} className="truncate">{p.name}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:Math.max(0,(safeO(x.orderLines)[p.id]?.qty||0)-1),priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices?.[0]||0)}}}:x))}
-                        style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                      <span style={{color:t.text,fontWeight:700,fontSize:13,minWidth:20,textAlign:"center"}}>{qty}</span>
-                      <button onClick={()=>setBulkOrderRows(rows=>rows.map((x,i)=>i===ri?{...x,orderLines:{...safeO(x.orderLines),[p.id]:{...(safeO(x.orderLines)[p.id]||{}),qty:(safeO(x.orderLines)[p.id]?.qty||0)+1,priceAmount:safeO(x.orderLines)[p.id]?.priceAmount||(p.prices?.[0]||0)}}}:x))}
-                        style={{width:24,height:24,borderRadius:6,background:t.card,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                    </div>
-                  </div>;
-                })}
-              </div>}
-            </div>;
-          })}
-        </div>
-        <Hr dm={dm}/>
-        <div className="flex gap-2">
-          <Btn dm={dm} v="ghost" className="flex-1" onClick={()=>setBulkOrderSh(false)}>Cancel</Btn>
-          <Btn dm={dm} v="success" className="flex-1" onClick={saveBulkOrders}>
-            ✓ Create {bulkOrderRows.filter(r=>r.include).length} Orders
-          </Btn>
-        </div>
+      </>;
+  })();
+}

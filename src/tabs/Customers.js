@@ -1,15 +1,33 @@
-/* eslint-disable */
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
 // TAB: Customers
-// This file contains the Customers tab JSX, extracted from App.js
+import React from "react";
 
-        {tab==="Customers"&&(()=>{
-          const [isMobile, setIsMobile] = React.useState(typeof window!=="undefined"&&window.innerWidth<768);
-          React.useEffect(()=>{
-            const handler=()=>setIsMobile(window.innerWidth<768);
-            window.addEventListener("resize",handler);
-            return()=>window.removeEventListener("resize",handler);
-          },[]);
-          return (<div style={{display:"flex",flexDirection:"column",gap:32}}>
+export default function CustomersTab({
+  dm, t, T, sess, isAdmin, can, canSeePrices, canSeeFinancials,
+  customers, activeC, deliveries, products, settings,
+  dashStats, dashTotalCollected, totalDue, dashReplacementCount, totalReplDeductions,
+  dashPartialCount, dashPartialTotal,
+  inr, lineTotal, safeO, safeArr, today, ts, uid,
+  notify, addLog, addNotif, captureGPS, ask,
+  setTab, setCsh, setCf, blkC,
+  csh, setCsh: _setCsh, cf, setCf: _setCf,
+  setDeliv, setPaySh, setPayAmt,
+  setPayLedgerSh, setPayLedgerCust, setPayLedgerAmt, setPayLedgerNote, setPayLedgerMethod,
+  overdueAlertExpanded, setOverdueAlertExpanded, overdueAlertDays, setOverdueAlertDays,
+  clvFilter, setClvFilterP, clvSort, setClvSort,
+  invRegistry, paymentLedger, mergeEnabled, recordPaymentLedger,
+  setPaymentsSubTab,
+  exportTabPDF, exportTabExcel, exportCSV,
+  Btn, Inp, Sel, Card, Sheet, Tog, Pill, Hr, SectionHeader, TabStatCards, StatusPill,
+}) {
+  const [isMobile, setIsMobile] = React.useState(typeof window!=="undefined"&&window.innerWidth<768);
+  React.useEffect(()=>{
+    const handler=()=>setIsMobile(window.innerWidth<768);
+    window.addEventListener("resize",handler);
+    return()=>window.removeEventListener("resize",handler);
+  },[]);
+  return (
+<div style={{display:"flex",flexDirection:"column",gap:32}}>
           <SectionHeader dm={dm} title="Customers" sub="Manage all your customers in one place"
             cta={can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
               style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"14px 22px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 2px 8px rgba(37,99,235,0.3)"}}>
@@ -1722,6 +1740,5 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
             })()}
             </div>;
           })()}
-        </>);})()}
-
-        {/* DELIVERIES */}
+  );
+}

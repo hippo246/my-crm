@@ -4,7 +4,7 @@ import { useStore } from "../lib/store";
 import { D_USERS, D_SETTINGS } from "../lib/constants";
 import { SESSION_TTL, DEVICE_ID } from "../lib/auth";
 import { Login } from "./Login";
-import { CRM } from "../CRM";
+import StaffRouter from "../StaffRouter";
 
 // ── GLOBAL ERROR BOUNDARY ────────────────────────────────────────────────────
 class AppErrorBoundary extends React.Component {
@@ -59,7 +59,7 @@ function RootInner(){
 
   if(!fbReady) return spinner;
   if(!sess) return <Login users={users} onLogin={setSess} dm={dm} settings={settings}/>;
-  return <CRM sess={sess} onLogout={()=>setSess(null)} onSessUpdate={setSess} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
+  return <StaffRouter sess={sess} onLogout={()=>setSess(null)} onSessUpdate={setSess} dm={dm} setDm={setDm} users={users} setUsers={setUsers} settings={settings} setSettings={setSettings}/>;
 }
 
 export default function Root(){

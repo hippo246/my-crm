@@ -1,6 +1,7 @@
 /* eslint-disable */
 import React from "react";
 import { T } from "../lib/theme";
+import { inr } from "../lib/utils";
 
 function MorningBriefing({ dm, onDismiss, onUnpin, pinned, data }) {
   const t = T(dm);

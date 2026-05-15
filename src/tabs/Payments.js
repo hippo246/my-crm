@@ -1,8 +1,17 @@
-/* eslint-disable */
-// TAB: Payments
-// This file contains the Payments tab JSX, extracted from App.js
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
+import React from "react";
+import { SectionHeader, TabStatCards, StatCard, Card, Sheet, Inp, Sel, Btn, Hr, Tog, Search, Pill, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination, BottomNav, Toast, Confirm, ProdRow, OrderEditor } from "../components/ui";
+import { T } from "../lib/theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
+import { exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, exportAgentReceipt, shareWhatsApp, exportWord } from "../lib/exports";
+import { safeArr, safeO, inr, today, uid, ts, lineTotal, lineTotalWithTax } from "../lib/utils";
+import { GPSMap } from "../components/GPSMap";
+import { PasskeyManager, SecuritySessions, FailedLoginAttempts } from "../components/SecurityPanels";
+import { WeatherWidget } from "../components/WeatherWidget";
+import { DetailModal } from "../components/DetailModal";
 
-        {tab==="Payments"&&isAdmin&&(()=>{
+export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalWithTax, deliveries, customers, setDetailModal, taxRtGlobal, invRegistry, paymentLedger, setPayLedgerSh, setPayLedgerCust, setPayLedgerAmt, setPayLedgerNote, setPayLedgerMethod, paymentsSubTab, setPaymentsSubTab, paymentsSearch, setPaymentsSearch, paymentsDateFilter, setPaymentsDateFilter }) {
+  return (()=>{
           const todayStr=today();
           // ── Build comprehensive payment data ──────────────────────────
           const delivPayments=deliveries.filter(d=>d.status==="Delivered").map(d=>{
@@ -386,6 +395,6 @@
                   })}
             </>}
           </>;
-        })()}
 
-        {/* P&L TAB */}
+  })();
+}

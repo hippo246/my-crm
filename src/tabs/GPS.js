@@ -1,8 +1,19 @@
-/* eslint-disable */
-// TAB: GPS — Redesigned
-// Matches reference: clean card layout, stat strips, styled sub-nav tabs
+/* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
+import React from "react";
+import { SectionHeader, TabStatCards, StatCard, Card, Sheet, Inp, Sel, Btn, Hr, Tog, Search, Pill, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination, BottomNav, Toast, Confirm, ProdRow, OrderEditor } from "../components/ui";
+import { T } from "../lib/theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
+import { exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, exportDeliveryReceipt, exportAgentReceipt, shareWhatsApp, exportWord } from "../lib/exports";
+import { safeArr, safeO, inr, today, uid, ts, lineTotal, lineTotalWithTax } from "../lib/utils";
+import { GPSMap } from "../components/GPSMap";
+import { PasskeyManager, SecuritySessions, FailedLoginAttempts } from "../components/SecurityPanels";
+import { WeatherWidget } from "../components/WeatherWidget";
+import { DetailModal } from "../components/DetailModal";
 
-        {tab==="GPS"&&(()=>{
+export default function GPSTab({ dm, t, isAdmin, can, settings, notify, ask, today, ts, safeArr, deliveries, gpsLogs, setGpsLogs, gpsFilter, setGpsFilter, gpsSubSection, setGpsSubSection, gpsDateFilter, setGpsDateFilter, gpsActionFilter, setGpsActionFilter }) {
+  const mapU = (addr,lat,lng) => lat&&lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr||"")}`;
+
+  return (()=>{
           const ACTION_META={
             session_start:    {label:"Session Start",    color:"#6366f1", icon:"🔓"},
             delivery_saved:   {label:"Delivery Saved",   color:"#f59e0b", icon:"💾"},
@@ -261,7 +272,7 @@
                         <span style={{fontSize:15}}>{k.icon}</span>
                       </div>
                       <p style={{color:k.color,fontSize:28,fontWeight:900,lineHeight:1,margin:0}}>{k.val}</p>
-                      <p style={{color:t.sub,fontSize:10,marginTop:4,margin:0,marginTop:4}}>{k.sub}</p>
+                      <p style={{color:t.sub,fontSize:10,margin:0,marginTop:4}}>{k.sub}</p>
                       {/* mini sparkline placeholder */}
                       <svg width="100%" height="28" style={{marginTop:8,opacity:0.5}} viewBox="0 0 100 28" preserveAspectRatio="none">
                         <polyline points="0,24 15,20 28,22 40,14 52,18 65,10 78,15 90,8 100,12" fill="none" stroke={k.spark} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -333,7 +344,7 @@
                           <div style={{background:t.inp,borderRadius:10,padding:"8px 14px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                             <div>
                               <p style={{color:t.sub,fontSize:9,fontWeight:800,letterSpacing:"0.09em",textTransform:"uppercase",margin:0}}>Today</p>
-                              <p style={{color:t.text,fontSize:12,fontWeight:600,marginTop:2,margin:0,marginTop:2}}>
+                              <p style={{color:t.text,fontSize:12,fontWeight:600,margin:0,marginTop:2}}>
                                 {delivToday} deliveries · {todayTotal} pings{activeMins!==null?` · ~${activeMins}min active`:""}
                               </p>
                             </div>
@@ -753,6 +764,6 @@
               }
             `}</style>
           </div>;
-        })()}
 
-        {/* SETTINGS */}
+  })();
+}
