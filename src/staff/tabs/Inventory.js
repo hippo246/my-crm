@@ -294,10 +294,6 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                     <div>
                       <span style={{ background:`${sc}12`, color:sc, border:`1px solid ${sc}28`, borderRadius:"999px", padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-block", boxShadow:`0 0 12px ${sc}20` }}>{statusLabel(item._status)}</span>
                     </div>
-                    {canDelete && (
-                      <div onClick={e => handleDeleteItem(item.id, e)} style={{ cursor:"pointer", color:"rgba(255,80,80,0.55)", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }} title="Delete item">
-                        🗑
-                      </div>
                     )}
                   </div>
                 );
