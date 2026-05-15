@@ -3,7 +3,7 @@
 // Glassmorphism · Neon glows · Rich charts · Touch-optimized
 // ============================================================
 
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { STATUS_COLOR } from "../theme.js";
 
 export const TR = "all 0.18s cubic-bezier(0.4,0,0.2,1)";
