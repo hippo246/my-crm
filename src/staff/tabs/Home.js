@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
-import { SKpiCard, SGradCard, SPill, STag, SBarChart, SLiveBadge, SSectionHeader } from "../components/ui.js";
+import { SKpiCard, SPill, STag, SBarChart, SSectionHeader } from "../components/ui.js";
 import { ref, onValue } from "firebase/database";
 import { db } from "../../firebase.js";
 import { hasPerm, defaultFinePerms } from "../../lib/roles.js";
@@ -132,23 +132,17 @@ export function HomeTab({ t, sess, batches = [], inventory = [], deliveries = []
   const safeBatches    = Array.isArray(batches)    ? batches    : [];
   const safeInventory  = Array.isArray(inventory)  ? inventory  : [];
   const safeDeliveries = Array.isArray(deliveries) ? deliveries : [];
-  const safeStaff      = Array.isArray(staffList)  ? staffList  : [];
+
 
   const activeBatches   = safeBatches.filter(b => (b.actual ?? 0) < (b.target ?? 0));
-  const completedToday  = safeBatches.filter(b => (b.actual ?? 0) >= (b.target ?? 0));
   const pendingQC       = safeBatches.filter(b => !b.qcGrade && (b.actual ?? 0) > 0);
   const pendingDispatch = safeDeliveries.filter(d => ["pending","in transit"].includes((d.status||"").toLowerCase()));
   const lowStock        = safeInventory.filter(i => typeof i.stock === "number" && typeof i.minStock === "number" && i.stock <= i.minStock);
-  const onShift         = safeStaff.filter(s => s.present);
 
   const totalPacked    = safeBatches.reduce((s, b) => s + (b.actual ?? 0), 0);
   const totalTarget    = safeBatches.reduce((s, b) => s + (b.target ?? 0), 0);
   const overallPct     = totalTarget > 0 ? Math.min(100, Math.round((totalPacked / totalTarget) * 100)) : 0;
   const totalDelivered = safeDeliveries.filter(d => d.status === "Delivered").length;
-
-  const myRecord = safeStaff.find(s =>
-    sess?.name && (s.name||"").toLowerCase() === (sess.name||"").toLowerCase()
-  );
 
   const h = now.getHours();
   const greeting = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";

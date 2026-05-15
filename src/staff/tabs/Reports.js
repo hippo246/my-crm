@@ -67,7 +67,7 @@ function LineChart({ data = [], color = "#3b82f6", height = 100, width = "100%",
 }
 
 // ── small metric chip ─────────────────────────────────────────
-function MetricChip({ label, value, color, trend }) {
+function MetricChip({ label, value, color, trend, t }) {
   const up = trend >= 0;
   return (
     <div style={{
@@ -75,7 +75,7 @@ function MetricChip({ label, value, color, trend }) {
       padding: "14px 16px", borderRadius: 12,
       background: `${color}0a`, border: `1px solid ${color}20`,
     }}>
-      <div style={{ color: "#6b748f", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ color: t?.sub ?? "#6b748f", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</div>
       <div style={{ color, fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
       {trend !== undefined && (
         <div style={{ color: up ? "#10B981" : "#ef4444", fontSize: 10, fontWeight: 700 }}>
@@ -473,7 +473,7 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
           { label: "Efficiency",    value: `${efficiency}%`,                       color: "#8B5CF6",  icon: "⚡", trend: efficiency - 85 },
           { label: "QC Pass Rate",  value: qcTotal > 0 ? `${Math.round((passedQC / qcTotal) * 100)}%` : "—", color: "#10B981", icon: "✅", trend: 3 },
         ].map(k => (
-          <MetricChip key={k.label} {...k} />
+          <MetricChip key={k.label} {...k} t={t} />
         ))}
       </div>
 
@@ -488,7 +488,7 @@ export function ReportsTab({ t, batches = [], inventory = [], deliveries = [], s
             ].map(c => (
               <button key={c.k} onClick={() => setActiveChart(c.k)} style={{
                 padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-                background: activeChart === c.k ? `${c.color}18` : "transparent",
+                background: activeChart === c.k ? `${c.color}18` : t.bg2,
                 color: activeChart === c.k ? c.color : t.sub,
                 fontWeight: 700, fontSize: 11, transition: "all 0.15s",
                 borderBottom: activeChart === c.k ? `2px solid ${c.color}` : "2px solid transparent",

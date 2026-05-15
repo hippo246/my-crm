@@ -139,8 +139,7 @@ export function StaffUI({ sess, onLogout }) {
   const activeBatch = safeBatches.find(b => (b.actual ?? 0) > 0 && (b.actual ?? 0) < (b.target ?? 0));
 
   // ── SIDEBAR ─────────────────────────────────────────────────
-  function Sidebar() {
-    return (
+  const sidebar = (
       <div style={{
         width: sidebarOpen ? 224 : 68,
         background: t.sidebar,
@@ -276,12 +275,10 @@ export function StaffUI({ sess, onLogout }) {
           >{sidebarOpen ? "← Log Out" : "→"}</button>
         </div>
       </div>
-    );
-  }
+  );
 
   // ── HEADER ──────────────────────────────────────────────────
-  function Header() {
-    return (
+  const header = (
       <div style={{
         background:t.header, borderBottom:`1px solid ${t.border}`,
         padding:"0 20px", height:58, display:"flex", alignItems:"center",
@@ -334,12 +331,10 @@ export function StaffUI({ sess, onLogout }) {
           )}
         </div>
       </div>
-    );
-  }
+  );
 
   // ── RIGHT CONTEXT PANEL ─────────────────────────────────────
-  function RightPanel() {
-    return (
+  const rightPanel = (
       <div style={{
         width:220, background:t.sidebar, borderLeft:`1px solid ${t.border}`,
         display:"flex", flexDirection:"column", gap:0,
@@ -423,12 +418,10 @@ export function StaffUI({ sess, onLogout }) {
           )}
         </div>
       </div>
-    );
-  }
+  );
 
   // ── BOTTOM NAV ──────────────────────────────────────────────
-  function BottomNav() {
-    return (
+  const bottomNav = (
       <div style={{
         position:"fixed", bottom:0, left:0, right:0,
         background: lightMode ? "rgba(255,255,255,0.97)" : "rgba(8,12,21,0.97)",
@@ -464,8 +457,7 @@ export function StaffUI({ sess, onLogout }) {
           );
         })}
       </div>
-    );
-  }
+  );
 
   // ── TAB CONTENT ─────────────────────────────────────────────
   const renderTab = () => {
@@ -511,19 +503,19 @@ export function StaffUI({ sess, onLogout }) {
         input, textarea, select { font-family: inherit; }
       `}</style>
 
-      {!isMobile && <Sidebar />}
+      {!isMobile && sidebar}
 
       <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
-        <Header />
+        {header}
         <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
           <div style={{ flex:1, overflowY:"auto", paddingBottom: isMobile ? 80 : 0 }}>
             {renderTab()}
           </div>
-          {!isMobile && sidebarOpen && <RightPanel />}
+          {!isMobile && sidebarOpen && rightPanel}
         </div>
       </div>
 
-      {isMobile && <BottomNav />}
+      {isMobile && bottomNav}
       <SToast msg={toast.msg} type={toast.type} visible={toast.visible} />
     </div>
   );

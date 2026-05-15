@@ -159,12 +159,12 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
   };
 
   const glass = {
-    background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+    background: t.card, border: `1px solid ${t.border}`,
     borderRadius: 16, padding: 18, backdropFilter: "blur(20px)",
   };
   const inp = {
-    width: "100%", background: "rgba(255,255,255,0.05)",
-    border: "1.5px solid rgba(255,255,255,0.1)", color: t.text,
+    width: "100%", background: t.inp,
+    border: `1.5px solid ${t.border2}`, color: t.text,
     borderRadius: 9, padding: "9px 12px", fontSize: 13,
     outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   };
@@ -214,8 +214,8 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
           { label: "Cancelled",  value: counts.Cancelled,    color: "#ef4444", icon: "❌", key: "Cancelled" },
         ].map(s => (
           <div key={s.key} onClick={() => setFilter(filter === s.key ? "all" : s.key)} style={{
-            background: filter === s.key ? `${s.color}14` : "rgba(255,255,255,0.03)",
-            border: `1px solid ${filter === s.key ? s.color+"40" : "rgba(255,255,255,0.07)"}`,
+            background: filter === s.key ? `${s.color}14` : t.card,
+            border: `1px solid ${filter === s.key ? s.color+"40" : t.border}`,
             borderRadius: 14, padding: "14px 16px", textAlign: "center", cursor: "pointer", transition: "all 0.18s",
           }}>
             <div style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</div>
@@ -235,7 +235,7 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
           {["all","Pending","In Transit","Delivered","Cancelled"].map(k => (
             <button key={k} onClick={() => setFilter(k)} style={{
               padding: "8px 12px", borderRadius: 9, border: "none",
-              background: filter === k ? GRAD : "rgba(255,255,255,0.05)",
+              background: filter === k ? GRAD : t.card,
               color: filter === k ? "#fff" : t.sub,
               fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
               minHeight: 36,
@@ -336,7 +336,7 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
         }}
           onClick={() => setLogOpen(false)}>
           <div style={{
-            background: t.card||"#111827", borderRadius: "22px 22px 0 0",
+            background: t.modal||t.card, borderRadius: "22px 22px 0 0",
             padding: isMobile ? "20px 16px 28px" : "24px 24px 32px",
             width: "100%", maxWidth: 680, maxHeight: "90vh", overflowY: "auto",
             border: "1px solid rgba(255,255,255,0.1)", borderBottom: "none",
@@ -370,11 +370,11 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
                 <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: t.muted, fontSize: 12, pointerEvents: "none" }}>▾</span>
               </div>
               {custDropOpen && filteredCusts.length > 0 && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: t.card||"#1a1f36", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, marginTop: 4, maxHeight: 220, overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: t.card, border: `1px solid ${t.border}`, borderRadius: 12, marginTop: 4, maxHeight: 220, overflowY: "auto", boxShadow: t.shadow }}>
                   {filteredCusts.map(c => (
                     <div key={c.id} onClick={() => { setField("customer", c.name||""); setField("customerId", c.id||""); setField("address", c.address||c.area||""); setField("phone", c.phone||""); setCustSearch(""); setCustDropOpen(false); }}
-                      style={{ padding: "11px 14px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                      style={{ padding: "11px 14px", cursor: "pointer", borderBottom: `1px solid ${t.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = t.cardHov}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                       <div style={{ color: t.text, fontWeight: 700, fontSize: 13 }}>{c.name}</div>
@@ -413,8 +413,8 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
                   isMobile ? (
                     /* Mobile: stacked layout per item */
                     <div key={i} style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.07)",
+                      background: t.cardAlt,
+                      border: `1px solid ${t.border}`,
                       borderRadius: 10, padding: "10px 12px",
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -500,8 +500,8 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
                 <button onClick={() => handleSave("Pending")} style={{
                   flex: 1, minWidth: isMobile ? "100%" : "auto",
                   padding: "13px 0", borderRadius: 11,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  background: "rgba(255,255,255,0.05)", color: t.text,
+                  border: `1px solid ${t.border2}`,
+                  background: t.cardAlt, color: t.text,
                   fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
                 }}>💾 Save as Pending</button>
               )}

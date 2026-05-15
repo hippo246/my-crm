@@ -37,9 +37,9 @@ const D_SETTINGS = {
   workerRequirements: { default: 12 },
 };
 
-function genBatchLabel() {
+function genBatchLabel(prefix = "PR") {
   const ts = Date.now().toString(36).toUpperCase().slice(-4);
-  return `PR-${new Date().getFullYear()}-${ts}`;
+  return `${prefix}-${new Date().getFullYear()}-${ts}`;
 }
 
 function estimateRaw(qty) {
@@ -81,11 +81,22 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
   const sp    = settings?.staffPortal || {};
   const spOn  = (key, def) => sp[key] !== undefined ? sp[key] : def;
 
-  const prodItems   = settings?.prodItems        ?? D_SETTINGS.prodItems;
-  const machines    = settings?.machines         ?? D_SETTINGS.machines;
-  const shifts      = settings?.shifts           ?? D_SETTINGS.shifts;
-  const unitPresets = settings?.batchUnitPresets ?? D_SETTINGS.batchUnitPresets;
+  // Data lists — come from staffPortal (saved by Settings.js EditList/upd)
+  // with fallback to top-level settings keys, then hardcoded defaults
+  const prodItems   = sp.prodItems   ?? settings?.prodItems   ?? D_SETTINGS.prodItems;
+  const machines    = sp.productionMachines ?? settings?.machines ?? D_SETTINGS.machines;
+  const shifts      = sp.productionShifts   ?? settings?.shifts   ?? D_SETTINGS.shifts;
+  const unitPresets = sp.productionQtyPresets ?? settings?.batchUnitPresets ?? D_SETTINGS.batchUnitPresets;
+  // Workers: sp.productionDefaultWorkers (from Settings number input) wins
+  const defaultWorkers = sp.productionDefaultWorkers ?? 12;
   const workerReq   = settings?.workerRequirements ?? D_SETTINGS.workerRequirements;
+
+  // ── display toggles (wired from Settings → Staff Portal → Production) ──
+  const showPreview  = spOn("productionShowPreview",  true);
+  const showMachine  = spOn("productionShowMachine",  true);
+  const showShift    = spOn("productionShowShift",    true);
+  const showWorkers  = spOn("productionShowWorkers",  true);
+  const showHistory  = spOn("productionShowHistory",  true);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantity, setQuantity]               = useState(500);
@@ -102,24 +113,33 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
       !search || (p.name || "").toLowerCase().includes(search.toLowerCase())
     ), [prodItems, search]);
 
+
   const activeBatches    = safe.filter(b => (b.actual ?? 0) < (b.target ?? 0) && !b.onHold);
   const completedBatches = safe.filter(b => (b.actual ?? 0) >= (b.target ?? 0));
   const inProgressCount  = safe.filter(b => (b.actual ?? 0) > 0 && (b.actual ?? 0) < (b.target ?? 0)).length;
-  const workers  = workerReq?.[selectedProduct?.id] ?? workerReq?.default ?? 12;
 
-  // Perm AND portal toggle — both must pass
   const canView  = (hasPerm(sess, "prod_add") || hasPerm(sess, "prod_edit")) && spOn("productionCanAdd", true);
   const canStart = hasPerm(sess, "prod_add") && spOn("productionCanAdd", true);
   const canEdit  = hasPerm(sess, "prod_edit") && spOn("productionCanEdit", false);
   const showTargets = spOn("productionShowTargets", true);
-  const isReady  = selectedProduct && quantity > 0 && machine && shift;
+  const isReady  = selectedProduct && quantity > 0 && (machine || !showMachine) && (shift || !showShift);
   const accent   = selectedProduct?.color || COLOR;
+
+  // workers: per-product override first, then sp.productionDefaultWorkers, then workerReq.default
+  const workers = workerReq?.[selectedProduct?.id] ?? defaultWorkers;
 
   const totalTarget = showTargets ? safe.reduce((s, b) => s + (b.target ?? 0), 0) : 0;
   const totalActual = safe.reduce((s, b) => s + (b.actual ?? 0), 0);
   const overallPct  = totalTarget > 0 ? Math.min(100, Math.round((totalActual / totalTarget) * 100)) : 69;
 
-  const panelStyle = {
+  // Light mode awareness (lightMode passed in via t already, but panels need explicit style)
+  const lightMode = spOn("staffLightMode", false);
+  const panelStyle = lightMode ? {
+    background: "#ffffff",
+    border: "1px solid rgba(15,23,42,0.10)",
+    borderRadius: 18, padding: "18px",
+    boxShadow: "0 1px 3px rgba(15,23,42,0.08), 0 4px 16px rgba(15,23,42,0.06)",
+  } : {
     background: "rgba(255,255,255,0.03)",
     border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 18, padding: "18px",
@@ -131,7 +151,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
     if (!isReady) { notify("Please complete all fields", "warning"); return; }
     const newBatch = {
       id:         `batch_${Date.now()}`,
-      batchLabel: genBatchLabel(),
+      batchLabel: genBatchLabel(sp.batchPrefix || "PR"),
       product:    selectedProduct.name,
       productId:  selectedProduct.id,
       target:     quantity,
@@ -232,7 +252,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
 
         {/* ── PANEL 1: Select Product ──────────────────────── */}
         <div style={panelStyle}>
-          <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
+          <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
             SELECT PRODUCT
           </div>
 
@@ -268,15 +288,15 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
                   key={p.id}
                   onClick={() => setSelectedProduct(isSel ? null : p)}
                   style={{
-                    background:   isSel ? `${pacc}18` : "rgba(255,255,255,0.03)",
-                    border:       `1.5px solid ${isSel ? pacc + "55" : "rgba(255,255,255,0.08)"}`,
+                    background:   isSel ? `${pacc}18` : lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)",
+                    border:       `1.5px solid ${isSel ? pacc + "55" : lightMode ? "rgba(15,23,42,0.10)" : "rgba(255,255,255,0.08)"}`,
                     borderRadius: 12, padding: "12px 8px",
                     cursor: "pointer", transition: "all 0.18s", textAlign: "center",
                     boxShadow: isSel ? `0 0 20px ${pacc}25` : "none",
                     position: "relative",
                   }}
-                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = lightMode ? "#eef0f8" : "rgba(255,255,255,0.06)"; }}
+                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)"; }}
                 >
                   {isSel && (
                     <div style={{
@@ -305,7 +325,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
           boxShadow: selectedProduct ? `0 8px 32px rgba(0,0,0,0.4), 0 0 40px ${accent}10` : "0 8px 32px rgba(0,0,0,0.4)",
           transition: "border-color 0.2s, box-shadow 0.2s",
         }}>
-          <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>
+          <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>
             BATCH DETAILS
           </div>
 
@@ -347,7 +367,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               🔒 View only — editing disabled by admin
             </div>
           )}
-          <div style={{ marginBottom: 12 }}>
+          {showMachine && <div style={{ marginBottom: 12 }}>
             <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
               ⚙️ Machine
             </div>
@@ -359,9 +379,9 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               t={t}
               disabled={!canEdit}
             />
-          </div>
+          </div>}
 
-          <div style={{ marginBottom: 16 }}>
+          {showShift && <div style={{ marginBottom: 16 }}>
             <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
               🕐 Shift
             </div>
@@ -373,28 +393,30 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               t={t}
               disabled={!canEdit}
             />
-          </div>
+          </div>}
 
           {/* Production Preview */}
-          {quantity > 0 && (
+          {showPreview && quantity > 0 && (
             <div style={{
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)",
+              border: lightMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid rgba(255,255,255,0.07)",
               borderRadius: 12, padding: "12px", marginBottom: 16,
             }}>
-              <div style={{ color: "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+              <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
                 PRODUCTION PREVIEW
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {[
-                  { label: "Est. Output",    value: `${(quantity * 10).toLocaleString("en-IN")} pcs`, icon: "📦" },
-                  { label: "Est. Time",      value: estimateDuration(quantity),                         icon: "⏱" },
-                  { label: "Raw Material",   value: estimateRaw(quantity),                              icon: "🌾" },
-                  { label: "Labor Required", value: `${workers} Workers`,                               icon: "👷" },
-                  { label: "Est. Completion",value: estimateCompletion(quantity),                       icon: "🕐" },
-                ].map(s => (
+                  { label: "Est. Output",    value: `${(quantity * 10).toLocaleString("en-IN")} pcs`, icon: "📦", show: true },
+                  { label: "Est. Time",      value: estimateDuration(quantity),                         icon: "⏱",  show: true },
+                  { label: "Raw Material",   value: estimateRaw(quantity),                              icon: "🌾", show: true },
+                  { label: "Labor Required", value: `${workers} Workers`,                               icon: "👷", show: showWorkers },
+                  { label: "Est. Completion",value: estimateCompletion(quantity),                       icon: "🕐", show: true },
+                ].filter(s => s.show).map(s => (
                   <div key={s.label} style={{
-                    background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 10px",
-                    border: "1px solid rgba(255,255,255,0.05)",
+                    background: lightMode ? "#ffffff" : "rgba(255,255,255,0.03)",
+                    borderRadius: 8, padding: "8px 10px",
+                    border: lightMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid rgba(255,255,255,0.05)",
                   }}>
                     <div style={{ color: t.muted, fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{s.label}</div>
                     <div style={{ color: t.text, fontSize: 12, fontWeight: 800 }}>{s.value}</div>
@@ -428,7 +450,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
 
         {/* ── PANEL 3: Today's Summary ─────────────────────── */}
         <div style={panelStyle}>
-          <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
+          <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
             TODAY'S SUMMARY
           </div>
 
@@ -471,9 +493,9 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
             ))}
           </div>
 
-          {activeBatches.length > 0 && (
+          {showHistory && activeBatches.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ color: "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+              <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
                 ACTIVE BATCHES
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -481,8 +503,8 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
                   const pct = b.target > 0 ? Math.min(100, Math.round((b.actual / b.target) * 100)) : 0;
                   return (
                     <div key={b.id} style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.07)",
+                      background: lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)",
+                      border: lightMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid rgba(255,255,255,0.07)",
                       borderRadius: 10, padding: "10px 12px",
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>

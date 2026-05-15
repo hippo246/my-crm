@@ -183,7 +183,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
           >
             <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
             <div style={{ color: s.color, fontSize: 26, fontWeight: 900, lineHeight: 1 }}>{s.value}</div>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 10, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.07em" }}>{s.label}</div>
+            <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.07em" }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -191,7 +191,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
       {/* ── Inspection panel (active) ───────────────────────────── */}
       {selected ? (
         <div style={{
-          background:    "rgba(255,255,255,0.03)",
+          background:    t.card,
           border:        `1.5px solid ${COLOR}35`,
           borderRadius:  20,
           padding:       "22px",
@@ -246,7 +246,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
 
           {/* Checklist items */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
+            <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
               Checklist · {checkedCount}/{checklistItems.length} completed
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -295,7 +295,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
           {/* Grade picker — only when no failures */}
           {allChecked && failCount === 0 && (
             <div style={{ marginBottom: 18 }}>
-              <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+              <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
                 Assign Grade
               </div>
               <div style={{ display: "flex", gap: 9 }}>
@@ -312,7 +312,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                   }}>{g.value}</button>
                 ))}
               </div>
-              <div style={{ color: "rgba(255,255,255,0.25)", fontSize: 10, marginTop: 7 }}>
+              <div style={{ color: t.muted, fontSize: 10, marginTop: 7 }}>
                 {grades.find(g => g.value === grade)?.label}
               </div>
             </div>
@@ -320,22 +320,22 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
 
           {/* Inspector notes */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+            <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
               💬 Inspector Notes
             </div>
             <textarea
               value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="Optional observations, defects, or recommendations..."
               style={{
-                width: "100%", background: "rgba(255,255,255,0.04)",
-                border: "1.5px solid rgba(255,255,255,0.08)",
+                width: "100%", background: t.cardAlt,
+                border: `1.5px solid ${t.border}`,
                 color: t.text, borderRadius: 12, padding: "12px 14px",
                 fontSize: 13, outline: "none", minHeight: 76, resize: "vertical",
                 fontFamily: "inherit", boxSizing: "border-box",
                 transition: "all 0.15s",
               }}
               onFocus={e => { e.target.style.borderColor = `${COLOR}55`; e.target.style.boxShadow = `0 0 0 3px ${COLOR}10`; }}
-              onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.boxShadow = ""; }}
+              onBlur={e => { e.target.style.borderColor = t.border; e.target.style.boxShadow = ""; }}
             />
           </div>
 
@@ -349,7 +349,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                 display:      "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div>
-                  <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
+                  <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
                     INSPECTION RESULT
                   </div>
                   <div style={{
@@ -410,8 +410,8 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             {filtered.length === 0 ? (
               <div style={{
-                background:    "rgba(255,255,255,0.02)",
-                border:        "1px solid rgba(255,255,255,0.06)",
+                background:    t.card,
+                border:        `1px solid ${t.border}`,
                 borderRadius:  18, padding: "50px", textAlign: "center",
                 backdropFilter: "blur(20px)",
               }}>
@@ -430,8 +430,8 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                 const statusKey   = b.qcGrade === "Rejected" ? "Rejected" : b.qcGrade ? "pass" : "pending";
                 return (
                   <div key={b.id} style={{
-                    background:     "rgba(255,255,255,0.025)",
-                    border:         `1px solid rgba(255,255,255,0.07)`,
+                    background:     t.card,
+                    border:         `1px solid ${t.border}`,
                     borderLeft:     `3px solid ${gc}`,
                     borderRadius:   14,
                     padding:        "15px 16px",
@@ -440,8 +440,8 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                     transition:     "all 0.15s",
                     boxShadow:      `inset 0 0 0 1px rgba(255,255,255,0.02)`,
                   }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = `rgba(255,255,255,0.12)`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.025)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = t.cardAlt; e.currentTarget.style.borderColor = t.borderHover || t.border; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = t.card; e.currentTarget.style.borderColor = t.border; }}
                   >
                     <div>
                       <div style={{ color: t.text, fontWeight: 800, fontSize: 15 }}>{b.product}</div>
@@ -482,7 +482,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
       {!selected && Array.isArray(qcLogs) && qcLogs.length > 0 && (
         <div style={{ marginTop: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Recent Inspections</div>
+            <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Recent Inspections</div>
             {canExport && <SBtn v="ghost" color={COLOR} sm onClick={() => exportQCCSV(qcLogs)}>⬇ Export CSV</SBtn>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

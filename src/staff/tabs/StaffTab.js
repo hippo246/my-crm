@@ -13,7 +13,6 @@
 import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SSheet, SAvatar, SPill } from "../components/ui.js";
-import { hasPerm } from "../../lib/roles.js";
 
 const COLOR = TAB_ACCENT.staff.solid;
 const GRAD  = TAB_ACCENT.staff.gradient;

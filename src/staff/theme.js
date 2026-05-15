@@ -4,49 +4,49 @@
 
 export const ST = (lightMode = false) => {
   if (lightMode) return {
-    // ── Light mode backgrounds
-    bg:      "#f4f6fb",
-    bg2:     "#eef1f8",
-    bg3:     "#e8ecf5",
-    card:    "#ffffff",
-    cardHov: "#f0f3fa",
-    cardAlt: "#f8faff",
-    sidebar: "#ffffff",
-    header:  "#ffffff",
-    inp:     "#f0f3fa",
+    // ── Backgrounds — warm white base, slight cream tint so it's not clinical
+    bg:      "#f7f8fc",   // page background — off-white with a whisper of blue
+    bg2:     "#f0f2f9",   // subtle section backgrounds
+    bg3:     "#e8ecf5",   // deeper inset areas (table stripes, code blocks)
+    card:    "#ffffff",   // pure white cards — clean contrast against bg
+    cardHov: "#f5f7ff",   // hover: barely-there blue lift
+    cardAlt: "#fafbff",   // alt card (modals inner sections)
+    sidebar: "#ffffff",   // sidebar pure white, border separates it
+    header:  "#ffffff",   // header pure white
+    inp:     "#f0f2f9",   // input fields — same as bg2, clearly inset
     modal:   "#ffffff",
 
-    // ── Light borders
-    border:  "#dde3f0",
-    border2: "#c8d1e8",
-    border3: "#b8c4dd",
+    // ── Borders — enough contrast to see without being heavy
+    border:  "#e2e7f3",   // default dividers
+    border2: "#cdd5ea",   // stronger separators
+    border3: "#b9c4dc",   // heaviest — used sparingly
 
-    // ── Light text
-    text:  "#111827",
-    sub:   "#6b7280",
-    muted: "#9ca3af",
+    // ── Text — real ink, not harsh black
+    text:  "#0f172a",     // primary — near-black with a blue undertone
+    sub:   "#475569",     // secondary — readable slate
+    muted: "#94a3b8",     // placeholder/disabled — clearly muted
 
-    // ── Accents (same vivid colours, light bg makes them pop)
-    blue:    "#2563eb", blueL:   "rgba(37,99,235,0.10)",  blueG:   "linear-gradient(135deg,#1d4ed8,#3b82f6)",
-    green:   "#059669", greenL:  "rgba(5,150,105,0.10)",  greenG:  "linear-gradient(135deg,#047857,#10B981)",
-    orange:  "#ea580c", orangeL: "rgba(234,88,12,0.10)",  orangeG: "linear-gradient(135deg,#c2410c,#f97316)",
-    yellow:  "#d97706", yellowL: "rgba(217,119,6,0.10)",  yellowG: "linear-gradient(135deg,#b45309,#F59E0B)",
-    purple:  "#7c3aed", purpleL: "rgba(124,58,237,0.10)", purpleG: "linear-gradient(135deg,#6d28d9,#8B5CF6)",
-    red:     "#dc2626", redL:    "rgba(220,38,38,0.10)",  redG:    "linear-gradient(135deg,#b91c1c,#ef4444)",
-    cyan:    "#0891b2", cyanL:   "rgba(8,145,178,0.10)",  cyanG:   "linear-gradient(135deg,#0369a1,#06b6d4)",
-    teal:    "#0d9488", tealL:   "rgba(13,148,136,0.10)", tealG:   "linear-gradient(135deg,#0f766e,#14B8A6)",
-    pink:    "#db2777", pinkL:   "rgba(219,39,119,0.10)", pinkG:   "linear-gradient(135deg,#be185d,#ec4899)",
+    // ── Accents — slightly deeper than dark-mode versions for WCAG contrast on white
+    blue:    "#2563eb", blueL:   "rgba(37,99,235,0.08)",   blueG:   "linear-gradient(135deg,#1d4ed8,#3b82f6)",
+    green:   "#059669", greenL:  "rgba(5,150,105,0.08)",   greenG:  "linear-gradient(135deg,#047857,#10B981)",
+    orange:  "#ea580c", orangeL: "rgba(234,88,12,0.08)",   orangeG: "linear-gradient(135deg,#c2410c,#f97316)",
+    yellow:  "#b45309", yellowL: "rgba(180,83,9,0.08)",    yellowG: "linear-gradient(135deg,#92400e,#d97706)",
+    purple:  "#6d28d9", purpleL: "rgba(109,40,217,0.08)",  purpleG: "linear-gradient(135deg,#5b21b6,#7c3aed)",
+    red:     "#dc2626", redL:    "rgba(220,38,38,0.08)",   redG:    "linear-gradient(135deg,#b91c1c,#ef4444)",
+    cyan:    "#0369a1", cyanL:   "rgba(3,105,161,0.08)",   cyanG:   "linear-gradient(135deg,#075985,#0891b2)",
+    teal:    "#0f766e", tealL:   "rgba(15,118,110,0.08)",  tealG:   "linear-gradient(135deg,#134e4a,#0d9488)",
+    pink:    "#be185d", pinkL:   "rgba(190,24,93,0.08)",   pinkG:   "linear-gradient(135deg,#9d174d,#db2777)",
 
     // ── Semantic
     success: "#059669",
-    warning: "#d97706",
+    warning: "#b45309",
     danger:  "#dc2626",
     info:    "#2563eb",
 
-    // ── Shadows (softer in light mode)
-    shadow:  "0 4px 24px rgba(0,0,0,0.10)",
-    shadow2: "0 2px 10px rgba(0,0,0,0.07)",
-    glow:    (color) => `0 0 20px ${color}25, 0 0 6px ${color}10`,
+    // ── Shadows — layered so cards feel elevated, not floating
+    shadow:  "0 1px 3px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.08)",
+    shadow2: "0 1px 2px rgba(15,23,42,0.04), 0 2px 8px rgba(15,23,42,0.06)",
+    glow:    (color) => `0 0 16px ${color}30, 0 0 4px ${color}18`,
 
     // ── Radii
     r: "16px", r2: "12px", r3: "8px", r4: "6px", rFull: "999px",
@@ -121,7 +121,39 @@ export const TAB_ACCENT = {
   settings:   { solid:"#8B5CF6", light:"rgba(139,92,246,0.1)",  gradient:"linear-gradient(135deg,#6d28d9,#8B5CF6)",  glow:"0 4px 24px rgba(139,92,246,0.4)"  },
 };
 
-export const STATUS_COLOR = (status) => {
+// STATUS_COLOR — pass lightMode=true for light theme variant
+// Dark mode: low-opacity tinted backgrounds with bright text (glows on dark)
+// Light mode: richer tinted backgrounds with deep text (readable on white)
+export const STATUS_COLOR = (status, lightMode = false) => {
+  if (lightMode) {
+    const map = {
+      active:       { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      completed:    { bg:"rgba(37,99,235,0.10)",   text:"#1e3a8a", border:"rgba(37,99,235,0.30)"   },
+      pending:      { bg:"rgba(180,83,9,0.10)",    text:"#78350f", border:"rgba(180,83,9,0.30)"    },
+      Pending:      { bg:"rgba(180,83,9,0.10)",    text:"#78350f", border:"rgba(180,83,9,0.30)"    },
+      dispatched:   { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      Delivered:    { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      "In Transit": { bg:"rgba(109,40,217,0.10)",  text:"#4c1d95", border:"rgba(109,40,217,0.30)"  },
+      "in transit": { bg:"rgba(109,40,217,0.10)",  text:"#4c1d95", border:"rgba(109,40,217,0.30)"  },
+      Cancelled:    { bg:"rgba(220,38,38,0.10)",   text:"#7f1d1d", border:"rgba(220,38,38,0.30)"   },
+      in_progress:  { bg:"rgba(37,99,235,0.10)",   text:"#1e3a8a", border:"rgba(37,99,235,0.30)"   },
+      pass:         { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      fail:         { bg:"rgba(220,38,38,0.10)",   text:"#7f1d1d", border:"rgba(220,38,38,0.30)"   },
+      low:          { bg:"rgba(180,83,9,0.10)",    text:"#78350f", border:"rgba(180,83,9,0.30)"    },
+      ok:           { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      Good:         { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      "Low Stock":  { bg:"rgba(180,83,9,0.10)",    text:"#78350f", border:"rgba(180,83,9,0.30)"    },
+      Critical:     { bg:"rgba(220,38,38,0.10)",   text:"#7f1d1d", border:"rgba(220,38,38,0.30)"   },
+      present:      { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      absent:       { bg:"rgba(220,38,38,0.10)",   text:"#7f1d1d", border:"rgba(220,38,38,0.30)"   },
+      Rejected:     { bg:"rgba(220,38,38,0.10)",   text:"#7f1d1d", border:"rgba(220,38,38,0.30)"   },
+      A:            { bg:"rgba(5,150,105,0.10)",   text:"#065f46", border:"rgba(5,150,105,0.30)"   },
+      B:            { bg:"rgba(180,83,9,0.10)",    text:"#78350f", border:"rgba(180,83,9,0.30)"    },
+      C:            { bg:"rgba(234,88,12,0.10)",   text:"#7c2d12", border:"rgba(234,88,12,0.30)"   },
+    };
+    return map[status] || { bg:"rgba(15,23,42,0.05)", text:"#475569", border:"rgba(15,23,42,0.15)" };
+  }
+
   const map = {
     active:       { bg:"rgba(16,185,129,0.1)",  text:"#10B981", border:"rgba(16,185,129,0.25)"  },
     completed:    { bg:"rgba(59,130,246,0.1)",  text:"#3b82f6", border:"rgba(59,130,246,0.25)"  },

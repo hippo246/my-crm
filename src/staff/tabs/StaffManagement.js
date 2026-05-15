@@ -176,7 +176,7 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
 
   // ── Perms ─────────────────────────────────────────────────
   const canAddStaff    = hasPerm(sess, "prod_add") || sess?.role === "admin";
-  const canClockStaff  = true; // all roles can clock in/out
+  // all roles can clock in/out
   const canRemoveStaff = sess?.role === "admin";
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState("all");

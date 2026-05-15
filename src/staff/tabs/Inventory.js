@@ -134,8 +134,8 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
   const statusIcon  = s => s === "critical" ? "🚨" : s === "low" ? "⚠️" : "✅";
 
   const inp = {
-    width:"100%", background:"rgba(255,255,255,0.05)",
-    border:"1.5px solid rgba(255,255,255,0.1)", color:t.text,
+    width:"100%", background:t.cardAlt,
+    border:`1.5px solid ${t.border}`, color:t.text,
     borderRadius:9, padding:"9px 12px", fontSize:13,
     outline:"none", boxSizing:"border-box", fontFamily:"inherit",
   };
@@ -187,7 +187,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
           }}>
             <div style={{ fontSize: isMobile ? 16 : 20, marginBottom:6 }}>{s.icon}</div>
             <div style={{ color:s.color, fontSize: isMobile ? 22 : 26, fontWeight:900, lineHeight:1 }}>{s.value}</div>
-            <div style={{ color:"rgba(255,255,255,0.3)", fontSize: isMobile ? 8 : 9, fontWeight:800, marginTop:4, textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.label}</div>
+            <div style={{ color:t.sub, fontSize: isMobile ? 8 : 9, fontWeight:800, marginTop:4, textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -249,10 +249,10 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       {/* ── TABLE VIEW — horizontal scroll on mobile ────────── */}
       {(viewMode === "table" || isMobile) && !isMobile && (
         <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-          <div style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, overflow:"hidden", backdropFilter:"blur(20px)", boxShadow:"0 4px 32px rgba(0,0,0,0.3)", minWidth:560 }}>
-            <div style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"10px 18px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.03)" }}>
+          <div style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:16, overflow:"hidden", backdropFilter:"blur(20px)", boxShadow:"0 4px 32px rgba(0,0,0,0.3)", minWidth:560 }}>
+            <div style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"10px 18px", borderBottom:`1px solid ${t.border}`, background:t.cardAlt }}>
               {["MATERIAL","STOCK","MIN","UNIT","USAGE",...(canSeeCost?["COST"]:[]),"STATUS",...(canDelete?[""]:[])].map(h => (
-                <div key={h} style={{ color:"rgba(255,255,255,0.28)", fontSize:8, fontWeight:800, letterSpacing:"0.1em" }}>{h}</div>
+                <div key={h} style={{ color:t.sub, fontSize:8, fontWeight:800, letterSpacing:"0.1em" }}>{h}</div>
               ))}
             </div>
             {safe.length === 0 ? (
@@ -269,7 +269,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                 const stockPct = item.minStock > 0 ? Math.min(100, Math.round((item.stock / (item.minStock * 3)) * 100)) : 100;
                 return (
                   <div key={item.id} onClick={() => { setSelected(item); setDeductQty(0); setDeductOpen(true); }}
-                    style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"13px 18px", borderBottom: i < filtered.length-1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor:"pointer", transition:"all 0.15s", alignItems:"center" }}
+                    style={{ display:"grid", gridTemplateColumns:`2fr 0.8fr 0.8fr 0.8fr 1fr${canSeeCost ? " 0.6fr" : ""} 90px${canDelete ? " 40px" : ""}`, padding:"13px 18px", borderBottom: i < filtered.length-1 ? `1px solid ${t.border}` : "none", cursor:"pointer", transition:"all 0.15s", alignItems:"center" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.035)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = ""; }}
                   >
@@ -278,23 +278,22 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                       {item.category && <div style={{ color:t.sub, fontSize:10, marginTop:2 }}>{item.category}</div>}
                     </div>
                     <div style={{ color:sc, fontWeight:900, fontSize:17, fontVariantNumeric:"tabular-nums", textShadow:`0 0 20px ${sc}60` }}>{item.stock ?? "—"}</div>
-                    <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>{item.minStock ?? "—"}</div>
-                    <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>{item.unit || "—"}</div>
+                    <div style={{ color:t.muted, fontSize:12 }}>{item.minStock ?? "—"}</div>
+                    <div style={{ color:t.muted, fontSize:12 }}>{item.unit || "—"}</div>
                     <div>
-                      <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:"999px", overflow:"hidden", maxWidth:100 }}>
+                      <div style={{ height:5, background:t.cardAlt, borderRadius:"999px", overflow:"hidden", maxWidth:100 }}>
                         <div style={{ height:"100%", width:`${stockPct}%`, background:sc, borderRadius:"999px", boxShadow:`0 0 10px ${sc}60`, transition:"width 0.5s ease" }} />
                       </div>
-                      <div style={{ color:"rgba(255,255,255,0.25)", fontSize:8, marginTop:4, fontWeight:700 }}>{stockPct}%</div>
+                      <div style={{ color:t.muted, fontSize:8, marginTop:4, fontWeight:700 }}>{stockPct}%</div>
                     </div>
                     {canSeeCost && (
-                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontVariantNumeric:"tabular-nums" }}>
+                      <div style={{ color:t.sub, fontSize:11, fontVariantNumeric:"tabular-nums" }}>
                         {item.costPer != null ? `₹${item.costPer}/${item.unit||"u"}` : "—"}
                       </div>
                     )}
                     <div>
                       <span style={{ background:`${sc}12`, color:sc, border:`1px solid ${sc}28`, borderRadius:"999px", padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-block", boxShadow:`0 0 12px ${sc}20` }}>{statusLabel(item._status)}</span>
                     </div>
-                    )}
                   </div>
                 );
               })
@@ -307,7 +306,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       {(viewMode === "cards" || isMobile) && (
         <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(auto-fill, minmax(195px, 1fr))", gap:10 }}>
           {safe.length === 0 ? (
-            <div style={{ gridColumn:"1/-1", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"54px", textAlign:"center" }}>
+            <div style={{ gridColumn:"1/-1", background:t.card, border:`1px solid ${t.border}`, borderRadius:16, padding:"54px", textAlign:"center" }}>
               <div style={{ fontSize:44, marginBottom:12, opacity:0.3 }}>🏭</div>
               <div style={{ color:t.text, fontWeight:700, fontSize:15 }}>No inventory items</div>
             </div>
@@ -316,9 +315,9 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
             const stockPct = item.minStock > 0 ? Math.min(100, Math.round((item.stock / (item.minStock * 3)) * 100)) : 100;
             return (
               <div key={item.id} onClick={() => { setSelected(item); setDeductQty(0); setDeductOpen(true); }}
-                style={{ background:"rgba(255,255,255,0.03)", border:`1px solid rgba(255,255,255,0.07)`, borderTop:`3px solid ${sc}`, borderRadius:14, padding: isMobile ? "12px" : "16px", cursor:"pointer", transition:"all 0.18s", backdropFilter:"blur(20px)", boxShadow:`0 0 24px ${sc}08` }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.055)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                style={{ background:t.card, border:`1px solid ${t.border}`, borderTop:`3px solid ${sc}`, borderRadius:14, padding: isMobile ? "12px" : "16px", cursor:"pointer", transition:"all 0.18s", backdropFilter:"blur(20px)", boxShadow:`0 0 24px ${sc}08` }}
+                onMouseEnter={e => { e.currentTarget.style.background = t.cardAlt; }}
+                onMouseLeave={e => { e.currentTarget.style.background = t.card; }}
               >
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
                   <div>
@@ -328,11 +327,11 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                   <span style={{ fontSize:14 }}>{statusIcon(item._status)}</span>
                 </div>
                 <div style={{ color:sc, fontSize: isMobile ? 24 : 30, fontWeight:900, lineHeight:1, marginBottom:3, textShadow:`0 0 24px ${sc}50` }}>{item.stock}</div>
-                <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginBottom:10 }}>{item.unit} in stock</div>
-                <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:"999px", overflow:"hidden" }}>
+                <div style={{ color:t.muted, fontSize:10, marginBottom:10 }}>{item.unit} in stock</div>
+                <div style={{ height:5, background:t.cardAlt, borderRadius:"999px", overflow:"hidden" }}>
                   <div style={{ height:"100%", width:`${stockPct}%`, background:sc, borderRadius:"999px", boxShadow:`0 0 10px ${sc}60`, transition:"width 0.5s ease" }} />
                 </div>
-                <div style={{ color:"rgba(255,255,255,0.25)", fontSize:9, marginTop:5, fontWeight:600 }}>Min: {item.minStock} {item.unit}</div>
+                <div style={{ color:t.muted, fontSize:9, marginTop:5, fontWeight:600 }}>Min: {item.minStock} {item.unit}</div>
               </div>
             );
           })}
@@ -349,7 +348,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       <SSheet open={deductOpen} onClose={() => setDeductOpen(false)} title="📦 Deduct Stock" t={t}>
         {selected && (
           <>
-            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${COLOR}22`, borderRadius:14, padding:"15px 16px", marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ background:t.cardAlt, border:`1px solid ${COLOR}22`, borderRadius:14, padding:"15px 16px", marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <div style={{ color:t.text, fontWeight:800, fontSize:16 }}>{selected.name}</div>
                 <div style={{ color:t.sub, fontSize:12, marginTop:3 }}>{selected.category || ""} · {selected.unit}</div>
@@ -359,7 +358,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                 <div style={{ color:t.sub, fontSize:11, marginTop:2 }}>{selected.unit} in stock</div>
               </div>
             </div>
-            <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>DEDUCT QUANTITY</div>
+            <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>DEDUCT QUANTITY</div>
             <div style={{ display:"flex", justifyContent:"center", marginBottom:22 }}>
               <SQtyPicker value={deductQty} onChange={setDeductQty} min={0} max={selected.stock} t={t} color={COLOR} />
             </div>
@@ -373,11 +372,11 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       {/* ── Usage Entry sheet ─────────────────────────────────── */}
       <SSheet open={usageOpen} onClose={() => setUsageOpen(false)} title="📋 Log Usage Entry" t={t}>
         <div style={{ marginBottom:16 }}>
-          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SELECT MATERIAL</div>
+          <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SELECT MATERIAL</div>
           <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:200, overflowY:"auto" }}>
             {safe.map(item => (
               <div key={item.id} onClick={() => setUsageItem(item)}
-                style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", transition:"all 0.15s", border:`1.5px solid ${usageItem?.id === item.id ? COLOR+"60" : "rgba(255,255,255,0.07)"}`, background: usageItem?.id === item.id ? `${COLOR}12` : "rgba(255,255,255,0.03)" }}
+                style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", transition:"all 0.15s", border:`1.5px solid ${usageItem?.id === item.id ? COLOR+"60" : t.border}`, background: usageItem?.id === item.id ? `${COLOR}12` : t.cardAlt }}
               >
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span style={{ color:t.text, fontWeight:700, fontSize:13 }}>{item.name}</span>
@@ -391,12 +390,12 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
 
         {usageItem && (
           <>
-            <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>QUANTITY USED</div>
+            <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>QUANTITY USED</div>
             <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
               <SQtyPicker value={usageQty} onChange={setUsageQty} min={0} max={usageItem.stock} t={t} color={COLOR} />
             </div>
             <div style={{ marginBottom:16 }}>
-              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>REASON (OPTIONAL)</div>
+              <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>REASON (OPTIONAL)</div>
               <input
                 value={usageReason}
                 onChange={e => setUsageReason(e.target.value)}
@@ -414,11 +413,11 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
       {/* ── Receive Material sheet ────────────────────────────── */}
       <SSheet open={receiveOpen} onClose={() => setReceiveOpen(false)} title="📥 Receive Material" t={t}>
         <div style={{ marginBottom:16 }}>
-          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SELECT MATERIAL</div>
+          <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SELECT MATERIAL</div>
           <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:200, overflowY:"auto" }}>
             {safe.map(item => (
               <div key={item.id} onClick={() => setReceiveItem(item)}
-                style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", transition:"all 0.15s", border:`1.5px solid ${receiveItem?.id === item.id ? COLOR+"60" : "rgba(255,255,255,0.07)"}`, background: receiveItem?.id === item.id ? `${COLOR}12` : "rgba(255,255,255,0.03)" }}
+                style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", transition:"all 0.15s", border:`1.5px solid ${receiveItem?.id === item.id ? COLOR+"60" : t.border}`, background: receiveItem?.id === item.id ? `${COLOR}12` : t.cardAlt }}
               >
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span style={{ color:t.text, fontWeight:700, fontSize:13 }}>{item.name}</span>
@@ -432,12 +431,12 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
 
         {receiveItem && (
           <>
-            <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>QUANTITY RECEIVED</div>
+            <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>QUANTITY RECEIVED</div>
             <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
               <SQtyPicker value={receiveQty} onChange={setReceiveQty} min={0} t={t} color={COLOR} />
             </div>
             <div style={{ marginBottom:16 }}>
-              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SUPPLIER / SOURCE (OPTIONAL)</div>
+              <div style={{ color:t.sub, fontSize:9, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>SUPPLIER / SOURCE (OPTIONAL)</div>
               <input
                 value={receiveSrc}
                 onChange={e => setReceiveSrc(e.target.value)}
