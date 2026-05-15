@@ -763,9 +763,9 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
                 <p style={{color:t.sub,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:14,marginBottom:6}}>Display</p>
                 <TRow label="Show Production Targets" desc="Display daily KG/unit targets to staff" settingKey="productionShowTargets" defOn={true}/>
                 <TRow label="Show Batch History" desc="Staff can see past batches in summary" settingKey="productionShowHistory" defOn={true}/>
-                <TRow label="Show Production Preview" desc="Show Est. Time, Raw Input, Workers estimates" settingKey="productionShowPreview" defOn={true}/>
-                <TRow label="Show Worker Count" desc="Display required workers on each batch" settingKey="productionShowWorkers" defOn={true}/>
-                <TRow label="Show Machine Field" desc="Let staff pick which machine to use" settingKey="productionShowMachine" defOn={true}/>
+                <TRow label="Show Manual Entry Fields" desc="Show Est. Time, Team Members, Est. Completion inputs on batch form" settingKey="productionShowPreview" defOn={true}/>
+                <TRow label="Show Team Members Field" desc="Display team members required field on each batch" settingKey="productionShowWorkers" defOn={true}/>
+                <TRow label="Enable Machine Selection" desc="Staff can pick which machine to use — disable to hide entirely" settingKey="productionShowMachine" defOn={true}/>
                 <TRow label="Show Shift Selector" desc="Let staff pick their current shift" settingKey="productionShowShift" defOn={true}/>
                 <TRow label="Show QC Grade on Batch" desc="Display QC grade result on batch cards" settingKey="productionShowQCGrade" defOn={true}/>
 
@@ -792,9 +792,33 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
               </div></Card>
 
               {/* ── PRODUCTION: Editable product/machine lists ── */}
-              <EditList label="Products (Production Items)" icon="🫓" settingKey="prodItems_names"
-                defaults={["Malabar Paratha","Lachha Paratha","Plain Paratha","Family Pack 20pcs","Mini Paratha","Garlic Paratha"]}
-                color="#f97316"/>
+              {/* ── PRODUCTION: Rich product editor ── */}
+              <Card dm={dm}><div className="p-4">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18}}>🫓</span>
+                    <div>
+                      <p style={{color:t.text,fontWeight:700,fontSize:13}}>Products (Production Items)</p>
+                      <p style={{color:t.sub,fontSize:10,marginTop:1}}>Shown in the Start Batch product grid</p>
+                    </div>
+                  </div>
+                  <Btn dm={dm} v="primary" size="sm" onClick={()=>{setPiF({id:"",name:"",icon:"🫓",color:"#f97316"});setPiSh("add");setSettingsSection("production");}}>+ Add</Btn>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {(settings?.prodItems||[]).length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"8px 0"}}>No items yet — add your first product.</p>}
+                  {(settings?.prodItems||[]).map(item=>(
+                    <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",background:(item.color||"#f97316")+"0d",border:`1px solid ${(item.color||"#f97316")}30`,borderRadius:10}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:(item.color||"#f97316")+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{item.icon||"📦"}</div>
+                      <p style={{color:item.color||t.text,fontWeight:700,fontSize:12,flex:1}}>{item.name}</p>
+                      <button onClick={()=>{setPiF({...item,icon:item.icon||"🫓",color:item.color||"#f97316"});setPiSh(item);setSettingsSection("production");}}
+                        style={{background:"none",border:"none",color:t.sub,fontSize:11,fontWeight:700,cursor:"pointer",padding:"2px 6px"}}>Edit</button>
+                      <button onClick={()=>ask(`Delete ${item.name}?`,()=>{setSettings(s=>({...s,prodItems:(s.prodItems||[]).filter(x=>x.id!==item.id),staffPortal:{...(s.staffPortal||{}),prodItems:(s.staffPortal?.prodItems||[]).filter(x=>x.id!==item.id)}}));notify("Item deleted");})}
+                        style={{background:"#dc262618",border:"1px solid #dc262640",color:"#dc2626",fontSize:11,fontWeight:700,cursor:"pointer",borderRadius:6,padding:"2px 8px"}}>Del</button>
+                    </div>
+                  ))}
+                </div>
+                <p style={{color:t.sub,fontSize:10,marginTop:10}}>To add icons and colors, use the Production → Items section or tap "+ Add" above.</p>
+              </div></Card>
               <EditList label="Machine Options" icon="⚙️" settingKey="productionMachines"
                 defaults={["Machine 1","Machine 2","Machine 3","Machine 4"]}
                 color="#8b5cf6"/>
@@ -804,12 +828,12 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
 
               {/* Default workers per shift */}
               <Card dm={dm}><div className="p-4">
-                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>👷 Default Workers Required</p>
-                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>How many workers are expected per batch by default</p>
+                <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:4}}>👷 Default Team Members Required</p>
+                <p style={{color:t.sub,fontSize:11,marginBottom:10}}>Default number of team members expected per batch — staff can override per batch</p>
                 <input type="number" min="1" max="200" value={sp.productionDefaultWorkers??12}
                   onChange={e=>upd("productionDefaultWorkers",Number(e.target.value))}
                   style={{background:t.inp||"#f0f3fa",border:`1.5px solid ${t.border}`,color:t.text,borderRadius:10,padding:"8px 12px",fontSize:14,width:120,outline:"none"}}/>
-                <p style={{color:t.sub,fontSize:10,marginTop:4}}>Staff will see this on the production preview panel</p>
+                <p style={{color:t.sub,fontSize:10,marginTop:4}}>Shown as the default in the Team Members field on the batch form</p>
               </div></Card>
 
               {/* ── REPORTS TAB ── */}
@@ -1313,18 +1337,23 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
                   <p style={{color:t.text,fontWeight:700,fontSize:14}}>🏭 Production Items</p>
                   <p style={{color:t.sub,fontSize:11,marginTop:2}}>Items available when logging batches. Separate from your delivery products — changes here won't affect orders or invoices.</p>
                 </div>
-                <Btn dm={dm} size="sm" style={{background:"#8b5cf6",color:"#fff",border:"none"}} onClick={()=>{setPiF({id:"",name:""});setPiSh("add");}}>+ Add</Btn>
+                <Btn dm={dm} size="sm" style={{background:"#8b5cf6",color:"#fff",border:"none"}} onClick={()=>{setPiF({id:"",name:"",icon:"🫓",color:"#f97316"});setPiSh("add");}}>+ Add Item</Btn>
               </div>
               {(settings?.prodItems||[]).length===0&&<p style={{color:t.sub,fontSize:12,textAlign:"center",padding:"12px 0"}}>No production items yet. Add your first one.</p>}
               {(settings?.prodItems||[]).map(item=>(
-                <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${t.border}`}} className="last:border-0">
-                  <div>
-                    <p style={{color:t.text,fontWeight:600,fontSize:13}}>{item.name}</p>
-                    <p style={{color:t.sub,fontSize:10}}>id: {item.id}</p>
+                <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${t.border}`}} className="last:border-0">
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:10,background:(item.color||"#f97316")+"18",border:`1.5px solid ${(item.color||"#f97316")}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                      {item.icon||"📦"}
+                    </div>
+                    <div>
+                      <p style={{color:item.color||t.text,fontWeight:700,fontSize:13}}>{item.name}</p>
+                      <p style={{color:t.sub,fontSize:10}}>{item.unit||"KG"} · {item.color||"#f97316"}</p>
+                    </div>
                   </div>
                   <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>{setPiF({...item});setPiSh(item);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
-                    <button onClick={()=>ask(`Delete ${item.name||"item"}?`,()=>{setSettings(s=>({...s,prodItems:(s.prodItems||[]).filter(x=>x.id!==item.id)}));notify("Item deleted");})} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Del</button>
+                    <button onClick={()=>{setPiF({...item,icon:item.icon||"🫓",color:item.color||"#f97316"});setPiSh(item);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+                    <button onClick={()=>ask(`Delete ${item.name||"item"}?`,()=>{setSettings(s=>({...s,prodItems:(s.prodItems||[]).filter(x=>x.id!==item.id),staffPortal:{...(s.staffPortal||{}),prodItems:(s.staffPortal?.prodItems||[]).filter(x=>x.id!==item.id)}}));notify("Item deleted");})} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:8,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Del</button>
                   </div>
                 </div>
               ))}
@@ -2023,10 +2052,78 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
       </Sheet>
 
       {/* Production Item Sheet */}
-      <Sheet dm={dm} open={!!piSh} onClose={()=>{setPiSh(null);setPiF({id:"",name:""});}} title={piSh==="add"?"Add Production Item":"Edit Production Item"}>
-        <p style={{color:T(dm).sub,fontSize:12,marginBottom:4}}>Production items are only used in the Production tab (Log Batch). They are completely separate from your delivery products.</p>
-        <Inp dm={dm} label="Item Name *" value={piF.name} onChange={e=>setPiF(f=>({...f,name:e.target.value}))} placeholder="e.g. Paratha, Roti, Special Paratha"/>
-        <Btn dm={dm} onClick={()=>{setPiSh(null);setPiF({id:"",name:""});notify("Item saved");}} className="w-full" style={{background:"#8b5cf6",color:"#fff",border:"none"}}>Save Item</Btn>
+      <Sheet dm={dm} open={!!piSh} onClose={()=>{setPiSh(null);setPiF({id:"",name:"",icon:"🫓",color:"#f97316"});}} title={piSh==="add"?"➕ Add Production Item":"✏️ Edit Production Item"}>
+        <p style={{color:T(dm).sub,fontSize:12,marginBottom:16}}>Production items are only used in the Production tab (Start Batch). Completely separate from your delivery products.</p>
+
+        {/* Icon picker */}
+        <div style={{marginBottom:14}}>
+          <p style={{color:T(dm).sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Icon (tap to pick)</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {["🫓","🥙","🍞","📦","🧄","🌾","🍫","🥐","🧇","🍱","🥘","🍛","🫕","🥜","🌽","🫙","🧀","🥚","🥩","🍗"].map(em=>(
+              <button key={em} onClick={()=>setPiF(f=>({...f,icon:em}))}
+                style={{fontSize:22,padding:"6px 8px",borderRadius:10,border:`2px solid ${piF.icon===em?(piF.color||"#f97316"):"transparent"}`,background:piF.icon===em?(piF.color||"#f97316")+"18":"transparent",cursor:"pointer",transition:"all 0.12s"}}>
+                {em}
+              </button>
+            ))}
+          </div>
+          <div style={{marginTop:8,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{color:T(dm).sub,fontSize:11}}>Or type any emoji:</span>
+            <input value={piF.icon||""} onChange={e=>setPiF(f=>({...f,icon:e.target.value.slice(-2)||e.target.value.slice(-1)||""}))}
+              maxLength={2} placeholder="🫓"
+              style={{width:52,background:T(dm).inp,border:`1.5px solid ${T(dm).border}`,color:T(dm).text,borderRadius:8,padding:"6px 10px",fontSize:18,textAlign:"center",outline:"none"}}/>
+          </div>
+        </div>
+
+        {/* Color picker */}
+        <div style={{marginBottom:14}}>
+          <p style={{color:T(dm).sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Color</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {["#f97316","#F59E0B","#10B981","#3b82f6","#8B5CF6","#06b6d4","#ec4899","#ef4444","#84cc16","#14b8a6","#a855f7","#f43f5e"].map(c=>(
+              <button key={c} onClick={()=>setPiF(f=>({...f,color:c}))}
+                style={{width:28,height:28,borderRadius:"50%",background:c,border:`3px solid ${piF.color===c?"#fff":"transparent"}`,outline:piF.color===c?`2px solid ${c}`:"none",cursor:"pointer",transition:"all 0.12s"}}/>
+            ))}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <input type="color" value={piF.color||"#f97316"} onChange={e=>setPiF(f=>({...f,color:e.target.value}))}
+              style={{width:36,height:36,borderRadius:8,border:"none",cursor:"pointer",background:"none",padding:0}}/>
+            <span style={{color:T(dm).sub,fontSize:11}}>Custom color</span>
+            <span style={{fontSize:13,fontWeight:700,color:piF.color||"#f97316",fontFamily:"monospace"}}>{piF.color||"#f97316"}</span>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div style={{background:(piF.color||"#f97316")+"14",border:`1.5px solid ${(piF.color||"#f97316")}44`,borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:32}}>{piF.icon||"🫓"}</span>
+          <div>
+            <p style={{color:piF.color||"#f97316",fontWeight:800,fontSize:14}}>{piF.name||"Item name…"}</p>
+            <p style={{color:T(dm).sub,fontSize:10,marginTop:2}}>Preview of how this looks in the product grid</p>
+          </div>
+        </div>
+
+        {/* Name */}
+        <Inp dm={dm} label="Item Name *" value={piF.name} onChange={e=>setPiF(f=>({...f,name:e.target.value}))} placeholder="e.g. Malabar Paratha, Roti, Special"/>
+
+        <Btn dm={dm} onClick={()=>{
+          if(!piF.name?.trim()){notify("Enter an item name","warning");return;}
+          const item={
+            id:   piF.id || `p${Date.now()}`,
+            name: piF.name.trim(),
+            icon: piF.icon || "🫓",
+            color:piF.color || "#f97316",
+            unit: "KG",
+          };
+          if(piSh==="add"){
+            setSettings(s=>({...s,prodItems:[...(s.prodItems||[]),item]}));
+          } else {
+            setSettings(s=>({...s,prodItems:(s.prodItems||[]).map(x=>x.id===item.id?item:x)}));
+          }
+          // also sync to staffPortal.prodItems so ProductionStart picks it up
+          setSettings(s=>({...s,staffPortal:{...(s.staffPortal||{}),prodItems:[...(piSh==="add"?(s.prodItems||[]):(s.prodItems||[]).filter(x=>x.id!==item.id)),item]}}));
+          setPiSh(null);setPiF({id:"",name:"",icon:"🫓",color:"#f97316"});
+          notify(`${piSh==="add"?"Added":"Updated"}: ${item.name} ✓`,"success");
+        }} className="w-full" style={{background:piF.color||"#8b5cf6",color:"#fff",border:"none"}}>
+          {piSh==="add"?"➕ Add Item":"💾 Save Changes"}
+        </Btn>
       </Sheet>
       <Sheet dm={dm} open={changePwSh} onClose={()=>setChangePwSh(false)} title="Change Password">
         <Inp dm={dm} label="Current Password" type="password" value={changePwF.current} onChange={e=>setChangePwF(f=>({...f,current:e.target.value}))} placeholder="Enter current password"/>

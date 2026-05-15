@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import {
-  SBtn, SQtyPicker, SSel,
+  SBtn, SSel,
   SSheet, SHr, SProgress, SDonut,
 } from "../components/ui.js";
 import { useStore } from "../../lib/store.js";
@@ -42,22 +42,7 @@ function genBatchLabel(prefix = "PR") {
   return `${prefix}-${new Date().getFullYear()}-${ts}`;
 }
 
-function estimateRaw(qty) {
-  return `${Math.ceil(qty * 1.08).toLocaleString("en-IN")} KG`;
-}
-
-function estimateDuration(qty) {
-  const totalMins = Math.ceil(qty / 40);
-  const h = Math.floor(totalMins / 60);
-  const m = totalMins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function estimateCompletion(qty) {
-  const mins = Math.ceil(qty / 40);
-  const d = new Date(Date.now() + mins * 60000);
-  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-}
+// All estimates are manual — no auto-calc helpers needed
 
 // ── Responsive hook ──────────────────────────────────────────
 function useIsMobile(bp = 700) {
@@ -100,10 +85,16 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantity, setQuantity]               = useState(500);
+  const [quantityInput, setQuantityInput]     = useState("500");
   const [machine, setMachine]                 = useState("");
   const [shift, setShift]                     = useState("");
+  const [estTime, setEstTime]                 = useState("");
+  const [estCompletion, setEstCompletion]     = useState("");
+  const [workersInput, setWorkersInput]       = useState("");
   const [confirmOpen, setConfirmOpen]         = useState(false);
   const [search, setSearch]                   = useState("");
+  // Per-batch manual entry: { [batchId]: { piecesMade, weight } }
+  const [batchInputs, setBatchInputs]         = useState({});
 
   const isMobile = useIsMobile();
 
@@ -125,8 +116,8 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
   const isReady  = selectedProduct && quantity > 0 && (machine || !showMachine) && (shift || !showShift);
   const accent   = selectedProduct?.color || COLOR;
 
-  // workers: per-product override first, then sp.productionDefaultWorkers, then workerReq.default
-  const workers = workerReq?.[selectedProduct?.id] ?? defaultWorkers;
+  // workers: manual input wins, else sp default, else workerReq.default
+  const workers = workersInput || (workerReq?.[selectedProduct?.id] ?? defaultWorkers);
 
   const totalTarget = showTargets ? safe.reduce((s, b) => s + (b.target ?? 0), 0) : 0;
   const totalActual = safe.reduce((s, b) => s + (b.actual ?? 0), 0);
@@ -157,8 +148,13 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
       target:     quantity,
       actual:     0,
       damaged:    0,
+      piecesMade: 0,
+      weight:     0,
       machine,
       shift,
+      estTime:       estTime || "",
+      estCompletion: estCompletion || "",
+      workers:       workersInput ? parseInt(workersInput, 10) || 0 : workers,
       date:       new Date().toLocaleDateString("en-IN"),
       startedAt:  new Date().toISOString(),
       startedBy:  sess?.name || "Staff",
@@ -188,6 +184,8 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
       target:      newBatch.target,
       actual:      newBatch.actual,
       damaged:     newBatch.damaged,
+      piecesMade:  newBatch.piecesMade,
+      weight:      newBatch.weight,
       machine:     newBatch.machine,
       shift:       newBatch.shift,
       date:        newBatch.date,
@@ -205,8 +203,12 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
     setConfirmOpen(false);
     setSelectedProduct(null);
     setQuantity(500);
+    setQuantityInput("500");
     setMachine("");
     setShift("");
+    setEstTime("");
+    setEstCompletion("");
+    setWorkersInput("");
   };
 
   return (
@@ -343,7 +345,7 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               {(unitPresets || [250, 500, 750, 1000]).map(v => (
                 <button
                   key={v}
-                  onClick={() => setQuantity(v)}
+                  onClick={() => { setQuantity(v); setQuantityInput(String(v)); }}
                   style={{
                     padding: "6px 12px", borderRadius: 8, border: "none",
                     cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700,
@@ -355,18 +357,22 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
                 >{v} KG</button>
               ))}
             </div>
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <SQtyPicker value={quantity} onChange={canEdit ? setQuantity : () => {}} min={0} t={t} color={accent || COLOR} disabled={!canEdit} />
-            </div>
+            <input
+              type="number"
+              value={quantityInput}
+              onChange={e => { setQuantityInput(e.target.value); const n = parseFloat(e.target.value); if (!isNaN(n) && n >= 0) setQuantity(n); }}
+              placeholder="Enter quantity..."
+              style={{
+                width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                border: `1px solid ${t.border2}`, color: t.text, borderRadius: 10,
+                padding: "10px 12px", fontSize: 13, fontWeight: 700, outline: "none",
+                boxSizing: "border-box", fontFamily: "inherit",
+              }}
+              onFocus={e => { e.target.style.borderColor = accent || COLOR; e.target.style.boxShadow = `0 0 0 3px ${accent || COLOR}15`; }}
+              onBlur={e => { e.target.style.borderColor = t.border2; e.target.style.boxShadow = ""; }}
+            />
           </div>
 
-          <SHr t={t} />
-
-          {!canEdit && (
-            <div style={{ background: "rgba(255,165,0,0.08)", border: "1px solid rgba(255,165,0,0.2)", borderRadius: 10, padding: "8px 12px", marginBottom: 12, color: "rgba(255,165,0,0.8)", fontSize: 11, textAlign: "center" }}>
-              🔒 View only — editing disabled by admin
-            </div>
-          )}
           {showMachine && <div style={{ marginBottom: 12 }}>
             <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
               ⚙️ Machine
@@ -379,9 +385,10 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               t={t}
               disabled={!canEdit}
             />
+            {!canEdit && machine && <div style={{ color: t.muted, fontSize: 10, marginTop: 3 }}>🔒 Locked by admin</div>}
           </div>}
 
-          {showShift && <div style={{ marginBottom: 16 }}>
+          {showShift && <div style={{ marginBottom: 12 }}>
             <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
               🕐 Shift
             </div>
@@ -393,38 +400,71 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               t={t}
               disabled={!canEdit}
             />
+            {!canEdit && shift && <div style={{ color: t.muted, fontSize: 10, marginTop: 3 }}>🔒 Locked by admin</div>}
           </div>}
 
-          {/* Production Preview */}
-          {showPreview && quantity > 0 && (
-            <div style={{
-              background: lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)",
-              border: lightMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid rgba(255,255,255,0.07)",
-              borderRadius: 12, padding: "12px", marginBottom: 16,
-            }}>
-              <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-                PRODUCTION PREVIEW
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {[
-                  { label: "Est. Output",    value: `${(quantity * 10).toLocaleString("en-IN")} pcs`, icon: "📦", show: true },
-                  { label: "Est. Time",      value: estimateDuration(quantity),                         icon: "⏱",  show: true },
-                  { label: "Raw Material",   value: estimateRaw(quantity),                              icon: "🌾", show: true },
-                  { label: "Labor Required", value: `${workers} Workers`,                               icon: "👷", show: showWorkers },
-                  { label: "Est. Completion",value: estimateCompletion(quantity),                       icon: "🕐", show: true },
-                ].filter(s => s.show).map(s => (
-                  <div key={s.label} style={{
-                    background: lightMode ? "#ffffff" : "rgba(255,255,255,0.03)",
-                    borderRadius: 8, padding: "8px 10px",
-                    border: lightMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid rgba(255,255,255,0.05)",
-                  }}>
-                    <div style={{ color: t.muted, fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{s.label}</div>
-                    <div style={{ color: t.text, fontSize: 12, fontWeight: 800 }}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
+          <SHr t={t} />
+
+          {/* Manual fields — shown when admin enables productionShowPreview */}
+          {showPreview && <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            {/* Est. Time */}
+            <div>
+              <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>⏱ Est. Time</div>
+              <input
+                type="text"
+                value={estTime}
+                onChange={e => setEstTime(e.target.value)}
+                placeholder="e.g. 4h 30m"
+                style={{
+                  width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${t.border2}`, color: t.text, borderRadius: 10,
+                  padding: "9px 12px", fontSize: 12, outline: "none",
+                  boxSizing: "border-box", fontFamily: "inherit",
+                }}
+                onFocus={e => { e.target.style.borderColor = accent || COLOR; e.target.style.boxShadow = `0 0 0 3px ${accent || COLOR}15`; }}
+                onBlur={e => { e.target.style.borderColor = t.border2; e.target.style.boxShadow = ""; }}
+              />
             </div>
-          )}
+
+            {/* Team Members Required */}
+            {showWorkers && <div>
+              <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>👷 Team Members Required</div>
+              <input
+                type="number"
+                value={workersInput}
+                onChange={e => setWorkersInput(e.target.value)}
+                placeholder={`Default: ${defaultWorkers}`}
+                min={0}
+                style={{
+                  width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${t.border2}`, color: t.text, borderRadius: 10,
+                  padding: "9px 12px", fontSize: 12, outline: "none",
+                  boxSizing: "border-box", fontFamily: "inherit",
+                }}
+                onFocus={e => { e.target.style.borderColor = accent || COLOR; e.target.style.boxShadow = `0 0 0 3px ${accent || COLOR}15`; }}
+                onBlur={e => { e.target.style.borderColor = t.border2; e.target.style.boxShadow = ""; }}
+              />
+            </div>}
+
+            {/* Est. Completion Time */}
+            <div>
+              <div style={{ color: t.sub, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>🕐 Est. Completion Time</div>
+              <input
+                type="text"
+                value={estCompletion}
+                onChange={e => setEstCompletion(e.target.value)}
+                placeholder="e.g. 06:30 PM"
+                style={{
+                  width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${t.border2}`, color: t.text, borderRadius: 10,
+                  padding: "9px 12px", fontSize: 12, outline: "none",
+                  boxSizing: "border-box", fontFamily: "inherit",
+                }}
+                onFocus={e => { e.target.style.borderColor = accent || COLOR; e.target.style.boxShadow = `0 0 0 3px ${accent || COLOR}15`; }}
+                onBlur={e => { e.target.style.borderColor = t.border2; e.target.style.boxShadow = ""; }}
+              />
+            </div>
+          </div>}
 
           {/* CTA */}
           <button
@@ -498,9 +538,10 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
               <div style={{ color: lightMode ? "#94a3b8" : "rgba(255,255,255,0.28)", fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
                 ACTIVE BATCHES
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {activeBatches.slice(0, 4).map(b => {
                   const pct = b.target > 0 ? Math.min(100, Math.round((b.actual / b.target) * 100)) : 0;
+                  const bi  = batchInputs[b.id] || {};
                   return (
                     <div key={b.id} style={{
                       background: lightMode ? "#f7f8fc" : "rgba(255,255,255,0.03)",
@@ -512,6 +553,55 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
                         <span style={{ color: COLOR, fontSize: 11, fontWeight: 800 }}>{pct}%</span>
                       </div>
                       <SProgress value={b.actual} max={b.target || 1} color={COLOR} t={t} showLabel={false} />
+                      {/* Manual entry: Pieces Made + Weight */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+                        <div>
+                          <div style={{ color: t.muted, fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Pieces Made</div>
+                          <input
+                            type="number"
+                            value={bi.piecesMade ?? ""}
+                            onChange={e => setBatchInputs(prev => ({
+                              ...prev,
+                              [b.id]: { ...prev[b.id], piecesMade: e.target.value }
+                            }))}
+                            onBlur={e => {
+                              const val = parseInt(e.target.value, 10) || 0;
+                              setBatches(prev => prev.map(x => x.id === b.id ? { ...x, piecesMade: val } : x));
+                            }}
+                            placeholder="0"
+                            min={0}
+                            style={{
+                              width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                              border: `1px solid ${t.border2}`, color: t.text, borderRadius: 7,
+                              padding: "5px 8px", fontSize: 11, outline: "none",
+                              boxSizing: "border-box", fontFamily: "inherit",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ color: t.muted, fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Weight (KG)</div>
+                          <input
+                            type="number"
+                            value={bi.weight ?? ""}
+                            onChange={e => setBatchInputs(prev => ({
+                              ...prev,
+                              [b.id]: { ...prev[b.id], weight: e.target.value }
+                            }))}
+                            onBlur={e => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setBatches(prev => prev.map(x => x.id === b.id ? { ...x, weight: val, actual: val } : x));
+                            }}
+                            placeholder="0"
+                            min={0}
+                            style={{
+                              width: "100%", background: lightMode ? "#fff" : "rgba(255,255,255,0.06)",
+                              border: `1px solid ${t.border2}`, color: t.text, borderRadius: 7,
+                              padding: "5px 8px", fontSize: 11, outline: "none",
+                              boxSizing: "border-box", fontFamily: "inherit",
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -528,12 +618,13 @@ export function ProductionStartTab({ t, batches = [], setBatches, sess, notify, 
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 20 }}>
           {[
-            { label: "Product",     value: selectedProduct?.name,                    icon: selectedProduct?.icon || "📦" },
-            { label: "Quantity",    value: `${quantity.toLocaleString("en-IN")} KG`, icon: "🎯" },
-            { label: "Machine",     value: machine || "—",                            icon: "⚙️" },
-            { label: "Shift",       value: shift || "—",                              icon: "🕐" },
-            { label: "Raw Input",   value: estimateRaw(quantity),                     icon: "🌾" },
-            { label: "Workers",     value: `${workers} staff required`,               icon: "👷" },
+            { label: "Product",          value: selectedProduct?.name,                    icon: selectedProduct?.icon || "📦" },
+            { label: "Quantity",         value: `${quantity.toLocaleString("en-IN")} KG`, icon: "🎯" },
+            ...(showMachine ? [{ label: "Machine", value: machine || "—", icon: "⚙️" }] : []),
+            { label: "Shift",            value: shift || "—",                              icon: "🕐" },
+            ...(estTime       ? [{ label: "Est. Time",       value: estTime,       icon: "⏱" }] : []),
+            ...(showWorkers && (workersInput || workers) ? [{ label: "Team Members Required", value: `${workersInput || workers} workers`, icon: "👷" }] : []),
+            ...(estCompletion ? [{ label: "Est. Completion", value: estCompletion, icon: "🕐" }] : []),
           ].map(r => (
             <div key={r.label} style={{
               display: "flex", alignItems: "center", gap: 12,
