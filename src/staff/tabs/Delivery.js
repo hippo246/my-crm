@@ -33,7 +33,7 @@ function useIsMobile(bp = 600) {
   return mobile;
 }
 
-export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, settings }) {
+export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, settings, setActivityLog }) {
   const [rawCustomers] = useStore("tas9_cust", []);
   const [vehList]      = useStore("tas9_veh_list", []);
   const [staffList]    = useStore("tas9_staff_list", []);
@@ -140,6 +140,16 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
       status, createdAt: new Date().toISOString(), createdBy: sess?.name||"Staff",
     };
     setDeliveries(prev => [newDel, ...(Array.isArray(prev) ? prev : [])]);
+    setActivityLog?.(prev => [{
+      id:        `act_${Date.now().toString(36)}`,
+      icon:      "🚚",
+      title:     `Delivery logged — ${entry.customer}`,
+      detail:    `Status: ${status} · ${validItems.length} item${validItems.length > 1 ? "s" : ""}`,
+      color:     "#06b6d4",
+      user:      sess?.name || "Staff",
+      role:      sess?.role || "staff",
+      timestamp: new Date().toISOString(),
+    }, ...(Array.isArray(prev) ? prev : [])].slice(0, 200));
     notify(`✅ Delivery logged for ${entry.customer}`, "success");
     setLogOpen(false);
   };
@@ -152,10 +162,31 @@ export function DeliveryTab({ t, deliveries = [], setDeliveries, sess, notify, s
     } else {
       advanceDeliveryStatus(del, actor, setDeliveries, notify);
     }
+    const nextLabel = del.status === "Pending" ? "In Transit" : "Delivered";
+    setActivityLog?.(prev => [{
+      id:        `act_${Date.now().toString(36)}`,
+      icon:      del.status === "Pending" ? "🚚" : "✅",
+      title:     `Delivery ${del.status === "Pending" ? "dispatched" : "delivered"} — ${del.customer}`,
+      detail:    `${del.customer} → ${nextLabel}`,
+      color:     del.status === "Pending" ? "#06b6d4" : "#10B981",
+      user:      sess?.name || "Staff",
+      role:      sess?.role || "staff",
+      timestamp: new Date().toISOString(),
+    }, ...(Array.isArray(prev) ? prev : [])].slice(0, 200));
   };
 
   const cancelDel = del => {
     cancelDelivery(del, actor, setDeliveries, notify);
+    setActivityLog?.(prev => [{
+      id:        `act_${Date.now().toString(36)}`,
+      icon:      "❌",
+      title:     `Delivery cancelled — ${del.customer}`,
+      detail:    `Batch ${del.id} cancelled by ${sess?.name || "Staff"}`,
+      color:     "#ef4444",
+      user:      sess?.name || "Staff",
+      role:      sess?.role || "staff",
+      timestamp: new Date().toISOString(),
+    }, ...(Array.isArray(prev) ? prev : [])].slice(0, 200));
   };
 
   const glass = {

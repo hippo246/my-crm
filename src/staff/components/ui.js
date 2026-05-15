@@ -194,7 +194,7 @@ export function SSheet({ open, onClose, title, children, t }) {
       <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(6px)" }} />
       <div style={{
         position:"relative", background:t.modal, border:`1px solid ${t.border2}`,
-        borderRadius:"20px 20px 0 0", padding:"20px 20px 36px",
+        borderRadius:"20px 20px 0 0", padding:"20px 20px calc(36px + env(safe-area-inset-bottom))",
         maxHeight:"88vh", overflowY:"auto",
         boxShadow:"0 -8px 48px rgba(0,0,0,0.7)",
         animation:"slideUp 0.25s cubic-bezier(0.4,0,0.2,1)",
@@ -471,7 +471,7 @@ export function SToast({ msg, type = "success", visible }) {
   const c = colors[type] || colors.success;
   return (
     <div style={{
-      position:"fixed", bottom:100, left:"50%", transform:`translateX(-50%) translateY(${visible ? 0 : 20}px)`,
+      position:"fixed", bottom:"calc(80px + env(safe-area-inset-bottom))", left:"50%", transform:`translateX(-50%) translateY(${visible ? 0 : 20}px)`,
       opacity: visible ? 1 : 0, pointerEvents:"none",
       background:"rgba(9,13,22,0.96)", border:`1px solid ${c.border}`,
       borderRadius:12, padding:"12px 20px",

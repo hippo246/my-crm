@@ -58,6 +58,19 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [actLog,    setAct,   actLoaded]     =useStore("tas9_act",  []);
   const [wastage,   setWaste, wastageLoaded] =useStore("tas9_waste", D_WASTE);
   const [prodTargets, setProdTargets, ptLoaded]=useStore("tas9_prodtargets", D_PROD_TARGETS);
+  const [staffBatches] = useStore("tas9_batches", []);           // written by StaffUI
+  // staffActivityLog removed — StaffUI now writes directly to tas9_act (unified)
+  // Merge admin prodTargets + staff batches into one list for all tabs.
+  // Staff batches are keyed by batch.id; prodTargets by pt.batchId or pt.id.
+  // Deduplicate: if a staff batch already exists as a prodTarget (same batchId), prefer the staff version.
+  const allBatches = React.useMemo(() => {
+    const safe = Array.isArray(staffBatches) ? staffBatches : [];
+    const safePT = Array.isArray(prodTargets) ? prodTargets : [];
+    const staffIds = new Set(safe.map(b => b.id));
+    // Keep admin prodTargets that don't already have a matching staff batch
+    const adminOnly = safePT.filter(pt => !staffIds.has(pt.batchId) && !staffIds.has(pt.id));
+    return [...safe, ...adminOnly];
+  }, [staffBatches, prodTargets]);
   const [, setPackingTasks]=useStore("tas9_pack", []);
   const [prodItems, setProdItems]=useStore("tas9_prod_items", D_PROD_ITEMS);
   const dataLoaded = custLoaded && delivLoaded && supLoaded && expLoaded && prodLoaded && wastageLoaded && actLoaded && ptLoaded;
@@ -413,7 +426,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const startOfMonth = (() => { const d=new Date(tStr); d.setDate(1); return d.toISOString().slice(0,10); })();
     const safeD = safeArr(deliveries);
     const safeC = safeArr(customers);
-    const safePT = safeArr(prodTargets);
+    const safePT = safeArr(allBatches);
     const safeW = safeArr(wastage);
     const todayDelivs  = safeD.filter(d => d.date === tStr);
     const todayDone    = todayDelivs.filter(d => d.status === "Delivered");
@@ -437,7 +450,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     return {todayDelivs,todayDone,todayPend,todayTransit,todayCancl,todayRev,
             weekDelivs,monthDelivs,weekRev,monthRev,allDue,totalDueAmt,
             todayPT,totalTarget,totalActual,prodPct,overdueD,todayWastage,todayWasteCost};
-  }, [deliveries, customers, prodTargets, wastage]);
+  }, [deliveries, customers, allBatches, wastage]);
 
   const dashReplacementCount = useMemo(()=>safeArr(deliveries).filter(d=>d.replacement?.done).length,[deliveries]);
   const dashPartialCount = useMemo(()=>safeArr(deliveries).filter(d=>d.partialPayment?.enabled&&(+(d.partialPayment?.amount)||0)>0).length,[deliveries]);
@@ -480,7 +493,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     return deliveries.filter(d=>{
       const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
       const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
-      const batchLabels=(prodTargets||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
+      const batchLabels=(allBatches||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
       const productNames=Object.values(safeO(d.orderLines)).filter(l=>l.qty>0).map(l=>l.name||"").join(" ");
       const matchSearch=!q||(d.customer||"").toLowerCase().includes(q)||(d.date||"").includes(q)||(d.status||"").toLowerCase().includes(q)||invNo.toLowerCase().includes(q)||rcptNo.toLowerCase().includes(q)||batchLabels.toLowerCase().includes(q)||productNames.toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q);
       const matchStatus=delivStatusFilter==="all"||d.status===delivStatusFilter;
@@ -872,7 +885,7 @@ setPaySh(null);setPayAmt("");}
         // ── Auto-stamp batchId onto this new delivery if a same-date matching batch exists ──
         let autoBatchId = "";
         if(settings?.prodAutoLinkDeliveries!==false){
-          const todayBatches=prodTargets.filter(pt=>pt.date===delivDate);
+          const todayBatches=allBatches.filter(pt=>pt.date===delivDate);
           const matchedBatch=todayBatches.find(pt=>
             delivItems.some(item=>prodNamesMatch(item,pt.product||""))
           );
@@ -4085,7 +4098,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         </>);})()}
 
         {/* DELIVERIES */}
-        {tab==="Deliveries"&&<DeliveriesTab dm={dm} t={t} isAdmin={isAdmin} sess={sess} can={can} canSeePrices={canSeePrices} settings={settings} notify={notify} addLog={addLog} today={today} inr={inr} ts={ts} safeArr={safeArr} safeO={safeO} lineTotal={lineTotal} exportCSV={exportCSV} exportTabPDF={exportTabPDF} exportTabExcel={exportTabExcel} exportPDF={exportPDF} exportDeliveryLabel={exportDeliveryLabel} exportDeliveryInvoice={exportDeliveryInvoice} shareWhatsApp={shareWhatsApp} deliveries={deliveries} setDeliv={setDeliv} setDf={setDf} setDsh={setDsh} blkD={blkD} delD={delD} delivStatusFilter={delivStatusFilter} setDelivStatusFilter={setDelivStatusFilter} delivDateFilter={delivDateFilter} setDelivDateFilter={setDelivDateFilter} delivDateFrom={delivDateFrom} setDelivDateFrom={setDelivDateFrom} delivDateTo={delivDateTo} setDelivDateTo={setDelivDateTo} delivView={delivView} setDelivView={setDelivView} delivCalendar={delivCalendar} setDelivCalendar={setDelivCalendar} calOffset={calOffset} setCalOffset={setCalOffset} calExpandedDay={calExpandedDay} setCalExpandedDay={setCalExpandedDay} delivPage={delivPage} setDelivPage={setDelivPage} delivBatchFilter={delivBatchFilter} setDelivBatchFilter={setDelivBatchFilter} delivExportOpen={delivExportOpen} setDelivExportOpen={setDelivExportOpen} customers={customers} products={products} setDetailModal={setDetailModal} bulkSelect={bulkSelect} setBulkSelect={setBulkSelect} bulkSelected={bulkSelected} setBulkSelected={setBulkSelected} invRegistry={invRegistry} expandedDeliveryCust={expandedDeliveryCust} setExpandedDeliveryCust={setExpandedDeliveryCust} setLastReceiptData={setLastReceiptData}/>}
+        {tab==="Deliveries"&&<DeliveriesTab dm={dm} t={t} isAdmin={isAdmin} sess={sess} can={can} canSeePrices={canSeePrices} settings={settings} notify={notify} addLog={addLog} today={today} inr={inr} ts={ts} safeArr={safeArr} safeO={safeO} lineTotal={lineTotal} exportCSV={exportCSV} exportTabPDF={exportTabPDF} exportTabExcel={exportTabExcel} exportPDF={exportPDF} exportDeliveryLabel={exportDeliveryLabel} exportDeliveryInvoice={exportDeliveryInvoice} shareWhatsApp={shareWhatsApp} deliveries={deliveries} setDeliv={setDeliv} setDf={setDf} setDsh={setDsh} blkD={blkD} delD={delD} delivStatusFilter={delivStatusFilter} setDelivStatusFilter={setDelivStatusFilter} delivDateFilter={delivDateFilter} setDelivDateFilter={setDelivDateFilter} delivDateFrom={delivDateFrom} setDelivDateFrom={setDelivDateFrom} delivDateTo={delivDateTo} setDelivDateTo={setDelivDateTo} delivView={delivView} setDelivView={setDelivView} delivCalendar={delivCalendar} setDelivCalendar={setDelivCalendar} calOffset={calOffset} setCalOffset={setCalOffset} calExpandedDay={calExpandedDay} setCalExpandedDay={setCalExpandedDay} delivPage={delivPage} setDelivPage={setDelivPage} delivBatchFilter={delivBatchFilter} setDelivBatchFilter={setDelivBatchFilter} delivExportOpen={delivExportOpen} setDelivExportOpen={setDelivExportOpen} customers={customers} products={products} prodTargets={allBatches} setDetailModal={setDetailModal} bulkSelect={bulkSelect} setBulkSelect={setBulkSelect} bulkSelected={bulkSelected} setBulkSelected={setBulkSelected} invRegistry={invRegistry} expandedDeliveryCust={expandedDeliveryCust} setExpandedDeliveryCust={setExpandedDeliveryCust} setLastReceiptData={setLastReceiptData}/>}
             {/* LEGACY_REMOVE_START */}
             {false&&<div className="flex flex-col gap-3">
               <div/>
@@ -4164,7 +4177,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                       // Batch info if any production record on same date
                       // Only show batches whose product strictly matches at least one product ordered in this delivery
                       // Show specific assigned batch if batchId is set; otherwise fall back to product+date match
-                      const batchesOnDate=d.batchId?(prodTargets||[]).filter(pt=>pt.batchId===d.batchId):(prodTargets||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
+                      const batchesOnDate=d.batchId?(allBatches||[]).filter(pt=>pt.batchId===d.batchId):(allBatches||[]).filter(pt=>pt.date===d.date&&pt.product&&Object.entries(safeO(d.orderLines)).some(([pid,l])=>{if(!(l.qty>0))return false;const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||l.name||"",pt.product);}));
                       return <div key={d.id} style={{
                         borderTop:di>0?`1px solid ${t.border}`:"none",
                         background:isBulkChecked?(dm?"rgba(245,158,11,0.12)":"rgba(245,158,11,0.06)"):undefined,
@@ -4311,17 +4324,17 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         {tab==="Payments"&&<PaymentsTab dm={dm} t={t} isAdmin={isAdmin} today={today} inr={inr} ts={ts} lineTotalWithTax={lineTotalWithTax} deliveries={deliveries} customers={customers} setDetailModal={setDetailModal} taxRtGlobal={taxRtGlobal} invRegistry={invRegistry} paymentLedger={paymentLedger} setPayLedgerSh={setPayLedgerSh} setPayLedgerCust={setPayLedgerCust} setPayLedgerAmt={setPayLedgerAmt} setPayLedgerNote={setPayLedgerNote} setPayLedgerMethod={setPayLedgerMethod} paymentsSubTab={paymentsSubTab} setPaymentsSubTab={setPaymentsSubTab} paymentsSearch={paymentsSearch} setPaymentsSearch={setPaymentsSearch} paymentsDateFilter={paymentsDateFilter} setPaymentsDateFilter={setPaymentsDateFilter}/>}
 
         {/* P&L TAB */}
-        {tab==="P&L" && <PnLTab deliveries={deliveries} supplies={supplies} expenses={expenses} wastage={wastage} customers={customers} products={products} prodTargets={prodTargets} t={t} dm={dm} isAdmin={isAdmin} can={can} paymentLedger={paymentLedger} exportCSV={exportCSV} setDetailModal={setDetailModal} setTab={setTab} invRegistry={invRegistry} />}
+        {tab==="P&L" && <PnLTab deliveries={deliveries} supplies={supplies} expenses={expenses} wastage={wastage} customers={customers} products={products} prodTargets={allBatches} t={t} dm={dm} isAdmin={isAdmin} can={can} paymentLedger={paymentLedger} exportCSV={exportCSV} setDetailModal={setDetailModal} setTab={setTab} invRegistry={invRegistry} />}
 
                 {/* ANALYTICS EXPORT HELPERS */}
         {/* These are defined as inline closures inside JSX scope so they can close over live data */}
 
         {/* ANALYTICS TAB */}
-        {tab==="Analytics"&&<AnalyticsTab dm={dm} isAdmin={isAdmin} canSeePrices={canSeePrices} deliveries={deliveries} expenses={expenses} supplies={supplies} wastage={wastage} customers={customers} products={products} prodTargets={prodTargets} qcLogs={qcLogs} actLog={actLog} settings={settings} paymentLedger={paymentLedger} invRegistry={invRegistry} totalRev={totalRev} totalExpOp={totalExpOp} totalSupC={totalSupC} netProfit={netProfit} anlPeriod={anlPeriod} setAnlPeriod={setAnlPeriod} anlCustomFrom={anlCustomFrom} setAnlCustomFrom={setAnlCustomFrom} anlCustomTo={anlCustomTo} setAnlCustomTo={setAnlCustomTo} anlSpecificDate={anlSpecificDate} setAnlSpecificDate={setAnlSpecificDate} anlActiveSection={anlActiveSection} setAnlActiveSection={setAnlActiveSection} anlCustSearch={anlCustSearch} setAnlCustSearch={setAnlCustSearch} anlCustSort={anlCustSort} setAnlCustSort={setAnlCustSort} anlCustFilter={anlCustFilter} setAnlCustFilter={setAnlCustFilter} anlCustExpanded={anlCustExpanded} setAnlCustExpanded={setAnlCustExpanded} anlProdSort={anlProdSort} setAnlProdSort={setAnlProdSort} anlProdExpanded={anlProdExpanded} setAnlProdExpanded={setAnlProdExpanded} anlOpsView={anlOpsView} setAnlOpsView={setAnlOpsView} anlFinView={anlFinView} setAnlFinView={setAnlFinView} anlOverviewMetric={anlOverviewMetric} setAnlOverviewMetric={setAnlOverviewMetric} anlExportOpen={anlExportOpen} setAnlExportOpen={setAnlExportOpen} anlChartType={anlChartType} setAnlChartType={setAnlChartType} anlTrendMetric={anlTrendMetric} setAnlTrendMetric={setAnlTrendMetric} anlShowInsights={anlShowInsights} setAnlShowInsights={setAnlShowInsights} setTab={setTab}/>}
+        {tab==="Analytics"&&<AnalyticsTab dm={dm} isAdmin={isAdmin} canSeePrices={canSeePrices} deliveries={deliveries} expenses={expenses} supplies={supplies} wastage={wastage} customers={customers} products={products} prodTargets={allBatches} qcLogs={qcLogs} actLog={actLog} settings={settings} paymentLedger={paymentLedger} invRegistry={invRegistry} totalRev={totalRev} totalExpOp={totalExpOp} totalSupC={totalSupC} netProfit={netProfit} anlPeriod={anlPeriod} setAnlPeriod={setAnlPeriod} anlCustomFrom={anlCustomFrom} setAnlCustomFrom={setAnlCustomFrom} anlCustomTo={anlCustomTo} setAnlCustomTo={setAnlCustomTo} anlSpecificDate={anlSpecificDate} setAnlSpecificDate={setAnlSpecificDate} anlActiveSection={anlActiveSection} setAnlActiveSection={setAnlActiveSection} anlCustSearch={anlCustSearch} setAnlCustSearch={setAnlCustSearch} anlCustSort={anlCustSort} setAnlCustSort={setAnlCustSort} anlCustFilter={anlCustFilter} setAnlCustFilter={setAnlCustFilter} anlCustExpanded={anlCustExpanded} setAnlCustExpanded={setAnlCustExpanded} anlProdSort={anlProdSort} setAnlProdSort={setAnlProdSort} anlProdExpanded={anlProdExpanded} setAnlProdExpanded={setAnlProdExpanded} anlOpsView={anlOpsView} setAnlOpsView={setAnlOpsView} anlFinView={anlFinView} setAnlFinView={setAnlFinView} anlOverviewMetric={anlOverviewMetric} setAnlOverviewMetric={setAnlOverviewMetric} anlExportOpen={anlExportOpen} setAnlExportOpen={setAnlExportOpen} anlChartType={anlChartType} setAnlChartType={setAnlChartType} anlTrendMetric={anlTrendMetric} setAnlTrendMetric={setAnlTrendMetric} anlShowInsights={anlShowInsights} setAnlShowInsights={setAnlShowInsights} setTab={setTab}/>}
 
 
         {/* PRODUCTION + QC + WASTAGE (merged) — see Production.js */}
-        {tab==="Production"&&<ProductionTab dm={dm} t={t} today={today} ts={ts} uid={uid} inr={inr} notify={notify} ask={ask} addLog={addLog} addNotif={addNotif} captureGPS={captureGPS} can={can} canSeePrices={canSeePrices} canSeeFinancials={canSeeFinancials} isAdmin={isAdmin} isFactory={isFactory} sess={sess} displayName={displayName} settings={settings} products={products} prodItems={prodItems} prodTargets={prodTargets} setProdTargets={setProdTargets} wastage={wastage} setWaste={setWaste} qcLogs={qcLogs} setQcLogs={setQcLogs} handovers={handovers} setHandovers={setHandovers} deliveries={deliveries} customers={customers} invRegistry={invRegistry} safeO={safeO} safeArr={safeArr} lineTotal={lineTotal} prodNamesMatch={prodNamesMatch} exportTabPDF={exportTabPDF} blkW={blkW} ptSh={ptSh} setPtSh={setPtSh} ptF={ptF} setPtF={setPtF} ptDateFilter={ptDateFilter} setPtDateFilter={setPtDateFilter} ptSearch={ptSearch} setPtSearch={setPtSearch} ptShiftFilter={ptShiftFilter} setPtShiftFilter={setPtShiftFilter} ptCustomFrom={ptCustomFrom} setPtCustomFrom={setPtCustomFrom} ptCustomTo={ptCustomTo} setPtCustomTo={setPtCustomTo} ptProductFilter={ptProductFilter} setPtProductFilter={setPtProductFilter} ptWasteTypeFilter={ptWasteTypeFilter} setPtWasteTypeFilter={setPtWasteTypeFilter} ptQcGradeFilter={ptQcGradeFilter} setPtQcGradeFilter={setPtQcGradeFilter} ptHandoverFilter={ptHandoverFilter} setPtHandoverFilter={setPtHandoverFilter} ptShowFilters={ptShowFilters} setPtShowFilters={setPtShowFilters} prodSubTab={prodSubTab} setProdSubTab={setProdSubTab} wSh={wSh} setWSh={setWSh} wF={wF} setWF={setWF} hvSh={hvSh} setHvSh={setHvSh} hvF={hvF} setHvF={setHvF} qcSh={qcSh} setQcSh={setQcSh} qcF={qcF} setQcF={setQcF} T={T} SectionHeader={SectionHeader} StatCard={StatCard} Card={Card} Btn={Btn} Inp={Inp} Sel={Sel} Pill={Pill} Sheet={Sheet} Tog={Tog}/>}
+        {tab==="Production"&&<ProductionTab dm={dm} t={t} today={today} ts={ts} uid={uid} inr={inr} notify={notify} ask={ask} addLog={addLog} addNotif={addNotif} captureGPS={captureGPS} can={can} canSeePrices={canSeePrices} canSeeFinancials={canSeeFinancials} isAdmin={isAdmin} isFactory={isFactory} sess={sess} displayName={displayName} settings={settings} products={products} prodItems={prodItems} prodTargets={allBatches} setProdTargets={setProdTargets} wastage={wastage} setWaste={setWaste} qcLogs={qcLogs} setQcLogs={setQcLogs} handovers={handovers} setHandovers={setHandovers} deliveries={deliveries} customers={customers} invRegistry={invRegistry} safeO={safeO} safeArr={safeArr} lineTotal={lineTotal} prodNamesMatch={prodNamesMatch} exportTabPDF={exportTabPDF} blkW={blkW} ptSh={ptSh} setPtSh={setPtSh} ptF={ptF} setPtF={setPtF} ptDateFilter={ptDateFilter} setPtDateFilter={setPtDateFilter} ptSearch={ptSearch} setPtSearch={setPtSearch} ptShiftFilter={ptShiftFilter} setPtShiftFilter={setPtShiftFilter} ptCustomFrom={ptCustomFrom} setPtCustomFrom={setPtCustomFrom} ptCustomTo={ptCustomTo} setPtCustomTo={setPtCustomTo} ptProductFilter={ptProductFilter} setPtProductFilter={setPtProductFilter} ptWasteTypeFilter={ptWasteTypeFilter} setPtWasteTypeFilter={setPtWasteTypeFilter} ptQcGradeFilter={ptQcGradeFilter} setPtQcGradeFilter={setPtQcGradeFilter} ptHandoverFilter={ptHandoverFilter} setPtHandoverFilter={setPtHandoverFilter} ptShowFilters={ptShowFilters} setPtShowFilters={setPtShowFilters} prodSubTab={prodSubTab} setProdSubTab={setProdSubTab} wSh={wSh} setWSh={setWSh} wF={wF} setWF={setWF} hvSh={hvSh} setHvSh={setHvSh} hvF={hvF} setHvF={setHvF} qcSh={qcSh} setQcSh={setQcSh} qcF={qcF} setQcF={setQcF} T={T} SectionHeader={SectionHeader} StatCard={StatCard} Card={Card} Btn={Btn} Inp={Inp} Sel={Sel} Pill={Pill} Sheet={Sheet} Tog={Tog}/>}
 
         {/* GPS TAB */}
         {/* ═══════════════════════════════════════════════════════
@@ -4826,9 +4839,9 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           // Batch assignment — always shown so user can assign manually
           const delivDate=dF.date||today();
           const delivProductIds=Object.entries(safeO(dF.orderLines)).filter(([,l])=>(l.qty||0)>0).map(([pid])=>pid);
-          const allBatches=(prodTargets||[]).filter(pt=>pt.date===delivDate);
-          const matchingBatches=allBatches.filter(pt=>pt.product&&delivProductIds.some(pid=>{const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||"",pt.product);}));
-          const batchList=matchingBatches.length>0?matchingBatches:allBatches;
+          const allBatchesOnDate=(allBatches||[]).filter(pt=>pt.date===delivDate);
+          const matchingBatches=allBatchesOnDate.filter(pt=>pt.product&&delivProductIds.some(pid=>{const p=products.find(x=>x.id===pid);return prodNamesMatch(p?.name||"",pt.product);}));
+          const batchList=matchingBatches.length>0?matchingBatches:allBatchesOnDate;
           return <div>
             <label style={{color:t.sub,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,display:"block"}}>🏭 Batch</label>
             {batchList.length===0

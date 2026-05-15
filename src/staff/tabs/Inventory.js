@@ -10,6 +10,7 @@ import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SSheet, SQtyPicker } from "../components/ui.js";
 import { hasPerm } from "../../lib/roles.js";
+import { onInventoryUsage, onInventoryReceive } from "../../lib/workflowEngine.js";
 
 const COLOR = TAB_ACCENT.inventory.solid;
 const GRAD  = TAB_ACCENT.inventory.gradient;
@@ -26,7 +27,7 @@ function useBreakpoint() {
   return { isMobile: w < 600, isTablet: w >= 600 && w < 900, w };
 }
 
-export function InventoryTab({ t, inventory = [], setInventory, sess, notify = () => {}, settings }) {
+export function InventoryTab({ t, inventory = [], setInventory, sess, notify = () => {}, settings, setActivityLog }) {
   const { isMobile } = useBreakpoint();
 
   // ── Staff Portal settings ─────────────────────────────────
@@ -106,27 +107,21 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
     setDeductQty(0); setDeductOpen(false); setSelected(null);
   };
 
-  // ── Usage Entry — deduct with reason ─────────────────────
   const handleUsage = () => {
-    if (!usageItem) { notify("Select an item first", "warning"); return; }
-    if (usageQty <= 0) { notify("Enter quantity used", "warning"); return; }
-    if (usageQty > (usageItem.stock ?? 0)) { notify("Cannot exceed current stock", "warning"); return; }
-    setInventory(prev => (Array.isArray(prev) ? prev : []).map(i =>
-      i.id === usageItem.id ? { ...i, stock: (i.stock ?? 0) - usageQty } : i
-    ));
-    notify(`Usage logged: ${usageQty} ${usageItem.unit || "units"} of ${usageItem.name}`, "success");
-    setUsageQty(0); setUsageReason(""); setUsageItem(null); setUsageOpen(false);
+    const ok = onInventoryUsage({
+      item: usageItem, qty: usageQty, reason: usageReason,
+      sess, setInventory, setActivityLog, notify,
+    });
+    if (ok) { setUsageQty(0); setUsageReason(""); setUsageItem(null); setUsageOpen(false); }
   };
 
   // ── Receive Material — add to stock ──────────────────────
   const handleReceive = () => {
-    if (!receiveItem) { notify("Select an item first", "warning"); return; }
-    if (receiveQty <= 0) { notify("Enter quantity received", "warning"); return; }
-    setInventory(prev => (Array.isArray(prev) ? prev : []).map(i =>
-      i.id === receiveItem.id ? { ...i, stock: (i.stock ?? 0) + receiveQty } : i
-    ));
-    notify(`Received ${receiveQty} ${receiveItem.unit || "units"} of ${receiveItem.name}`, "success");
-    setReceiveQty(0); setReceiveSrc(""); setReceiveItem(null); setReceiveOpen(false);
+    const ok = onInventoryReceive({
+      item: receiveItem, qty: receiveQty, source: receiveSrc,
+      sess, setInventory, setActivityLog, notify,
+    });
+    if (ok) { setReceiveQty(0); setReceiveSrc(""); setReceiveItem(null); setReceiveOpen(false); }
   };
 
   const statusColor = s => s === "critical" ? t.red : s === "low" ? t.orange : t.green;

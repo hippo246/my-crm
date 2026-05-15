@@ -85,7 +85,7 @@ export function StaffUI({ sess, onLogout }) {
   const [staffList,  setStaffList]  = useStore("tas9_staff_list", []);
   const [qcLogs,     setQcLogs]     = useStore("tas9_qclogs",     []);
   const [settings]                  = useStore("tas10_settings",  D_SETTINGS);
-  const [activityLog, setActivityLog] = useStore("tas9_act", []); // unified with admin activity log
+  const [activityLog, setActivityLog] = useStore("tas10_activity_log", []);
 
   // ── THEME ────────────────────────────────────────────────────
   const lightMode = !!(settings?.staffPortal?.staffLightMode);
@@ -729,7 +729,7 @@ export function StaffUI({ sess, onLogout }) {
       case "production": return <ProductionStartTab {...shared} batches={batches} setBatches={setBatches} logActivity={logActivity} setInventory={setInventory} setActivityLog={setActivityLog} />;
       case "packing":    return <PackingTab         {...shared} batches={batches} setBatches={setBatches} setActivityLog={setActivityLog} />;
       case "inventory":  return <InventoryTab       {...shared} inventory={inventory} setInventory={setInventory} setActivityLog={setActivityLog} />;
-      case "delivery":   return <DeliveryTab        {...shared} deliveries={deliveries} setDeliveries={setDeliveries} setActivityLog={setActivityLog} />;
+      case "delivery":   return <DeliveryTab        {...shared} deliveries={deliveries} setDeliveries={setDeliveries} />;
       case "qc":         return <QCTab             {...shared} batches={batches} setBatches={setBatches} qcLogs={qcLogs} setQcLogs={setQcLogs} setActivityLog={setActivityLog} />;
       case "staff":      return <StaffTab           {...shared} staffList={staffList} setStaffList={setStaffList} />;
       case "management": return <StaffManagementTab {...shared} staffList={staffList} setStaffList={setStaffList} />;

@@ -13,6 +13,7 @@ import React, { useState } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SBtn, SSearch, SPill } from "../components/ui.js";
 import { hasPerm } from "../../lib/roles.js";
+import { onQCResult } from "../../lib/workflowEngine.js";
 
 // ── CSV export for QC logs ────────────────────────────────────
 function exportQCCSV(logs) {
@@ -43,7 +44,7 @@ const GRADES = [
   { value:"C", label:"Grade C — Sub-standard" },
 ];
 
-export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, sess, notify = () => {}, settings = {} }) {
+export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, sess, notify = () => {}, settings = {}, setActivityLog }) {
   // ── Staff Portal settings ─────────────────────────────────
   const sp = settings?.staffPortal || {};
   const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
@@ -104,24 +105,19 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
     if (!selected) return;
     if (!allChecked) { notify("Complete all checklist items first", "warning"); return; }
 
-    const log = {
-      id: Date.now().toString(),
-      batchId: selected.id,
-      product: selected.product,
-      batchLabel: selected.batchLabel || selected.id,
-      grade: finalGrade,
+    onQCResult({
+      batch:        selected,
+      finalGrade,
       failCount,
       notes,
-      inspector: sess?.name || "Staff",
-      date: new Date().toLocaleDateString("en-IN"),
-      time: new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
-    };
+      checkResults: checks,
+      sess,
+      setBatches,
+      setQcLogs,
+      setActivityLog,
+      notify,
+    });
 
-    setBatches(prev => (Array.isArray(prev) ? prev : []).map(b =>
-      b.id === selected.id ? { ...b, qcGrade: finalGrade, qcNotes: notes } : b
-    ));
-    setQcLogs(prev => [log, ...(Array.isArray(prev) ? prev : [])]);
-    notify(finalGrade === "Rejected" ? `Batch rejected — ${selected.product}` : `Grade ${finalGrade} approved — ${selected.product}`, finalGrade === "Rejected" ? "error" : "success");
     setSelected(null);
   };
 

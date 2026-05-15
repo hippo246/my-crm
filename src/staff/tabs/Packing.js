@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import { TAB_ACCENT } from "../theme.js";
 import { SQtyPicker, SQtyPresets, SSheet, SDonut } from "../components/ui.js";
 import { hasPerm } from "../../lib/roles.js";
+import { onPackingEntry, onPackingComplete, onBatchHold } from "../../lib/workflowEngine.js";
 
 const COLOR = TAB_ACCENT.packing.solid;
 const GRAD  = TAB_ACCENT.packing.gradient;
@@ -127,7 +128,7 @@ function printLabel(batch) {
   setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
-export function PackingTab({ t, batches = [], setBatches, sess, notify, settings }) {
+export function PackingTab({ t, batches = [], setBatches, sess, notify, settings, setActivityLog }) {
   // ── Staff Portal settings ─────────────────────────────────
   const sp = settings?.staffPortal || {};
   const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
@@ -204,22 +205,23 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify, settings
     if (!activeBatch)    { notify("Select a batch first", "warning"); return; }
     if (qty <= 0)        { notify("Enter packed quantity", "warning"); return; }
     if (qty > remaining) { notify("Exceeds remaining quantity", "warning"); return; }
-    const newActual = (activeBatch.actual ?? 0) + qty;
-    setBatches(prev => (Array.isArray(prev) ? prev : []).map(b =>
-      b.id === activeBatchId
-        ? { ...b, actual: newActual, damaged: (b.damaged ?? 0) + damage }
-        : b
-    ));
-    notify(`✅ Logged ${qty} packed for ${activeBatch.product}`, "success");
+
+    onPackingEntry({
+      batch: activeBatch,
+      qty,
+      damage,
+      sess,
+      setBatches,
+      setActivityLog,
+      notify,
+    });
+
     setQty(0);
     setDamage(0);
   };
 
   const handleComplete = (batch) => {
-    setBatches(prev => (Array.isArray(prev) ? prev : []).map(b =>
-      b.id === batch.id ? { ...b, actual: b.target, completedAt: new Date().toISOString() } : b
-    ));
-    notify(`✅ ${batch.product} packing completed`, "success");
+    onPackingComplete({ batch, sess, setBatches, setActivityLog, notify });
     if (activeBatchId === batch.id) { setActiveBatchId(null); setQty(0); setDamage(0); }
   };
 
@@ -234,10 +236,7 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify, settings
 
   const handleHold = () => {
     if (!holdTarget) return;
-    setBatches(prev => (Array.isArray(prev) ? prev : []).map(b =>
-      b.id === holdTarget.id ? { ...b, onHold: !b.onHold, holdNote } : b
-    ));
-    notify(holdTarget.onHold ? "Batch resumed" : "⏸ Batch on hold", holdTarget.onHold ? "success" : "warning");
+    onBatchHold({ batch: holdTarget, holdNote, sess, setBatches, setActivityLog, notify });
     if (activeBatchId === holdTarget.id && !holdTarget.onHold) setActiveBatchId(null);
     setHoldNote(""); setHoldOpen(false);
   };
@@ -584,6 +583,9 @@ export function PackingTab({ t, batches = [], setBatches, sess, notify, settings
                     <span style={{ color: t.muted, fontSize: 10, fontFamily: "monospace" }}>{b.batchLabel || b.id}</span>
                     {isActive && <span style={{ background: `${COLOR}20`, color: COLOR, border: `1px solid ${COLOR}40`, borderRadius: 6, padding: "2px 7px", fontSize: 9, fontWeight: 700 }}>SELECTED</span>}
                     {b.onHold && <span style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "2px 7px", fontSize: 9, fontWeight: 700 }}>HOLD</span>}
+                    {b.workflowStatus === "qc_rejected" && <span style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "2px 7px", fontSize: 9, fontWeight: 700 }}>❌ QC REJECTED</span>}
+                    {b.workflowStatus === "awaiting_qc" && <span style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "2px 7px", fontSize: 9, fontWeight: 700 }}>🔍 AWAITING QC</span>}
+                    {b.workflowStatus === "ready_to_pack" && <span style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, padding: "2px 7px", fontSize: 9, fontWeight: 700 }}>✅ QC PASSED</span>}
                     {bAge && <span style={{ color: t.muted, fontSize: 10 }}>{bAge} ago</span>}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>

@@ -335,7 +335,7 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
                     <p style={{color:t.text}} className="text-sm font-semibold">🔁 Reset Sequence Yearly</p>
                     <p style={{color:t.sub}} className="text-[11px] mt-0.5">Restart from 0001 at the start of each year</p>
                   </div>
-                  <Tog dm={dm} on={yearReset} onChange={()=>setSettings(s=>({...s,invoiceYearReset:!yearReset}))}/>
+                  <Tog dm={dm} on={settings?.invoiceResetYearly!==false} onChange={()=>setSettings(s=>({...s,invoiceResetYearly:s?.invoiceResetYearly===false?true:false}))}/>
                 </div>
               </div></Card>
 
@@ -1795,7 +1795,7 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
                 </div>;
               })()}
               <Btn dm={dm} v="outline" className="w-full" onClick={exportAll}>⬇️ Export Full Backup (JSON)</Btn>
-              <Btn dm={dm} v="purple" className="w-full" onClick={exportAll}>📊 Export Full Report (PDF — All Data)</Btn>
+              <Btn dm={dm} v="purple" className="w-full" onClick={()=>exportTabPDF(deliveries,customers,products,settings,invRegistry)}>📊 Export Full Report (PDF — All Data)</Btn>
               <label style={{border:`1px solid ${t.border}`,color:t.text}} className="w-full text-sm font-semibold rounded-xl px-4 py-2.5 text-center cursor-pointer hover:opacity-80 transition-all">
                 ⬆️ Import Backup (JSON)<input type="file" accept=".json" className="hidden" onChange={importAll}/>
               </label>
@@ -1811,7 +1811,7 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
             <Card dm={dm}><div className="p-4">
               <p style={{color:"#ef4444"}} className="text-sm font-bold mb-1">⚠️ Danger Zone</p>
               <p style={{color:t.sub}} className="text-[11px] mb-3">This will wipe all data and reset to factory defaults. Cannot be undone.</p>
-              <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{notify("Reset complete");})}>Reset All Data to Defaults</Btn>
+              <Btn dm={dm} v="danger" className="w-full" onClick={()=>ask("Reset ALL data to factory defaults? Cannot be undone.",()=>{setSettings({});setUsers([]);setDeliv([]);setInvRegistry({seq:0,issued:{}});notify("Reset complete — all data cleared");addLog("Factory reset","All data wiped");})}>Reset All Data to Defaults</Btn>
             </div></Card>
           </>}
           </div>{/* end settings content col */}
@@ -2112,13 +2112,19 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
             color:piF.color || "#f97316",
             unit: "KG",
           };
-          if(piSh==="add"){
-            setSettings(s=>({...s,prodItems:[...(s.prodItems||[]),item]}));
-          } else {
-            setSettings(s=>({...s,prodItems:(s.prodItems||[]).map(x=>x.id===item.id?item:x)}));
-          }
-          // also sync to staffPortal.prodItems so ProductionStart picks it up
-          setSettings(s=>({...s,staffPortal:{...(s.staffPortal||{}),prodItems:[...(piSh==="add"?(s.prodItems||[]):(s.prodItems||[]).filter(x=>x.id!==item.id)),item]}}));
+          setSettings(s=>{
+            const updatedProdItems = piSh==="add"
+              ? [...(s.prodItems||[]), item]
+              : (s.prodItems||[]).map(x=>x.id===item.id?item:x);
+            return {
+              ...s,
+              prodItems: updatedProdItems,
+              staffPortal: {
+                ...(s.staffPortal||{}),
+                prodItems: updatedProdItems,
+              },
+            };
+          });
           setPiSh(null);setPiF({id:"",name:"",icon:"🫓",color:"#f97316"});
           notify(`${piSh==="add"?"Added":"Updated"}: ${item.name} ✓`,"success");
         }} className="w-full" style={{background:piF.color||"#8b5cf6",color:"#fff",border:"none"}}>
@@ -2258,7 +2264,21 @@ export default function SettingsTab({ dm, t, isAdmin, sess, can, canSeePrices, c
             ))
           }
         </div>
-        <Btn dm={dm} onClick={()=>{blkU&&setUsh(null);notify("Account saved");}} className="w-full">Save Account</Btn>
+        <Btn dm={dm} onClick={()=>{
+          if(!uF.name?.trim()){notify("Enter a name");return;}
+          if(!uF.username?.trim()){notify("Enter a username");return;}
+          if(uSh==="add"&&!uF.password){notify("Enter a password");return;}
+          const finalUser={...uF,password:uF.password||users.find(u=>u.id===uF.id)?.password||""};
+          if(uSh==="add"){
+            setUsers(p=>safeArr(p).concat(finalUser));
+            addLog("Added user",finalUser.name);
+          } else {
+            setUsers(p=>safeArr(p).map(u=>u.id===finalUser.id?finalUser:u));
+            addLog("Updated user",finalUser.name);
+          }
+          notify("Account saved ✓");
+          setUsh(null);
+        }} className="w-full">Save Account</Btn>
       </Sheet>
 
 

@@ -11,7 +11,7 @@ import { WeatherWidget } from "../components/WeatherWidget";
 import { DetailModal } from "../components/DetailModal";
 import { dispatchDelivery, advanceDeliveryStatus, cancelDelivery } from "../lib/deliveryEngine";
 
-export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices, settings, notify, addLog, today, inr, ts, safeArr, safeO, lineTotal, exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, shareWhatsApp, deliveries, setDeliv, setDf, setDsh, blkD, delD, delivStatusFilter, setDelivStatusFilter, delivDateFilter, setDelivDateFilter, delivDateFrom, setDelivDateFrom, delivDateTo, setDelivDateTo, delivView, setDelivView, delivCalendar, setDelivCalendar, calOffset, setCalOffset, calExpandedDay, setCalExpandedDay, delivPage, setDelivPage, delivBatchFilter, setDelivBatchFilter, delivExportOpen, setDelivExportOpen, customers, products, setDetailModal, bulkSelect, setBulkSelect, bulkSelected, setBulkSelected, invRegistry, expandedDeliveryCust, setExpandedDeliveryCust, setLastReceiptData }) {
+export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices, settings, notify, addLog, today, inr, ts, safeArr, safeO, lineTotal, exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, shareWhatsApp, deliveries, setDeliv, setDf, setDsh, blkD, delD, delivStatusFilter, setDelivStatusFilter, delivDateFilter, setDelivDateFilter, delivDateFrom, setDelivDateFrom, delivDateTo, setDelivDateTo, delivView, setDelivView, delivCalendar, setDelivCalendar, calOffset, setCalOffset, calExpandedDay, setCalExpandedDay, delivPage, setDelivPage, delivBatchFilter, setDelivBatchFilter, delivExportOpen, setDelivExportOpen, customers, products, prodTargets: prodTargetsProp, setDetailModal, bulkSelect, setBulkSelect, bulkSelected, setBulkSelected, invRegistry, expandedDeliveryCust, setExpandedDeliveryCust, setLastReceiptData }) {
   // ── Computed from props ──
   const _actor = { name: sess?.name || "Admin", role: "admin", uid: sess?.uid || null };
   const delivStatusCounts = {
@@ -20,7 +20,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
     Pending: deliveries.filter(d=>d.status==="Pending").length,
     Cancelled: deliveries.filter(d=>d.status==="Cancelled").length,
   };
-  const prodTargets = (settings?.prodTargets)||[];
+  const prodTargets = prodTargetsProp || (settings?.prodTargets) || [];
   const lineRows = (orderLines, prods) => Object.entries(orderLines||{}).map(([id,qty])=>{const p=(prods||[]).find(x=>x.id===id)||{};return{id,qty:+qty,name:p.name||id,priceAmount:+(p.price||0)};}).filter(r=>r.qty>0);
   const mapU = (addr,lat,lng) => lat&&lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr||"")}`;
   const captureGPS = () => {};
