@@ -292,34 +292,108 @@ function PresencePeerRow({ peer, sub, textClr, border }) {
 
 // ── PresenceDot — compact mobile badge ───────────────────────
 /**
- * Tiny badge showing online count. Drop next to the notification bell.
- * Props: peers, dm, t, onClick
+ * Tiny badge showing online count. Click opens a popover with peer details.
+ * Props: peers, dm, t
  */
-export function PresenceDot({ peers = [], dm, t, onClick }) {
+export function PresenceDot({ peers = [], dm, t }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
   const count = peers.length;
+  const border  = t?.border || "rgba(0,0,0,0.1)";
+  const sub     = t?.sub    || "#9ca3af";
+  const textClr = t?.text   || "#111827";
+  const card    = dm ? "#1e293b" : "#ffffff";
 
-  if (count === 0) return (
-    <button onClick={onClick} title="No other users online"
-      style={{ background:"none", border:"none", padding:"4px", cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
-      <div style={{ width:8, height:8, borderRadius:"50%", background:"#4b5563" }} />
-    </button>
-  );
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", fn);
+    document.addEventListener("touchstart", fn);
+    return () => { document.removeEventListener("mousedown", fn); document.removeEventListener("touchstart", fn); };
+  }, [open]);
 
-  return (
-    <button onClick={onClick} title={`${count} user${count>1?"s":""} online`}
-      style={{
-        background:"rgba(16,185,129,0.12)", border:"1.5px solid rgba(16,185,129,0.3)",
-        borderRadius:20, padding:"4px 8px 4px 6px",
-        display:"flex", alignItems:"center", gap:5,
-        cursor:"pointer", WebkitTapHighlightColor:"transparent",
-      }}>
+  const dot = count === 0 ? (
+    <div style={{ width:8, height:8, borderRadius:"50%", background:"#4b5563" }} />
+  ) : (
+    <>
       <div style={{ position:"relative", width:8, height:8 }}>
         <div style={{ width:8, height:8, borderRadius:"50%", background:"#10b981" }} />
         <div style={{ position:"absolute", inset:-2, borderRadius:"50%", background:"#10b981", opacity:0.3, animation:"presencePulse 2s ease-in-out infinite" }} />
       </div>
       <span style={{ color:"#10b981", fontSize:11, fontWeight:700 }}>{count}</span>
-      <style>{`@keyframes presencePulse{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.8);opacity:0}}`}</style>
-    </button>
+    </>
+  );
+
+  const btnStyle = count === 0
+    ? { background:"none", border:"none", padding:"4px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, WebkitTapHighlightColor:"transparent" }
+    : { background: open ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.12)", border:"1.5px solid rgba(16,185,129,0.3)", borderRadius:20, padding:"4px 8px 4px 6px", display:"flex", alignItems:"center", gap:5, cursor:"pointer", WebkitTapHighlightColor:"transparent" };
+
+  return (
+    <div ref={ref} style={{ position:"relative" }}>
+      <button onClick={() => setOpen(o => !o)} title={count === 0 ? "Only you online" : `${count} user${count>1?"s":""} online`} style={btnStyle}>
+        {dot}
+      </button>
+
+      {open && (
+        <div style={{
+          position:"absolute", top:"calc(100% + 8px)", right:0,
+          width:260, background:card,
+          border:`1px solid ${border}`,
+          borderRadius:16, boxShadow:"0 12px 40px rgba(0,0,0,0.18)",
+          zIndex:9999, overflow:"hidden",
+          animation:"presenceFadeIn 0.15s ease",
+        }}>
+          {/* Header */}
+          <div style={{ padding:"10px 14px 8px", borderBottom:`1px solid ${border}`, display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ position:"relative", width:8, height:8, flexShrink:0 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background: count > 0 ? "#10b981" : "#4b5563" }} />
+              {count > 0 && <div style={{ position:"absolute", inset:-2, borderRadius:"50%", background:"#10b981", opacity:0.3, animation:"presencePulse 2s ease-in-out infinite" }} />}
+            </div>
+            <span style={{ color:textClr, fontSize:12, fontWeight:800, flex:1 }}>
+              {count === 0 ? "Only you online" : `${count} user${count>1?"s":""} online`}
+            </span>
+            <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", color:sub, fontSize:14, cursor:"pointer", padding:"0 2px", lineHeight:1, fontWeight:700 }}>✕</button>
+          </div>
+
+          {/* Peer list */}
+          {count === 0 ? (
+            <div style={{ padding:"18px 14px", textAlign:"center" }}>
+              <p style={{ color:sub, fontSize:12 }}>No other users are online right now.</p>
+            </div>
+          ) : (
+            <div style={{ maxHeight:280, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+              {peers.map(p => {
+                const secAgo = Math.round((Date.now() - p.ts) / 1000);
+                return (
+                  <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderBottom:`1px solid ${border}` }}>
+                    <div style={{ width:34, height:34, borderRadius:"50%", background:p.color, color:"#fff", fontWeight:800, fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 2px 8px ${p.color}40` }}>
+                      {initials(p.name)}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{ color:textClr, fontWeight:700, fontSize:12 }} className="truncate">{p.name}</span>
+                        <span style={{ background:`${p.color}18`, color:p.color, borderRadius:4, padding:"1px 5px", fontSize:9, fontWeight:800, textTransform:"uppercase", flexShrink:0 }}>{p.role}</span>
+                      </div>
+                      <div style={{ color:sub, fontSize:10, marginTop:2, display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {p.tab && <span>📍 {p.tab}</span>}
+                        {p.editing && <span style={{ color:p.color, fontWeight:600 }}>✏️ {p.editing.label}</span>}
+                      </div>
+                    </div>
+                    <span style={{ color:sub, fontSize:9, flexShrink:0 }}>{secAgo < 60 ? `${secAgo}s` : `${Math.round(secAgo/60)}m`}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes presencePulse{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.8);opacity:0}}
+        @keyframes presenceFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
+    </div>
   );
 }
 

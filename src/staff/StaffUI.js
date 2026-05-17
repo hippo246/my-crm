@@ -21,6 +21,7 @@ import { ReportsTab }          from "./tabs/Reports.js";
 import { SettingsTab }         from "./tabs/Settings.js";
 import { useStore }            from "../lib/store";
 import { D_SETTINGS }         from "../lib/constants";
+import { usePresence }        from "../components/CollaborationPresence";
 
 const TABS = [
   { id:"home",       label:"Dashboard",   emoji:"🏠", accent:TAB_ACCENT.home       },
@@ -86,6 +87,16 @@ export function StaffUI({ sess, onLogout }) {
   const [qcLogs,     setQcLogs]     = useStore("tas9_qclogs",     []);
   const [settings]                  = useStore("tas10_settings",  D_SETTINGS);
   const [activityLog, setActivityLog] = useStore("tas9_act", []); // unified with admin activity log
+
+  // ── PRESENCE (staff → admin oversight) ──────────────────────
+  // Heartbeat into tas9_presence so admin PresencePanel sees all staff
+  usePresence({
+    userId:     sess?.id   || sess?.staffId || "unknown",
+    userName:   sess?.name || "Staff",
+    userRole:   sess?.role || "worker",
+    tab:        activeTab,       // updates live on every tab switch
+    appContext: "staff",         // lets admin distinguish staff vs admin users
+  });
 
   // ── THEME ────────────────────────────────────────────────────
   const lightMode = !!(settings?.staffPortal?.staffLightMode);
