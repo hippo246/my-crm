@@ -1668,7 +1668,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
             {/* #18 Search / Command Palette button */}
             {isAdmin && (
-              <CommandPaletteButton dm={dm} t={t} windowWidth={typeof window !== "undefined" ? window.innerWidth : 1024} onClick={() => setCmdOpen(true)} />
+              <CommandPaletteButton dm={dm} t={t} onClick={() => setCmdOpen(true)} />
             )}
 
             {/* #18 Presence dot — who else is online */}

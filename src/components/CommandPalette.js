@@ -483,8 +483,8 @@ export function CommandPalette({
  * On desktop shows "⌘K" hint, on mobile shows search icon only.
  * Props: dm, t, onClick, windowWidth
  */
-export function CommandPaletteButton({ dm, t, onClick, windowWidth }) {
-  const isMobile = (windowWidth || window.innerWidth) < 640;
+export function CommandPaletteButton({ dm, t, onClick }) {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
   return (
     <button
       onClick={onClick}
