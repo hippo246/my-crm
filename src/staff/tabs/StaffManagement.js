@@ -174,10 +174,13 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
   const SHIFTS = (settings.shifts?.length ? settings.shifts : DEFAULT_SHIFTS);
   const ROLES  = (settings.staffRoles?.length ? settings.staffRoles : DEFAULT_ROLES);
 
+  const sp = settings?.staffPortal || {};
+  const spOn = (key, def = true) => sp[key] !== undefined ? sp[key] : def;
+
   // ── Perms ─────────────────────────────────────────────────
   const canAddStaff    = hasPerm(sess, "prod_add") || sess?.role === "admin";
   // all roles can clock in/out
-  const canRemoveStaff = sess?.role === "admin";
+  const canRemoveStaff = (hasPerm(sess, "staff_delete") || sess?.role === "admin") && spOn("staffCanDelete", false);
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState("all");
   const [view, setView]             = useState("grid");
@@ -199,7 +202,7 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
   // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => { setNewShift(s => SHIFTS.includes(s) ? s : SHIFTS[0]); }, [shiftsKey]);
 
-  const safe = useMemo(() => Array.isArray(staffList) ? staffList : [], [staffList]);
+  const safe = useMemo(() => (Array.isArray(staffList) ? staffList : []).filter(s => !s.deleted), [staffList]);
 
   const filtered = useMemo(() => safe.filter(s => {
     if (!s) return false;
@@ -257,8 +260,18 @@ export function StaffManagementTab({ t, staffList = [], setStaffList, sess, noti
   };
 
   const handleRemove = (id, name) => {
-    setStaffList(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== id));
-    notify(`${name} removed`, "warning");
+    if (!window.confirm(`Move ${name} to trash? They will be hidden from the team list.`)) return;
+    const now = new Date();
+    setStaffList(prev => (Array.isArray(prev) ? prev : []).map(s => s.id !== id ? s : {
+      ...s,
+      deleted: true,
+      deletedAt: now.getTime(),
+      deletedAtISO: now.toISOString(),
+      deletedBy: sess?.id || "unknown",
+      deletedByName: sess?.name || "Staff",
+      deletedByRole: sess?.role || "staff",
+    }));
+    notify(`${name} moved to trash`, "warning");
     setSheetOpen(false);
   };
 

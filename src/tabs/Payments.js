@@ -10,7 +10,7 @@ import { PasskeyManager, SecuritySessions, FailedLoginAttempts } from "../compon
 import { WeatherWidget } from "../components/WeatherWidget";
 import { DetailModal } from "../components/DetailModal";
 
-export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalWithTax, deliveries, customers, setDetailModal, taxRtGlobal, invRegistry, paymentLedger, setPayLedgerSh, setPayLedgerCust, setPayLedgerAmt, setPayLedgerNote, setPayLedgerMethod, paymentsSubTab, setPaymentsSubTab, paymentsSearch, setPaymentsSearch, paymentsDateFilter, setPaymentsDateFilter }) {
+export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalWithTax, deliveries, customers, setDetailModal, taxRtGlobal, invRegistry, paymentLedger, setPayLedgerSh, setPayLedgerCust, setPayLedgerAmt, setPayLedgerNote, setPayLedgerMethod, paymentsSubTab, setPaymentsSubTab, paymentsSearch, setPaymentsSearch, paymentsDateFilter, setPaymentsDateFilter, delPayment }) {
   return (()=>{
           const todayStr=today();
           // ── Build comprehensive payment data ──────────────────────────
@@ -34,7 +34,7 @@ export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalW
               note:dp.d.partialPayment?.note||"",method:"Delivery Collect",by:dp.d.partialPayment?.collectedBy||dp.d.createdBy||"—",
               replAmt:dp.replAmt,orderTotal:dp.orderTotal,netPayable:dp.netPayable,payStatus:dp.payStatus,ts:dp.d.partialPayment?.collectedAt||dp.d.date
             })),
-            ...(paymentLedger||[]).map(e=>({
+            ...(paymentLedger||[]).filter(e=>!e.deleted).map(e=>({
               id:e.id,type:"manual",date:e.date,customer:e.customerName,customerId:e.customerId,
               amount:e.amount,balance:0,invNo:null,rcptNo:null,
               note:e.note||"",method:e.method||"Cash",by:e.recordedBy||"—",
@@ -282,6 +282,7 @@ export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalW
                             <th style={{padding:"11px 12px",textAlign:"left",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Status</th>
                             <th style={{padding:"11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Amount</th>
                             <th style={{padding:"11px 16px 11px 12px",textAlign:"right",color:t.sub,fontSize:10,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Balance</th>
+                            {isAdmin&&<th style={{padding:"11px 12px",width:40}}></th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -330,6 +331,17 @@ export default function PaymentsTab({ dm, t, isAdmin, today, inr, ts, lineTotalW
                               <td style={{padding:"14px 16px 14px 12px",verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
                                 <span style={{color:entry.balance>0?red:t.sub,fontWeight:entry.balance>0?800:400,fontSize:13}}>{entry.balance>0?inr(entry.balance):"—"}</span>
                               </td>
+                              {/* Delete (admin only, manual entries only) */}
+                              {isAdmin&&<td style={{padding:"14px 12px",verticalAlign:"middle",textAlign:"center"}}>
+                                {entry.type==="manual"&&delPayment&&<button
+                                  onClick={()=>delPayment(entry)}
+                                  title="Move to trash"
+                                  style={{background:"transparent",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:6,color:"#ef444480",fontSize:15,lineHeight:1,transition:"color 0.15s"}}
+                                  onMouseEnter={e=>e.currentTarget.style.color="#ef4444"}
+                                  onMouseLeave={e=>e.currentTarget.style.color="#ef444480"}>
+                                  🗑
+                                </button>}
+                              </td>}
                             </tr>;
                           })}
                         </tbody>

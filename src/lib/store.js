@@ -77,6 +77,7 @@ function useStore(key, def) {
       console.warn("Firebase error for", key, err.message);
       setFbLoaded(true);
       if (typeof window !== "undefined") window.__fbOffline = true;
+      try{ require("./monitor")?.monitor?.dbError(key, err.message, {uid:"system"}); }catch{}
     });
     return () => unsub();
   }, [key]);

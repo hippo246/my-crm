@@ -73,13 +73,19 @@ function defaultFinePerms(role){
   return Object.fromEntries(FINE_PERM_DEFS.map(d=>[d.key, role==="factory"?d.factoryDef:d.agentDef]));
 }
 
-// Check if a user (sess object) has a fine-grained permission
-// Admin always returns true
+// Lazy monitor import — keeps roles.js side-effect free at module load time
+let _monitor = null;
+function _getMonitor(){ if(!_monitor) try{ _monitor = require("./monitor"); }catch{} return _monitor; }
+
 function hasPerm(sess, key){
   if(!sess) return false;
   if(sess.role==="admin") return true;
   const fp = sess.finePerms || defaultFinePerms(sess.role);
-  return fp[key] === true;
+  const allowed = fp[key] === true;
+  if(!allowed){
+    try{ _getMonitor()?.monitor?.permDenied(key,{uid:sess.id,role:sess.role,name:sess.name}); }catch{}
+  }
+  return allowed;
 }
 
 // ═══════════════════════════════════════════════════════════════

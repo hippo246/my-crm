@@ -51,7 +51,7 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
 
   // ── Perms (role-based + portal) ───────────────────────────
   const canInspect = hasPerm(sess, "qc_add")    && spOn("qcCanInspect", true);
-  const canDelete  = hasPerm(sess, "qc_delete");
+  const canDelete  = hasPerm(sess, "qc_delete") && spOn("qcCanDelete", false);
   const canExport  = hasPerm(sess, "qc_export") && spOn("qcCanExport",  false);
 
   // ── Settings-driven config — staffPortal overrides settings root ──
@@ -475,14 +475,14 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
       )}
 
       {/* ── Recent QC logs ─────────────────────────────────────── */}
-      {!selected && Array.isArray(qcLogs) && qcLogs.length > 0 && (
+      {!selected && Array.isArray(qcLogs) && qcLogs.filter(l => !l.deleted).length > 0 && (
         <div style={{ marginTop: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ color: t.sub, fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Recent Inspections</div>
-            {canExport && <SBtn v="ghost" color={COLOR} sm onClick={() => exportQCCSV(qcLogs)}>⬇ Export CSV</SBtn>}
+            {canExport && <SBtn v="ghost" color={COLOR} sm onClick={() => exportQCCSV(qcLogs.filter(l => !l.deleted))}>⬇ Export CSV</SBtn>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {qcLogs.slice(0, 5).map(log => {
+            {qcLogs.filter(l => !l.deleted).slice(0, 5).map(log => {
               const gc = log.grade === "Rejected" ? t.red : log.grade === "A" ? t.green : t.orange;
               return (
                 <div key={log.id} style={{
@@ -505,7 +505,20 @@ export function QCTab({ t, batches = [], setBatches, qcLogs = [], setQcLogs, ses
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <SPill status={log.grade === "Rejected" ? "Rejected" : "pass"} label={log.grade === "Rejected" ? "Rejected" : `Grade ${log.grade}`} />
                     {canDelete && (
-                      <button onClick={() => setQcLogs(prev => prev.filter(l => l.id !== log.id))} title="Delete log"
+                      <button onClick={() => {
+                        if (!window.confirm(`Move this QC log for "${log.product}" to trash?`)) return;
+                        const now = new Date();
+                        setQcLogs(prev => prev.map(l => l.id !== log.id ? l : {
+                          ...l,
+                          deleted: true,
+                          deletedAt: now.getTime(),
+                          deletedAtISO: now.toISOString(),
+                          deletedBy: sess?.id || "unknown",
+                          deletedByName: sess?.name || "Staff",
+                          deletedByRole: sess?.role || "staff",
+                        }));
+                        notify("Moved to trash", "warning");
+                      }} title="Move to trash"
                         style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,80,80,0.5)", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>🗑</button>
                     )}
                   </div>

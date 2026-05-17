@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { checkPw, getDeviceInfo, DEVICE_ID } from "../lib/auth";
+import { monitor, checkLoginSpike } from "../lib/monitor";
 import { safeArr, uid } from "../lib/utils";
 import { fbWrite } from "../lib/store";
 /* global PublicKeyCredential */
@@ -38,12 +39,17 @@ function Login({users,onLogin,dm,settings}){
     if(!u.trim()||!p){setErr("Please enter your username and password.");return;}
     setBusy(true);setErr("");
     setTimeout(()=>{
-      const found=safeArr(users).find(x=>x.username.toLowerCase()===u.trim().toLowerCase()&&checkPw(p,x.password)&&x.active);
+      const uname=u.trim();
+      const found=safeArr(users).find(x=>x.username.toLowerCase()===uname.toLowerCase()&&checkPw(p,x.password)&&x.active);
+      const ctx={username:uname,...getDeviceInfo(),deviceId:DEVICE_ID};
       if(found){
+        monitor.loginSuccess(ctx);
         onLogin({...found,loginAt:Date.now(),deviceId:DEVICE_ID,...getDeviceInfo(),rememberMe});
       } else {
+        monitor.loginFailed(uname,ctx);
+        checkLoginSpike(uname,null,settings);
         if(settings?.secLogFailedLogins!==false){
-          try{const dev=getDeviceInfo();fbWrite("tas_failed_logins/"+uid(),{username:u.trim()||"(empty)",ts:new Date().toLocaleString("en-IN"),browser:dev.browser,os:dev.os,deviceType:dev.deviceType,loginAt:Date.now()}).catch(()=>{});}catch{}
+          try{const dev=getDeviceInfo();fbWrite("tas_failed_logins/"+uid(),{username:uname||"(empty)",ts:new Date().toLocaleString("en-IN"),browser:dev.browser,os:dev.os,deviceType:dev.deviceType,loginAt:Date.now()}).catch(()=>{});}catch{}
         }
         setErr("Incorrect username or password. Please try again.");
       }

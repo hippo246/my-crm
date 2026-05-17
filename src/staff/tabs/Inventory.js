@@ -63,7 +63,7 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
   const [receiveQty, setReceiveQty]       = useState(0);
   const [receiveSrc, setReceiveSrc]       = useState("");
 
-  const safe = Array.isArray(inventory) ? inventory : [];
+  const safe = (Array.isArray(inventory) ? inventory : []).filter(i => !i.deleted);
 
   const withStatus = safe.map(i => {
     const s = typeof i.stock === "number" && typeof i.minStock === "number"
@@ -289,9 +289,32 @@ export function InventoryTab({ t, inventory = [], setInventory, sess, notify = (
                     <div>
                       <span style={{ background:`${sc}12`, color:sc, border:`1px solid ${sc}28`, borderRadius:"999px", padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-block", boxShadow:`0 0 12px ${sc}20` }}>{statusLabel(item._status)}</span>
                     </div>
+                    {canDelete && (
+                      <div style={{ display:"flex", justifyContent:"center", alignItems:"center" }}>
+                        <button onClick={e => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Move "${item.name}" to trash?`)) return;
+                          const now = new Date();
+                          setInventory(prev => (Array.isArray(prev) ? prev : []).map(x => x.id !== item.id ? x : {
+                            ...x,
+                            deleted: true,
+                            deletedAt: now.getTime(),
+                            deletedAtISO: now.toISOString(),
+                            deletedBy: sess?.id || "unknown",
+                            deletedByName: sess?.name || "Staff",
+                            deletedByRole: sess?.role || "staff",
+                          }));
+                          notify(`"${item.name}" moved to trash`, "warning");
+                        }} title="Move to trash"
+                          style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(255,80,80,0.45)", fontSize:15, padding:"4px 6px", lineHeight:1, borderRadius:6, transition:"color 0.15s" }}
+                          onMouseEnter={e => e.currentTarget.style.color="#ef4444"}
+                          onMouseLeave={e => e.currentTarget.style.color="rgba(255,80,80,0.45)"}>
+                          🗑
+                        </button>
+                      </div>
+                    )}
                   </div>
-                );
-              })
+                );              })
             )}
           </div>
         </div>

@@ -454,7 +454,7 @@ export function StaffUI({ sess, onLogout }) {
           }}>
             <div style={{ color:t.text, fontWeight:700, fontSize:12, marginBottom:4 }}>{activeBatch.product}</div>
             <div style={{ color:t.sub, fontSize:10, marginBottom:8 }}>{activeBatch.batchLabel || activeBatch.id}</div>
-            <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:"999px", overflow:"hidden", marginBottom:5 }}>
+            <div style={{ height:4, background: lightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.07)", borderRadius:"999px", overflow:"hidden", marginBottom:5 }}>
               <div style={{
                 height:"100%",
                 width:`${(activeBatch.target ?? 0) > 0 ? Math.min(100, Math.round(((activeBatch.actual ?? 0)/activeBatch.target)*100)) : 0}%`,
