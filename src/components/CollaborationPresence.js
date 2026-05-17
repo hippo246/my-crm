@@ -297,7 +297,6 @@ function PresencePeerRow({ peer, sub, textClr, border }) {
  */
 export function PresenceDot({ peers = [], dm, t, onClick }) {
   const count = peers.length;
-  const sub   = t?.sub || "#9ca3af";
 
   if (count === 0) return (
     <button onClick={onClick} title="No other users online"
@@ -386,7 +385,6 @@ export function EditingIndicator({ peers = [], recordType, recordId, dm, t }) {
   const names  = editors.map(p => p.name).join(", ");
   const plural = editors.length > 1;
   const color  = editors[0].color;
-  const border = t?.border || "rgba(255,255,255,0.08)";
 
   return (
     <div style={{

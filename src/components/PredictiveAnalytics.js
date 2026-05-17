@@ -301,7 +301,6 @@ export function usePredictions({
     const { slope: revSlope, intercept: revInt, r2: revR2 } = linReg(xs30, ys30);
 
     const rev7Avg = rollingAvg(revByDay, 7);
-    const rev14Avg = rollingAvg(revByDay, 14);
 
     const revForecast = Array.from({ length: 7 }, (_, i) => {
       const dayIdx = 30 + i;
@@ -327,7 +326,6 @@ export function usePredictions({
       .map(c => {
         const avgDelay  = payDelay[c.id] || 0;
         const pendingAmt = c.pending || 0;
-        const orderCount = orderCountMap[c.id] || 1;
         const riskScore  = Math.min(100, avgDelay * 3 + (pendingAmt > 5000 ? 20 : 0));
         return { id: c.id, name: c.name, phone: c.phone, pendingAmt, avgDelay, riskScore };
       })
@@ -617,7 +615,6 @@ export function ChurnRiskTable({ predictions, dm, t, onSelectCustomer, limit = 8
 export function StockOutAlert({ predictions, dm, t }) {
   if (!predictions?.criticalStock?.length && !predictions?.warningStock?.length) return null;
 
-  const border  = t?.border || "rgba(255,255,255,0.08)";
   const sub     = t?.sub    || "#9ca3af";
   const textClr = t?.text   || "#f9fafb";
   const items   = [
@@ -661,10 +658,8 @@ export function RevenueForecastCard({ predictions, dm, t }) {
   const border  = t?.border || "rgba(255,255,255,0.08)";
   const sub     = t?.sub    || "#9ca3af";
   const muted   = t?.muted  || "#6b7280";
-  const textClr = t?.text   || "#f9fafb";
-  const inp     = t?.inp    || "rgba(255,255,255,0.04)";
-
   const { revForecast, totalForecast7d, forecastVsLast7 } = predictions;
+  const textClr = t?.text   || "#f9fafb";
   const trendColor = forecastVsLast7 >= 0 ? "#10b981" : "#ef4444";
   const maxVal = Math.max(...revForecast.map(d => d.high), 1);
 
@@ -688,7 +683,6 @@ export function RevenueForecastCard({ predictions, dm, t }) {
       <div style={{ padding:"16px", display:"flex", gap:6, alignItems:"flex-end", height:100 }}>
         {revForecast.map((day, i) => {
           const barH   = Math.round((day.value / maxVal) * 68);
-          const lowH   = Math.round((day.low   / maxVal) * 68);
           const highH  = Math.round((day.high  / maxVal) * 68);
           const label  = day.date.slice(5); // "MM-DD"
           const isWeekend = [0, 6].includes(new Date(day.date).getDay());
@@ -742,7 +736,6 @@ export function RevenueForecastCard({ predictions, dm, t }) {
 export function OverdueRiskCard({ predictions, dm, t, onSelectCustomer }) {
   if (!predictions?.overdueRisk?.length) return null;
   const border  = t?.border || "rgba(255,255,255,0.08)";
-  const sub     = t?.sub    || "#9ca3af";
   const muted   = t?.muted  || "#6b7280";
   const textClr = t?.text   || "#f9fafb";
   const inp     = t?.inp    || "rgba(255,255,255,0.04)";
