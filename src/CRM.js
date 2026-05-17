@@ -41,7 +41,7 @@ import { sendBrowserNotif } from "./components/ui";
 import PnLTab from "./tabs/PnL";
 import { onBatchComplete } from "./lib/workflowEngine";
 import { CommandPalette, CommandPaletteButton } from "./components/CommandPalette";
-import { usePresence, PresenceBar, PresenceDot, EditingIndicator, PresencePanel } from "./components/CollaborationPresence";
+import { usePresence, PresenceBar, PresenceDot, EditingIndicator } from "./components/CollaborationPresence";
 import { usePredictions, PredictivePanel, PredictiveSummaryBadges, StockOutAlert, ChurnRiskTable } from "./components/PredictiveAnalytics";
 import { useConfirm, ConfirmModal, useUndoAction, UndoToast, requestApproval } from "./components/ApprovalFlow";
 import { TrashButton, TrashPanel } from "./components/TrashPanel";
@@ -1668,7 +1668,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
             {/* #18 Search / Command Palette button */}
             {isAdmin && (
-              <CommandPaletteButton dm={dm} t={t} windowWidth={windowWidth} onClick={() => setCmdOpen(true)} />
+              <CommandPaletteButton dm={dm} t={t} windowWidth={typeof window !== "undefined" ? window.innerWidth : 1024} onClick={() => setCmdOpen(true)} />
             )}
 
             {/* #18 Presence dot — who else is online */}
