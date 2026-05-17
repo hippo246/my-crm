@@ -286,22 +286,6 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   // ── #18 Command Palette open state (lifted so header button can trigger it) ──
   const [cmdOpen, setCmdOpen] = useState(false);
 
-  // ── #18 Presence — track what record the current user has open ───────────────
-  const editingRecord =
-    dSh  ? { type:"delivery", id:dF?.id||"new", label:dF?.customer||"New Delivery" } :
-    cSh  ? { type:"customer", id:cF?.id||"new", label:cF?.name||"New Customer" } :
-    sSh  ? { type:"supply",   id:sF?.id||"new", label:sF?.item||"New Supply" } :
-    eSh  ? { type:"expense",  id:eF?.id||"new", label:eF?.category||"New Expense" } :
-    wSh  ? { type:"wastage",  id:wF?.id||"new", label:wF?.product||"New Wastage" } :
-    null;
-  const { peers } = usePresence(sess, tab, editingRecord);
-
-  // ── #19 Predictive analytics — client-side ML from existing data ─────────────
-  const predictions = usePredictions({
-    deliveries, customers, supplies, expenses,
-    wastage, products, paymentLedger, settings,
-  });
-
   // Fix: useCallback so addLog is a stable reference — prevents cascading re-renders
   // in any child component that receives it as a prop
   const addLog=useCallback((action,detail)=>{
@@ -610,6 +594,23 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [uSh,setUsh]=useState(null); const [uF,setUf]=useState(blkU());
   const [paySh,setPaySh]=useState(null); const [payAmt,setPayAmt]=useState("");
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
+
+  // ── #18 Presence — track what record the current user has open ───────────────
+  // Must be after all sheet states (dSh, cSh, sSh, eSh, wSh) are declared
+  const editingRecord =
+    dSh  ? { type:"delivery", id:dF?.id||"new", label:dF?.customer||"New Delivery" } :
+    cSh  ? { type:"customer", id:cF?.id||"new", label:cF?.name||"New Customer" } :
+    sSh  ? { type:"supply",   id:sF?.id||"new", label:sF?.item||"New Supply" } :
+    eSh  ? { type:"expense",  id:eF?.id||"new", label:eF?.category||"New Expense" } :
+    wSh  ? { type:"wastage",  id:wF?.id||"new", label:wF?.product||"New Wastage" } :
+    null;
+  const { peers } = usePresence(sess, tab, editingRecord);
+
+  // ── #19 Predictive analytics — client-side ML from existing data ─────────────
+  const predictions = usePredictions({
+    deliveries, customers, supplies, expenses,
+    wastage, products, paymentLedger, settings,
+  });
   const [delivCalendar,setDelivCalendar]=useState(false);
   const [delivView,setDelivView]=useState("expanded"); // "expanded" | "compact"
   const [calOffset,setCalOffset]=useState(0);
