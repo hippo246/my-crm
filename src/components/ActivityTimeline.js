@@ -110,24 +110,6 @@ function matchesEntity(entry, entityId, entityLabel) {
   return false;
 }
 
-// ── Skeleton loader ───────────────────────────────────────────
-function TimelineSkeleton({ t }) {
-  const border = t?.border || "rgba(255,255,255,0.08)";
-  const inp    = t?.inp    || "rgba(255,255,255,0.04)";
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {[1, 2, 3].map(i => (
-        <div key={i} style={{ display: "flex", gap: 12, opacity: 0.5 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: inp, border: `1px solid ${border}`, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ height: 10, borderRadius: 5, background: inp, width: "40%", marginBottom: 6 }} />
-            <div style={{ height: 8,  borderRadius: 4, background: inp, width: "70%" }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // ── Main component ────────────────────────────────────────────
 export function ActivityTimeline({

@@ -44,6 +44,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { useConfirm, ConfirmModal, useUndoAction, UndoToast, requestApproval } from "./components/ApprovalFlow";
 import { TrashButton, TrashPanel } from "./components/TrashPanel";
 import { withoutDeleted, onlyDeleted } from "./lib/softDelete";
+import { QuickEntryFAB, QuickEntryBar } from "./components/QuickEntry";
+import { PermissionMatrix, TabAccessEditor, RoleBadge,
+         RoleTemplateSelector, useRoleManager } from "./components/RoleManager";
 
 function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
