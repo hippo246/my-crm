@@ -356,7 +356,6 @@ function Login({users,onLogin,dm,settings}){
         <style>{`
           @media(min-width:860px){
             .lsplit-left{display:flex!important}
-            .lmobile-hdr{display:none!important}
             .lright-pad{padding:48px!important;justify-content:center!important}
           }
           @media(max-width:859px){
@@ -394,35 +393,43 @@ function Login({users,onLogin,dm,settings}){
           </div>
         </div>
 
-        {/* MOBILE HEADER — hidden on desktop */}
-        <div className="lmobile-hdr" style={{position:"absolute",top:0,left:0,right:0,padding:"44px 24px 28px",textAlign:"center",zIndex:2}}>
-          <div style={{width:84,height:84,borderRadius:24,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,margin:"0 auto 18px",userSelect:"none"}}>{appEmoji}</div>
-          <h1 style={{color:TEXT,fontWeight:800,fontSize:30,margin:"0 0 8px",letterSpacing:"-0.01em"}}>{appName}</h1>
-          <p style={{color:MUTED,fontSize:16,margin:"0 0 26px"}}>{appSub}</p>
-          <div style={{background:"rgba(255,255,255,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:18,padding:"16px 10px",display:"grid",gridTemplateColumns:"1fr 1px 1fr 1px 1fr",backdropFilter:"blur(10px)"}}>
-            {featurePills.map((f,i)=>(
-              <React.Fragment key={f.label}>
-                <div style={{textAlign:"center",padding:"0 6px"}}>
-                  <div style={{width:38,height:38,borderRadius:11,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}>{f.svg}</div>
-                  <p style={{color:TEXT,fontSize:13,fontWeight:700,margin:0,lineHeight:1.3}}>{f.label}</p>
-                </div>
-                {i<2&&<div style={{background:BORDER,width:1,margin:"4px 0"}}/>}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
         {/* RIGHT — form panel */}
-        <div className="lright-pad" style={{flex:1,display:"flex",alignItems:"flex-end",justifyContent:"flex-start",padding:"16px 20px 36px",overflowY:"auto",flexDirection:"column",paddingTop:0}}>
+        <div className="lright-pad" style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
           <style>{`
-            @media(max-width:859px){
-              .lright-pad{padding-top:340px!important;align-items:center!important}
+            @media(min-width:860px){
+              .lright-pad{align-items:center!important;justify-content:center!important;padding:48px!important;}
+              .lmobile-hdr-inner{display:none!important;}
             }
-            @media(max-width:440px){
-              .lright-pad{padding-top:360px!important}
+            @media(max-width:859px){
+              .lright-pad{padding:0!important;align-items:center!important;}
+              .lform-scroll{padding:0 20px 40px!important;width:100%!important;max-width:480px!important;margin:0 auto!important;}
+            }
+            @media(max-width:380px){
+              .lform-scroll{padding:0 14px 32px!important;}
             }
           `}</style>
-          <div style={{width:"100%",maxWidth:450}}>
+
+          {/* Mobile branding — inline above the form, scrolls with it */}
+          <div className="lmobile-hdr-inner" style={{width:"100%",maxWidth:480,margin:"0 auto",padding:"36px 20px 20px",textAlign:"center"}}>
+            <div style={{width:72,height:72,borderRadius:22,background:"rgba(59,110,246,0.12)",border:"2px solid rgba(59,110,246,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 14px",userSelect:"none"}}>{appEmoji}</div>
+            <h1 style={{color:TEXT,fontWeight:800,fontSize:26,margin:"0 0 6px",letterSpacing:"-0.01em"}}>{appName}</h1>
+            <p style={{color:MUTED,fontSize:15,margin:"0 0 18px"}}>{appSub}</p>
+            <div style={{background:"rgba(255,255,255,0.85)",border:`1.5px solid ${BORDER}`,borderRadius:16,padding:"12px 8px",backdropFilter:"blur(10px)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0}}>
+                {featurePills.map((f,i)=>(
+                  <React.Fragment key={f.label}>
+                    <div style={{flex:1,textAlign:"center",padding:"0 4px"}}>
+                      <div style={{width:34,height:34,borderRadius:10,background:`${f.color}12`,border:`1.5px solid ${f.color}28`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 6px"}}>{React.cloneElement(f.svg,{width:16,height:16})}</div>
+                      <p style={{color:TEXT,fontSize:11,fontWeight:700,margin:0,lineHeight:1.2}}>{f.label}</p>
+                    </div>
+                    {i<2&&<div style={{width:1,background:BORDER,alignSelf:"stretch",margin:"4px 0"}}/>}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="lform-scroll" style={{width:"100%",maxWidth:450,padding:"24px 0"}}>
             {formCardContent}
           </div>
         </div>

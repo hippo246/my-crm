@@ -49,6 +49,7 @@ import { withoutDeleted, onlyDeleted } from "./lib/softDelete";
 import { QuickEntryFAB, QuickEntryBar } from "./components/QuickEntry";
 import { PermissionMatrix, TabAccessEditor, RoleBadge,
          RoleTemplateSelector, useRoleManager } from "./components/RoleManager";
+import { initBrowserSupport, BrowserBanner, injectBrowserCSS } from "./components/BrowserSupport";
 
 function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
@@ -238,6 +239,9 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     try{sessionStorage.setItem("tas_active_tab",newTab);}catch{}
   },[]);
   // Tab guard: if active tab becomes unavailable (settings load async, permissions change),
+  // ── Browser support: polyfills + CSS fixes (runs once on mount) ──
+  useEffect(()=>{ initBrowserSupport(); injectBrowserCSS(); },[]);
+
   // auto-correct to first available tab so the UI never shows a blank screen
   useEffect(()=>{
     setTabRaw(cur=>{
@@ -1565,8 +1569,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       }
     `}</style>
     <div style={{background:t.bg,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',Helvetica,Arial,sans-serif",minHeight:"100svh"}} className="flex flex-col lg:flex-row">
-
-      {/* ── DESKTOP SIDEBAR (lg+) — Phase 5: dark navy #0d1b2a, blue filled pill active ─── */}
+      <BrowserBanner dm={dm} />
       <aside style={{background:"#0d1b2a",borderRight:"1px solid #1e2d3d",width:220,minHeight:"100svh"}} className="crm-sidebar hidden lg:flex flex-col shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
         {/* Logo */}
         <div style={{borderBottom:"1px solid #1e2d3d",padding:"22px 18px 20px"}} className="flex items-center gap-3">
@@ -1633,14 +1636,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
       {/* HEADER — full topbar, sticky, white/card bg */}
       <header style={{background:t.topbar,borderBottom:`1px solid ${t.topbarBorder}`,boxShadow:dm?"0 1px 0 rgba(255,255,255,0.03)":"0 1px 3px rgba(0,0,0,0.05)"}} className="sticky top-0 z-30">
-        <div className="px-4 lg:px-6 flex items-center gap-3" style={{height:60,paddingTop:"env(safe-area-inset-top,0px)"}}>
+        <div className="px-3 sm:px-4 lg:px-6 flex items-center gap-2 sm:gap-3" style={{height:56,paddingTop:"env(safe-area-inset-top,0px)"}}>
 
-          {/* LEFT — brand (mobile) / page title (desktop) — Phase 3 */}
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Mobile: app logo + name */}
-            <div className="flex lg:hidden items-center gap-2.5 min-w-0">
-              <div style={{background:"rgba(37,99,235,0.1)",border:"1.5px solid rgba(37,99,235,0.2)",width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
-              <p style={{color:t.text,fontSize:15,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}} className="truncate max-w-[140px]">{settings?.appName||"TAS"}</p>
+          {/* LEFT — brand (mobile) / page title (desktop) */}
+          <div className="flex items-center shrink-0">
+            {/* Mobile: app logo only on tiny screens, logo+name on sm+ */}
+            <div className="flex lg:hidden items-center gap-2 min-w-0">
+              <div style={{background:"rgba(37,99,235,0.1)",border:"1.5px solid rgba(37,99,235,0.2)",width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,userSelect:"none",flexShrink:0}}>{settings?.appEmoji||"🫓"}</div>
+              <p style={{color:t.text,fontSize:14,fontWeight:800,lineHeight:1,letterSpacing:"-0.02em"}} className="truncate hidden xs:block sm:block max-w-[100px]">{settings?.appName||"TAS"}</p>
             </div>
             {/* Desktop: current tab title */}
             <div className="hidden lg:flex items-center gap-3">
@@ -1649,22 +1652,22 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             </div>
           </div>
 
-          {/* CENTER — search bar (desktop: flex-1, mobile: flex with smaller size) */}
-          <div className="flex flex-1 max-w-[200px] sm:max-w-sm lg:max-w-sm relative" style={{marginLeft:8}}>
-            <svg style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          {/* CENTER — search bar: grows to fill available space */}
+          <div className="flex flex-1 min-w-0 relative" style={{marginLeft:4,maxWidth:320}}>
+            <svg style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",flexShrink:0}} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={t.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input
               value={srch}
               onChange={e=>setSrch(e.target.value)}
-              placeholder={tab==="Customers"?"Search name, phone…":tab==="Deliveries"?"Search customer, invoice…":tab==="Supplies"?"Search item, supplier…":tab==="Expenses"?"Search expense, vendor…":tab==="Payments"?"Search customer…":`Search…`}
-              style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:12,padding:"8px 30px 8px 32px",fontSize:13,outline:"none",width:"100%",transition:"border-color 0.15s,box-shadow 0.15s"}}
+              placeholder={tab==="Customers"?"Search…":tab==="Deliveries"?"Search…":tab==="Supplies"?"Search…":tab==="Expenses"?"Search…":tab==="Payments"?"Search…":"Search…"}
+              style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,borderRadius:11,padding:"7px 28px 7px 30px",fontSize:13,outline:"none",width:"100%",minWidth:0,transition:"border-color 0.15s,box-shadow 0.15s"}}
               onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}}
               onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}}
             />
-            {srch&&<button onClick={()=>setSrch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:18,height:18,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,border:"none",cursor:"pointer"}}>✕</button>}
+            {srch&&<button onClick={()=>setSrch("")} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:t.inpB,color:t.sub,width:17,height:17,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,border:"none",cursor:"pointer"}}>✕</button>}
           </div>
 
           {/* RIGHT — notifications + avatar + dark mode */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0">
 
             {/* #18 Search / Command Palette button */}
             {isAdmin && (
@@ -1681,7 +1684,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
             {/* Bell */}
             <div className="relative">
-              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative"}}>
+              <button onClick={()=>{setNotifOpen(o=>!o);if(unreadNotifs>0)markAllRead();}} style={{background:t.inp,color:t.text,border:`1.5px solid ${t.border}`,width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",position:"relative"}}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 {unreadNotifs>0&&<span key={unreadNotifs} style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",fontSize:9,fontWeight:800,borderRadius:99,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",border:`2px solid ${t.card}`}} className="crm-notif-badge">{unreadNotifs>9?"9+":unreadNotifs}</span>}
               </button>
@@ -1711,8 +1714,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
               </div>}
             </div>
 
-            {/* Desktop: dark mode toggle */}
-            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,width:38,height:38,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}} className="select-none hidden lg:flex">{dm?"☀️":"🌙"}</button>
+            {/* Dark mode toggle — always visible */}
+            <button onClick={()=>setDm(d=>!d)} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",cursor:"pointer"}} className="select-none">{dm?"☀️":"🌙"}</button>
 
             {/* Avatar pill — click = dropdown with sign out */}
             <div className="hidden lg:flex items-center gap-2 pl-1 relative">

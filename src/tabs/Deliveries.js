@@ -33,6 +33,14 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
   const [collectAmt, setCollectAmt] = React.useState("");
   const [collectNote, setCollectNote] = React.useState("");
 
+  // ── Responsive mobile detection — hoisted here to satisfy Rules of Hooks ──
+  const [_mobileW, _setMobileW] = React.useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  React.useEffect(()=>{
+    const _onResize = () => _setMobileW(window.innerWidth);
+    window.addEventListener("resize", _onResize, {passive:true});
+    return () => window.removeEventListener("resize", _onResize);
+  }, []);
+
   const t_local = T(dm); // fallback if t not passed
   return (
     <>
@@ -117,14 +125,17 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
             </div>
           </div>}
           {/* View toggle */}
-          <div style={{display:"flex",gap:28,alignItems:"center",marginBottom:12}}>
-            <span style={{color:t.sub,fontSize:11,fontWeight:600}}>View:</span>
-            {[["expanded","📋 Expanded"],["compact","⚡ Compact"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setDelivView(v)}
-                style={{background:delivView===v?"#2563eb":t.inp,color:delivView===v?"#fff":t.sub,border:`1.5px solid ${delivView===v?"#2563eb":t.border}`,borderRadius:99,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                {l}
-              </button>
-            ))}
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,justifyContent:"space-between",flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{color:t.sub,fontSize:11,fontWeight:600}}>View:</span>
+              {[["expanded","📋 Expanded"],["compact","⚡ Compact"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setDelivView(v)}
+                  style={{background:delivView===v?"#2563eb":t.inp,color:delivView===v?"#fff":t.sub,border:`1.5px solid ${delivView===v?"#2563eb":t.border}`,borderRadius:99,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",minHeight:36}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <span style={{color:t.sub,fontSize:11,fontWeight:500}}>{fDeliv.length} deliveries</span>
           </div>
 
           {/* CALENDAR VIEW */}
@@ -510,6 +521,130 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   <button onClick={()=>{const tp=Math.ceil(totalDelivRows/DELIV_PAGE_SIZE);if(delivPage<tp)setDelivPage(delivPage+1);}} disabled={delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)} style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:t.text,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?0.4:1}}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </button>
+                </div>}
+              </div>;
+            }
+
+            // ── MOBILE CARD VIEW (< 768px) — replaces horizontal-scroll table ──
+            const isMobileView = _mobileW < 768;
+            if (isMobileView) {
+              return <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {pagedDelivs.map((d, di) => {
+                  const tot = lineTotal(d.orderLines);
+                  const rows = lineRows(d.orderLines, products);
+                  const itemCount = rows.reduce((s,r) => s + (r.qty||0), 0);
+                  const itemNames = rows.slice(0,2).map(r=>`${r.qty}× ${r.name||r.id}`).join(", ") + (rows.length > 2 ? ` +${rows.length-2}` : "");
+                  const invNo = (invRegistry?.issued||{})[d.id] || d.invNo || `#${(d.id||"").slice(-6).toUpperCase()}`;
+                  const dRepl = +d.replacement?.amount || 0;
+                  const dNet = Math.max(0, tot - dRepl);
+                  const dBal = Math.max(0, dNet - (d.partialPayment?.enabled ? (+d.partialPayment?.amount||0) : 0));
+                  const settled = dBal === 0 && tot > 0;
+                  const sc = {"Delivered":"#10b981","In Transit":"#3b82f6","Pending":"#f59e0b","Cancelled":"#ef4444"}[d.status] || "#94a3b8";
+                  const [cardOpen, setCardOpen] = [
+                    expandedDeliveryCust === d.id,
+                    (v) => setExpandedDeliveryCust(v ? d.id : null),
+                  ];
+                  return <div key={d.id||di} style={{background:t.card,border:`1.5px solid ${cardOpen ? sc+"60" : t.border}`,borderRadius:16,overflow:"hidden",transition:"border-color 0.15s"}}>
+                    {/* Card header — always visible */}
+                    <div onClick={() => setCardOpen(!cardOpen)}
+                      style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                      {/* Status dot */}
+                      <div style={{width:10,height:10,borderRadius:"50%",background:sc,flexShrink:0,boxShadow:`0 0 6px ${sc}60`}}/>
+                      {/* Main info */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                          <p style={{color:t.text,fontWeight:800,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.customer}</p>
+                          <span style={{color:sc,background:`${sc}18`,border:`1px solid ${sc}30`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{d.status}</span>
+                        </div>
+                        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{color:t.sub,fontSize:11}}>{d.date}</span>
+                          <span style={{color:t.sub,fontSize:11}}>·</span>
+                          <span style={{color:"#8b5cf6",fontSize:11,fontFamily:"monospace"}}>{invNo}</span>
+                          {itemCount > 0 && <><span style={{color:t.sub,fontSize:11}}>·</span><span style={{color:t.sub,fontSize:11}}>{itemCount} item{itemCount!==1?"s":""}</span></>}
+                        </div>
+                      </div>
+                      {/* Amount + chevron */}
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        {canSeePrices && <p style={{color:settled?"#10b981":tot>0?"#f59e0b":t.sub,fontWeight:800,fontSize:15}}>{inr(tot)}</p>}
+                        {canSeePrices && dBal > 0 && <p style={{color:"#ef4444",fontSize:10,fontWeight:600}}>Due {inr(dBal)}</p>}
+                        <span style={{color:t.sub,fontSize:12,marginTop:2,display:"block"}}>{cardOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </div>
+
+                    {/* Expanded detail — shown on tap */}
+                    {cardOpen && <div style={{borderTop:`1px solid ${t.border}`}}>
+                      {/* Items */}
+                      <div style={{padding:"12px 16px",background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.02)"}}>
+                        <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Items</p>
+                        {rows.map((r,ri) => (
+                          <div key={ri} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                            <span style={{color:t.text,fontSize:12}}>{r.qty} × {r.name||r.id}</span>
+                            {canSeePrices && <span style={{color:t.text,fontWeight:600,fontSize:12}}>{inr((r.qty||0)*(r.priceAmount||0))}</span>}
+                          </div>
+                        ))}
+                        {canSeePrices && <div style={{borderTop:`1px solid ${t.border}`,marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
+                          <span style={{color:t.sub,fontSize:12}}>Total</span>
+                          <span style={{color:"#f59e0b",fontWeight:800,fontSize:13}}>{inr(tot)}</span>
+                        </div>}
+                      </div>
+                      {/* Payment summary */}
+                      {canSeePrices && (dRepl > 0 || dBal > 0) && <div style={{padding:"10px 16px",borderTop:`1px solid ${t.border}`}}>
+                        {dRepl > 0 && <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                          <span style={{color:"#f97316",fontSize:12}}>Replacement deducted</span>
+                          <span style={{color:"#f97316",fontSize:12,fontWeight:700}}>−{inr(dRepl)}</span>
+                        </div>}
+                        <div style={{display:"flex",justifyContent:"space-between"}}>
+                          <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"✓ Settled":"Balance due"}</span>
+                          <span style={{color:settled?"#10b981":"#ef4444",fontSize:12,fontWeight:700}}>{settled?"—":inr(dBal)}</span>
+                        </div>
+                      </div>}
+                      {/* Action buttons — full width tap targets */}
+                      <div style={{padding:"12px 16px",borderTop:`1px solid ${t.border}`,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        {can("deliv_markDone") && d.status !== "Cancelled" && (
+                          <button onClick={e=>{e.stopPropagation();if(d.status==="Delivered"){setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Pending",deliveryDate:""}:x));addLog("Status changed",d.customer+" → Pending");notify("Marked Pending");}else{advanceDeliveryStatus(d,_actor,setDeliv,notify);addLog("Status changed",d.customer+" → Delivered");}}}
+                            style={{gridColumn:"1/-1",padding:"13px",borderRadius:12,border:"none",background:d.status==="Delivered"?"#f59e0b18":"#10b981",color:d.status==="Delivered"?"#d97706":"#fff",fontWeight:800,fontSize:14,cursor:"pointer",WebkitTapHighlightColor:"transparent",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                            {d.status==="Delivered"?"↩ Mark Pending":"✓ Mark Delivered"}
+                          </button>
+                        )}
+                        {can("deliv_dispatch") && d.status==="Pending" && (
+                          <button onClick={e=>{e.stopPropagation();dispatchDelivery(d,_actor,setDeliv,notify);addLog("Dispatched",d.customer);}}
+                            style={{padding:"13px",borderRadius:12,border:"none",background:"#3b82f6",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                            🚚 Dispatch
+                          </button>
+                        )}
+                        {can("deliv_edit") && <button onClick={e=>{e.stopPropagation();setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}}
+                          style={{padding:"13px",borderRadius:12,border:`1px solid ${t.border}`,background:t.inp,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                          ✏️ Edit
+                        </button>}
+                        <button onClick={e=>{e.stopPropagation();setDetailModal({type:"delivery",data:d});}}
+                          style={{padding:"13px",borderRadius:12,border:"1px solid #3b82f630",background:"#3b82f615",color:"#3b82f6",fontWeight:700,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                          👁 View
+                        </button>
+                        <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}}
+                          style={{padding:"13px",borderRadius:12,border:"1px solid #7c3aed30",background:"#7c3aed15",color:"#7c3aed",fontWeight:700,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                          📄 PDF
+                        </button>
+                        <button onClick={e=>{e.stopPropagation();shareWhatsApp(d,products,"delivery",settings);}}
+                          style={{padding:"13px",borderRadius:12,border:"1px solid #25D36630",background:"#25D36615",color:"#25D366",fontWeight:700,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                          WhatsApp
+                        </button>
+                        {(can("cust_markPaid")||can("deliv_markDone")) && settings?.agentCollectEnabled!==false && d.status!=="Cancelled" && (
+                          <button onClick={e=>{e.stopPropagation();setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}}
+                            style={{padding:"13px",borderRadius:12,border:"none",background:"#f59e0b",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                            💰 Collect
+                          </button>
+                        )}
+                      </div>
+                    </div>}
+                  </div>;
+                })}
+                {/* Mobile pagination */}
+                {totalDelivRows > DELIV_PAGE_SIZE && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 4px"}}>
+                  <button onClick={()=>{if(delivPage>1)setDelivPage(delivPage-1);}} disabled={delivPage===1}
+                    style={{padding:"10px 20px",borderRadius:10,background:t.inp,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer",opacity:delivPage===1?0.4:1}}>← Prev</button>
+                  <span style={{color:t.sub,fontSize:12}}>{delivPage} / {Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)}</span>
+                  <button onClick={()=>{const tp=Math.ceil(totalDelivRows/DELIV_PAGE_SIZE);if(delivPage<tp)setDelivPage(delivPage+1);}} disabled={delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)}
+                    style={{padding:"10px 20px",borderRadius:10,background:t.inp,border:`1px solid ${t.border}`,color:t.text,fontWeight:700,fontSize:13,cursor:"pointer",opacity:delivPage===Math.ceil(totalDelivRows/DELIV_PAGE_SIZE)?0.4:1}}>Next →</button>
                 </div>}
               </div>;
             }
