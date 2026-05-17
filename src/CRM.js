@@ -40,7 +40,9 @@ import { PasskeyManager, SecuritySessions, FailedLoginAttempts } from "./compone
 import { sendBrowserNotif } from "./components/ui";
 import PnLTab from "./tabs/PnL";
 import { onBatchComplete } from "./lib/workflowEngine";
-import { CommandPalette } from "./components/CommandPalette";
+import { CommandPalette, CommandPaletteButton } from "./components/CommandPalette";
+import { usePresence, PresenceBar, PresenceDot, EditingIndicator, PresencePanel } from "./components/CollaborationPresence";
+import { usePredictions, PredictivePanel, PredictiveSummaryBadges, StockOutAlert, ChurnRiskTable } from "./components/PredictiveAnalytics";
 import { useConfirm, ConfirmModal, useUndoAction, UndoToast, requestApproval } from "./components/ApprovalFlow";
 import { TrashButton, TrashPanel } from "./components/TrashPanel";
 import { withoutDeleted, onlyDeleted } from "./lib/softDelete";
@@ -280,6 +282,25 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const subStaff=sess.subStaff||[];
   const [activeStaff,setActiveStaff]=useState(()=>sess.displayOverride||( subStaff.length>0?subStaff[0]:sess.name));
   const displayName=useMemo(()=>sess.displayOverride||( subStaff.length>0?activeStaff:sess.name),[sess.displayOverride,sess.name,subStaff.length,activeStaff]);
+
+  // ── #18 Command Palette open state (lifted so header button can trigger it) ──
+  const [cmdOpen, setCmdOpen] = useState(false);
+
+  // ── #18 Presence — track what record the current user has open ───────────────
+  const editingRecord =
+    dSh  ? { type:"delivery", id:dF?.id||"new", label:dF?.customer||"New Delivery" } :
+    cSh  ? { type:"customer", id:cF?.id||"new", label:cF?.name||"New Customer" } :
+    sSh  ? { type:"supply",   id:sF?.id||"new", label:sF?.item||"New Supply" } :
+    eSh  ? { type:"expense",  id:eF?.id||"new", label:eF?.category||"New Expense" } :
+    wSh  ? { type:"wastage",  id:wF?.id||"new", label:wF?.product||"New Wastage" } :
+    null;
+  const { peers } = usePresence(sess, tab, editingRecord);
+
+  // ── #19 Predictive analytics — client-side ML from existing data ─────────────
+  const predictions = usePredictions({
+    deliveries, customers, supplies, expenses,
+    wastage, products, paymentLedger, settings,
+  });
 
   // Fix: useCallback so addLog is a stable reference — prevents cascading re-renders
   // in any child component that receives it as a prop
@@ -1597,6 +1618,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             <button onClick={onLogout} title="Sign out" style={{background:"rgba(239,68,68,0.12)",color:"#f87171",border:"1px solid rgba(239,68,68,0.25)",borderRadius:9,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,cursor:"pointer",flexShrink:0}}>↩</button>
           </div>
           <button onClick={()=>setDm(d=>!d)} style={{background:"rgba(255,255,255,0.07)",color:"rgba(232,237,245,0.75)",border:`1px solid ${t.sidebarBorder}`,width:"100%",borderRadius:10,padding:"10px",fontSize:12,fontWeight:600,cursor:"pointer",WebkitTapHighlightColor:"transparent",minHeight:42}}>{dm?"☀ Light":"⬡ Dark"}</button>
+          {/* #18 Presence — who else is online */}
+          <PresenceBar peers={peers} dm={dm} t={{...t, border:t.sidebarBorder, sub:t.sidebarSub, text:t.sidebarText, inp:"rgba(255,255,255,0.06)"}} />
           <div className="flex items-center gap-2 px-0.5">
             <SystemHealthDot dm={dm} _syncListeners={_syncListeners} />
             <p style={{color:"rgba(232,237,245,0.4)",fontSize:10,letterSpacing:"0.02em"}}>{lastSync?`Synced ${lastSync.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:"Connecting\u2026"}</p>
@@ -1641,6 +1664,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
 
           {/* RIGHT — notifications + avatar + dark mode */}
           <div className="flex items-center gap-2 ml-auto shrink-0">
+
+            {/* #18 Search / Command Palette button */}
+            {isAdmin && (
+              <CommandPaletteButton dm={dm} t={t} windowWidth={windowWidth} onClick={() => setCmdOpen(true)} />
+            )}
+
+            {/* #18 Presence dot — who else is online */}
+            <PresenceDot peers={peers} dm={dm} t={t} />
 
             {/* Trash */}
             {isAdmin && (
@@ -1735,7 +1766,7 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
       <div className="w-full max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-5 lg:px-8 xl:px-10 py-5 sm:py-6 flex flex-col gap-0 crm-tab-content" key={tab}>
 
         {/* DASHBOARD */}
-        {tab==="Dashboard"&&(
+        {tab==="Dashboard"&&(<>
           <SmartDashboard
             sess={sess} settings={settings} dm={dm} t={t}
             isAdmin={isAdmin} can={can}
@@ -1760,7 +1791,16 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             setUserDashWidgets={setUserDashWidgets}
             _syncListeners={_syncListeners}
           />
-        )}
+          {/* #19 Predictive summary badges */}
+          {isAdmin && (
+            <div style={{marginTop:16}}>
+              <PredictiveSummaryBadges
+                predictions={predictions} dm={dm} t={t}
+                onSectionClick={() => setTab("Analytics")}
+              />
+            </div>
+          )}
+        </>)}
 
         {/* CUSTOMERS */}
         {tab==="Customers"&&(()=>{
@@ -1778,6 +1818,17 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {icon:"🔄",label:"Replacements",value:dashReplacementCount,sub:inr(totalReplDeductions)+" deducted",iconBg:t.statIcon3},
             {icon:"⚡",label:"Partial Payments",value:dashPartialCount,sub:inr(dashPartialTotal)+" collected",iconBg:t.statIcon4},
           ]}/>}
+
+          {/* #19 Churn risk — show high-risk customers at the top */}
+          {isAdmin && predictions?.highRisk?.length > 0 && (
+            <ChurnRiskTable
+              predictions={predictions} dm={dm} t={t} limit={4}
+              onSelectCustomer={c => {
+                const full = customers.find(x => x.id === c.id);
+                if (full) setDetailModal({ type:"customer", data:full });
+              }}
+            />
+          )}
 
           {/* OVERDUE PAYMENT ALERT BANNER */}
           {canSeeFinancials&&(()=>{
@@ -3657,7 +3708,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         {/* SUPPLIES */}
 
         {/* SUPPLIES */}
-        {tab==="Supplies"&&<SuppliesTab dm={dm} isAdmin={isAdmin} can={can} canSeeFinancials={canSeeFinancials} supplies={supplies} settings={settings} srch={srch} fSup={fSup} totalSupC={totalSupC} lowStockItems={lowStockItems} setSf={setSf} setSsh={setSsh} blkS={blkS} delS={delS}/>}
+        {tab==="Supplies"&&<>
+          {/* #19 Stock depletion alert */}
+          {isAdmin && predictions?.summary?.criticalStockCount > 0 && (
+            <StockOutAlert predictions={predictions} dm={dm} t={t} />
+          )}
+          <SuppliesTab dm={dm} isAdmin={isAdmin} can={can} canSeeFinancials={canSeeFinancials} supplies={supplies} settings={settings} srch={srch} fSup={fSup} totalSupC={totalSupC} lowStockItems={lowStockItems} setSf={setSf} setSsh={setSsh} blkS={blkS} delS={delS}/>
+        </>}
 
         {/* EXPENSES */}
         {tab==="Expenses"&&<ExpensesTab dm={dm} expenses={expenses} wastage={wastage} supplies={supplies} deliveries={deliveries} settings={settings} totalExpOp={totalExpOp} totalSupC={totalSupC} totalRev={totalRev} netProfit={netProfit} expDateFilter={expDateFilter} setExpDateFilter={setExpDateFilter} expCatFilter={expCatFilter} setExpCatFilter={setExpCatFilter} expCustomFrom={expCustomFrom} setExpCustomFrom={setExpCustomFrom} expCustomTo={expCustomTo} setExpCustomTo={setExpCustomTo} expSearch={expSearch} setExpSearch={setExpSearch} setEsh={setEsh} setEf={setEf} blkE={blkE} setDetailModal={setDetailModal}/>}
@@ -3679,7 +3736,23 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         {/* These are defined as inline closures inside JSX scope so they can close over live data */}
 
         {/* ANALYTICS TAB */}
-        {tab==="Analytics"&&<AnalyticsTab dm={dm} isAdmin={isAdmin} canSeePrices={canSeePrices} deliveries={deliveries} expenses={expenses} supplies={supplies} wastage={wastage} customers={customers} products={products} prodTargets={allBatches} qcLogs={qcLogs} actLog={actLog} settings={settings} paymentLedger={paymentLedger} invRegistry={invRegistry} totalRev={totalRev} totalExpOp={totalExpOp} totalSupC={totalSupC} netProfit={netProfit} anlPeriod={anlPeriod} setAnlPeriod={setAnlPeriod} anlCustomFrom={anlCustomFrom} setAnlCustomFrom={setAnlCustomFrom} anlCustomTo={anlCustomTo} setAnlCustomTo={setAnlCustomTo} anlSpecificDate={anlSpecificDate} setAnlSpecificDate={setAnlSpecificDate} anlActiveSection={anlActiveSection} setAnlActiveSection={setAnlActiveSection} anlCustSearch={anlCustSearch} setAnlCustSearch={setAnlCustSearch} anlCustSort={anlCustSort} setAnlCustSort={setAnlCustSort} anlCustFilter={anlCustFilter} setAnlCustFilter={setAnlCustFilter} anlCustExpanded={anlCustExpanded} setAnlCustExpanded={setAnlCustExpanded} anlProdSort={anlProdSort} setAnlProdSort={setAnlProdSort} anlProdExpanded={anlProdExpanded} setAnlProdExpanded={setAnlProdExpanded} anlOpsView={anlOpsView} setAnlOpsView={setAnlOpsView} anlFinView={anlFinView} setAnlFinView={setAnlFinView} anlOverviewMetric={anlOverviewMetric} setAnlOverviewMetric={setAnlOverviewMetric} anlExportOpen={anlExportOpen} setAnlExportOpen={setAnlExportOpen} anlChartType={anlChartType} setAnlChartType={setAnlChartType} anlTrendMetric={anlTrendMetric} setAnlTrendMetric={setAnlTrendMetric} anlShowInsights={anlShowInsights} setAnlShowInsights={setAnlShowInsights} setTab={setTab}/>}
+        {tab==="Analytics"&&<>
+          <AnalyticsTab dm={dm} isAdmin={isAdmin} canSeePrices={canSeePrices} deliveries={deliveries} expenses={expenses} supplies={supplies} wastage={wastage} customers={customers} products={products} prodTargets={allBatches} qcLogs={qcLogs} actLog={actLog} settings={settings} paymentLedger={paymentLedger} invRegistry={invRegistry} totalRev={totalRev} totalExpOp={totalExpOp} totalSupC={totalSupC} netProfit={netProfit} anlPeriod={anlPeriod} setAnlPeriod={setAnlPeriod} anlCustomFrom={anlCustomFrom} setAnlCustomFrom={setAnlCustomFrom} anlCustomTo={anlCustomTo} setAnlCustomTo={setAnlCustomTo} anlSpecificDate={anlSpecificDate} setAnlSpecificDate={setAnlSpecificDate} anlActiveSection={anlActiveSection} setAnlActiveSection={setAnlActiveSection} anlCustSearch={anlCustSearch} setAnlCustSearch={setAnlCustSearch} anlCustSort={anlCustSort} setAnlCustSort={setAnlCustSort} anlCustFilter={anlCustFilter} setAnlCustFilter={setAnlCustFilter} anlCustExpanded={anlCustExpanded} setAnlCustExpanded={setAnlCustExpanded} anlProdSort={anlProdSort} setAnlProdSort={setAnlProdSort} anlProdExpanded={anlProdExpanded} setAnlProdExpanded={setAnlProdExpanded} anlOpsView={anlOpsView} setAnlOpsView={setAnlOpsView} anlFinView={anlFinView} setAnlFinView={setAnlFinView} anlOverviewMetric={anlOverviewMetric} setAnlOverviewMetric={setAnlOverviewMetric} anlExportOpen={anlExportOpen} setAnlExportOpen={setAnlExportOpen} anlChartType={anlChartType} setAnlChartType={setAnlChartType} anlTrendMetric={anlTrendMetric} setAnlTrendMetric={setAnlTrendMetric} anlShowInsights={anlShowInsights} setAnlShowInsights={setAnlShowInsights} setTab={setTab}/>
+          {/* #19 Predictive Intelligence section */}
+          {isAdmin && (
+            <div style={{marginTop:24}}>
+              <p style={{color:t.sub,fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>🔮 Predictive Intelligence</p>
+              <PredictivePanel
+                predictions={predictions} dm={dm} t={t}
+                products={products} customers={customers} supplies={supplies} settings={settings}
+                onSelectCustomer={c => {
+                  const full = customers.find(x => x.id === c.id);
+                  if (full) setDetailModal({ type:"customer", data:full });
+                }}
+              />
+            </div>
+          )}
+        </>}
 
 
         {/* PRODUCTION + QC + WASTAGE (merged) — see Production.js */}
@@ -3776,6 +3849,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
       {/* Customer Sheet */}
       <Sheet dm={dm} open={!!cSh} onClose={()=>setCsh(null)} title={cSh==="add"?"👤 New Customer":"✏️ Edit Customer"}>
+        {/* #18 Editing indicator — shown if another user has this record open */}
+        <EditingIndicator peers={peers} recordType="customer" recordId={cF?.id} dm={dm} t={t} />
         {/* ── IDENTITY SECTION ── */}
         <div style={{background:dm?"rgba(245,158,11,0.06)":"rgba(245,158,11,0.04)",border:`1px solid ${dm?"rgba(245,158,11,0.2)":"rgba(245,158,11,0.15)"}`,borderRadius:16,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
@@ -4100,6 +4175,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
       {/* Delivery Sheet */}
       <Sheet dm={dm} open={!!dSh} onClose={()=>setDsh(null)} title={dSh==="add"?"New Delivery":"Edit Delivery"}>
+        {/* #18 Editing indicator */}
+        <EditingIndicator peers={peers} recordType="delivery" recordId={dF?.id} dm={dm} t={t} />
         <Sel dm={dm} label="Customer *" value={dF.customerId||""} onChange={e=>pickCust(e.target.value)}>
           <option value="">— Select customer —</option>
           {customers.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -5387,6 +5464,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 
       {isAdmin && (
         <CommandPalette
+          open={cmdOpen}
+          setOpen={setCmdOpen}
           customers={customers}
           deliveries={deliveries}
           expenses={expenses}
