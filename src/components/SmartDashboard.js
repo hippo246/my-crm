@@ -30,6 +30,15 @@ const WIDGET_DEFS = [
   { id: "syncStatus",       label: "Sync Status",           icon: "📡", roles: ["admin"] },
   { id: "quickStats",       label: "Quick Stats",           icon: "📊", roles: ["admin","agent","factory"] },
   { id: "cashFlow",         label: "Cash Flow",             icon: "💰", roles: ["admin"] },
+  // ── new widgets ──────────────────────────────────────────────
+  { id: "clockWidget",      label: "Clock & Date",          icon: "🕐", roles: ["admin","agent","factory"] },
+  { id: "expenseBreakdown", label: "Expense Breakdown",     icon: "🥧", roles: ["admin"] },
+  { id: "productSales",     label: "Product Sales",         icon: "🛒", roles: ["admin","agent"] },
+  { id: "goalTracker",      label: "Goal Tracker",          icon: "🎯", roles: ["admin"] },
+  { id: "miniCalendar",     label: "Mini Calendar",         icon: "📅", roles: ["admin","agent","factory"] },
+  { id: "wasteTracker",     label: "Waste Tracker",         icon: "♻️",  roles: ["admin","factory"] },
+  { id: "vehicleStatus",    label: "Vehicle Status",        icon: "🚛", roles: ["admin","agent"] },
+  { id: "noticeBoard",      label: "Notice Board",          icon: "📌", roles: ["admin","agent","factory"] },
 ];
 
 const DEFAULT_WIDGET_ORDER = [
@@ -37,80 +46,157 @@ const DEFAULT_WIDGET_ORDER = [
   "topCustomers","inventoryAlerts","recentActions","delayedDeliveries","syncStatus",
 ];
 
-// ── Native drag-and-drop grid ─────────────────────────────────
+// ── Touch + Mouse drag-and-drop grid ────────────────────────────
 function DragGrid({ items, onReorder, editMode, renderItem }) {
-  const dragIdx = useRef(null);
-  const overIdx = useRef(null);
-  const [draggingId, setDraggingId] = useState(null);
-  const [overIdState, setOverIdState] = useState(null);
+  const [draggingId, setDraggingId]   = useState(null);
+  const [overId,     setOverId]       = useState(null);
+  // ghost position for touch drag
+  const [ghostPos,   setGhostPos]     = useState(null);
+  const [ghostSize,  setGhostSize]    = useState({ w: 0, h: 0 });
 
-  const handleDragStart = (e, id, idx) => {
+  const dragIdx    = useRef(null);
+  const touchTimer = useRef(null);
+  const gridRef    = useRef(null);
+  const ghostLabel = useRef("");
+
+  // ── helper: find which cell index a touch point is over ──────
+  const idxAtPoint = useCallback((x, y) => {
+    if (!gridRef.current) return null;
+    const cells = gridRef.current.children;
+    for (let i = 0; i < cells.length; i++) {
+      const r = cells[i].getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
+    }
+    return null;
+  }, []);
+
+  const commitReorder = useCallback((fromIdx, toIdx) => {
+    if (fromIdx === null || toIdx === null || fromIdx === toIdx) return;
+    const next = [...items];
+    const [removed] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, removed);
+    onReorder(next);
+  }, [items, onReorder]);
+
+  const resetState = useCallback(() => {
+    dragIdx.current = null;
+    setDraggingId(null);
+    setOverId(null);
+    setGhostPos(null);
+  }, []);
+
+  // ── Mouse / HTML5 drag (desktop) ─────────────────────────────
+  const onMouseDragStart = (e, id, idx) => {
+    if (!editMode) return;
     dragIdx.current = idx;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = "move";
-    // Needed for Firefox
     e.dataTransfer.setData("text/plain", id);
   };
-
-  const handleDragEnter = (e, id, idx) => {
+  const onMouseDragEnter = (e, id, idx) => {
     e.preventDefault();
     if (dragIdx.current === idx) return;
-    overIdx.current = idx;
-    setOverIdState(id);
+    setOverId(id);
   };
-
-  const handleDragOver = (e) => {
+  const onMouseDragOver  = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
+  const onMouseDrop      = (e, idx) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+    commitReorder(dragIdx.current, idx);
+    resetState();
+  };
+  const onMouseDragEnd   = () => resetState();
+
+  // ── Touch drag (mobile / tablet) ─────────────────────────────
+  const onTouchStart = (e, id, idx) => {
+    if (!editMode) return;
+    // long-press not needed — instant drag on touch in edit mode
+    const touch = e.touches[0];
+    const el    = e.currentTarget;
+    const rect  = el.getBoundingClientRect();
+    dragIdx.current = idx;
+    ghostLabel.current = id;
+    setGhostSize({ w: rect.width, h: rect.height });
+    setGhostPos({ x: touch.clientX - rect.width / 2, y: touch.clientY - rect.height / 2 });
+    setDraggingId(id);
   };
 
-  const handleDrop = (e, idx) => {
-    e.preventDefault();
-    if (dragIdx.current === null || dragIdx.current === idx) return;
-    const newOrder = [...items];
-    const [removed] = newOrder.splice(dragIdx.current, 1);
-    newOrder.splice(idx, 0, removed);
-    onReorder(newOrder);
-    dragIdx.current = null;
-    overIdx.current = null;
-    setDraggingId(null);
-    setOverIdState(null);
+  const onTouchMove = (e) => {
+    if (!editMode || dragIdx.current === null) return;
+    e.preventDefault(); // stop page scroll while dragging
+    const touch = e.touches[0];
+    setGhostPos({ x: touch.clientX - ghostSize.w / 2, y: touch.clientY - ghostSize.h / 2 });
+    const over = idxAtPoint(touch.clientX, touch.clientY);
+    if (over !== null && over !== dragIdx.current) {
+      setOverId(items[over]);
+    }
   };
 
-  const handleDragEnd = () => {
-    dragIdx.current = null;
-    overIdx.current = null;
-    setDraggingId(null);
-    setOverIdState(null);
+  const onTouchEnd = (e) => {
+    if (!editMode || dragIdx.current === null) return;
+    const touch = e.changedTouches[0];
+    const toIdx = idxAtPoint(touch.clientX, touch.clientY);
+    commitReorder(dragIdx.current, toIdx);
+    resetState();
   };
 
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fill,minmax(min(300px,100%),1fr))",
-      gap: 14,
-    }}>
-      {items.map((id, idx) => (
-        <div
-          key={id}
-          draggable={editMode}
-          onDragStart={editMode ? (e) => handleDragStart(e, id, idx) : undefined}
-          onDragEnter={editMode ? (e) => handleDragEnter(e, id, idx) : undefined}
-          onDragOver={editMode ? handleDragOver : undefined}
-          onDrop={editMode ? (e) => handleDrop(e, idx) : undefined}
-          onDragEnd={editMode ? handleDragEnd : undefined}
-          style={{
-            opacity: draggingId === id ? 0.4 : 1,
-            outline: overIdState === id && draggingId !== id ? "2px dashed #3b82f6" : "none",
-            outlineOffset: 4,
-            borderRadius: 20,
-            transition: "opacity 0.15s, outline 0.1s",
-            cursor: editMode ? "grab" : "default",
-          }}
-        >
-          {renderItem(id, editMode)}
+    <div style={{ position: "relative" }}>
+      {/* ghost card that follows finger */}
+      {ghostPos && draggingId && (
+        <div style={{
+          position: "fixed",
+          left: ghostPos.x, top: ghostPos.y,
+          width: ghostSize.w, height: ghostSize.h,
+          pointerEvents: "none", zIndex: 9999,
+          opacity: 0.75, borderRadius: 20,
+          background: "rgba(59,130,246,0.18)",
+          border: "2px dashed #3b82f6",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transform: "rotate(2deg) scale(1.04)",
+          transition: "transform 0.08s",
+          boxShadow: "0 12px 40px rgba(59,130,246,0.25)",
+        }}>
+          <span style={{ color: "#3b82f6", fontWeight: 800, fontSize: 13 }}>
+            {WIDGET_DEFS.find(w => w.id === draggingId)?.icon} {WIDGET_DEFS.find(w => w.id === draggingId)?.label}
+          </span>
         </div>
-      ))}
+      )}
+
+      <div
+        ref={gridRef}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill,minmax(min(300px,100%),1fr))",
+          gap: 14,
+        }}
+      >
+        {items.map((id, idx) => (
+          <div
+            key={id}
+            draggable={editMode}
+            onDragStart={editMode ? (e) => onMouseDragStart(e, id, idx) : undefined}
+            onDragEnter={editMode ? (e) => onMouseDragEnter(e, id, idx) : undefined}
+            onDragOver={editMode ? onMouseDragOver : undefined}
+            onDrop={editMode ? (e) => onMouseDrop(e, idx) : undefined}
+            onDragEnd={editMode ? onMouseDragEnd : undefined}
+            onTouchStart={editMode ? (e) => onTouchStart(e, id, idx) : undefined}
+            onTouchMove={editMode ? onTouchMove : undefined}
+            onTouchEnd={editMode ? onTouchEnd : undefined}
+            style={{
+              opacity: draggingId === id ? 0.35 : 1,
+              outline: overId === id && draggingId !== id ? "2px dashed #3b82f6" : "none",
+              outlineOffset: 4,
+              borderRadius: 20,
+              transition: "opacity 0.15s, outline 0.1s, transform 0.15s",
+              transform: overId === id && draggingId !== id ? "scale(1.02)" : "scale(1)",
+              cursor: editMode ? "grab" : "default",
+              touchAction: editMode ? "none" : "auto",
+            }}
+          >
+            {renderItem(id, editMode)}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -635,6 +721,341 @@ function CashFlowWidget({ t, customers, expenses, today, inr, editMode, onRemove
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// NEW WIDGETS
+// ══════════════════════════════════════════════════════════════
+
+// ── Clock & Date ──────────────────────────────────────────────
+function ClockWidget({ t, editMode, onRemove }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const hh = now.getHours(), mm = now.getMinutes(), ss = now.getSeconds();
+  const deg = { h: (hh % 12) * 30 + mm * 0.5, m: mm * 6, s: ss * 6 };
+  const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const cx = 60, cy = 60, r = 52;
+
+  return (
+    <WidgetCard icon="🕐" title="Clock & Date" t={t} accent="#6366f1" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        {/* Analog clock */}
+        <svg width={120} height={120} viewBox="0 0 120 120" style={{ flexShrink: 0 }}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={t?.border || "rgba(255,255,255,0.1)"} strokeWidth={2} />
+          {[...Array(12)].map((_, i) => {
+            const a = (i * 30 - 90) * Math.PI / 180;
+            const inner = i % 3 === 0 ? r - 10 : r - 6;
+            return <line key={i}
+              x1={cx + Math.cos(a) * inner} y1={cy + Math.sin(a) * inner}
+              x2={cx + Math.cos(a) * r}     y2={cy + Math.sin(a) * r}
+              stroke={t?.sub || "#6b7280"} strokeWidth={i % 3 === 0 ? 2 : 1} />;
+          })}
+          {/* Hour hand */}
+          {(() => { const a = (deg.h - 90) * Math.PI / 180; return <line x1={cx} y1={cy} x2={cx + Math.cos(a) * 28} y2={cy + Math.sin(a) * 28} stroke={t?.text || "#f9fafb"} strokeWidth={3} strokeLinecap="round" />; })()}
+          {/* Minute hand */}
+          {(() => { const a = (deg.m - 90) * Math.PI / 180; return <line x1={cx} y1={cy} x2={cx + Math.cos(a) * 40} y2={cy + Math.sin(a) * 40} stroke={t?.text || "#f9fafb"} strokeWidth={2} strokeLinecap="round" />; })()}
+          {/* Second hand */}
+          {(() => { const a = (deg.s - 90) * Math.PI / 180; return <line x1={cx} y1={cy} x2={cx + Math.cos(a) * 44} y2={cy + Math.sin(a) * 44} stroke="#ef4444" strokeWidth={1} strokeLinecap="round" />; })()}
+          <circle cx={cx} cy={cy} r={3} fill="#6366f1" />
+        </svg>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ color: t?.text, fontWeight: 900, fontSize: 22, letterSpacing: "-0.5px", fontVariantNumeric: "tabular-nums" }}>{timeStr}</p>
+          <p style={{ color: t?.sub, fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>{dateStr}</p>
+        </div>
+      </div>
+    </WidgetCard>
+  );
+}
+
+// ── Expense Breakdown ─────────────────────────────────────────
+function ExpenseBreakdownWidget({ t, expenses, inr, editMode, onRemove }) {
+  const cats = {};
+  (expenses || []).forEach(e => {
+    const k = e.category || e.type || "Other";
+    cats[k] = (cats[k] || 0) + (e.amount || 0);
+  });
+  const sorted = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const total  = sorted.reduce((s, [, v]) => s + v, 0) || 1;
+  const COLORS  = ["#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6","#8b5cf6"];
+
+  // simple donut via conic-gradient
+  const stops = [];
+  let cum = 0;
+  sorted.forEach(([, v], i) => {
+    const pct = v / total * 100;
+    stops.push(`${COLORS[i]} ${cum}% ${cum + pct}%`);
+    cum += pct;
+  });
+
+  return (
+    <WidgetCard icon="🥧" title="Expense Breakdown" t={t} accent="#6366f1" editMode={editMode} onRemove={onRemove}>
+      {sorted.length === 0
+        ? <p style={{ color: t?.sub, fontSize: 12, textAlign: "center" }}>No expense data</p>
+        : <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ width: 80, height: 80, borderRadius: "50%", background: `conic-gradient(${stops.join(",")})`, flexShrink: 0, boxShadow: "0 2px 12px rgba(0,0,0,0.2)" }} />
+            <div style={{ flex: 1, minWidth: 100 }}>
+              {sorted.map(([cat, val], i) => (
+                <div key={cat} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i], flexShrink: 0 }} />
+                  <span style={{ color: t?.text, fontSize: 10, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat}</span>
+                  <span style={{ color: COLORS[i], fontSize: 10, fontWeight: 800 }}>{Math.round(val / total * 100)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+      }
+      <p style={{ color: t?.sub, fontSize: 9, marginTop: 8, textAlign: "right" }}>Total: {inr(total)}</p>
+    </WidgetCard>
+  );
+}
+
+// ── Product Sales ─────────────────────────────────────────────
+function ProductSalesWidget({ t, deliveries, products, inr, lineTotal, editMode, onRemove }) {
+  const salesMap = {};
+  (deliveries || []).filter(d => d.status === "Delivered").forEach(d => {
+    (d.orderLines || []).forEach(line => {
+      const k = line.product || line.item || "Unknown";
+      if (!salesMap[k]) salesMap[k] = { qty: 0, rev: 0 };
+      salesMap[k].qty += line.qty || 0;
+      salesMap[k].rev += (line.qty || 0) * (line.price || 0);
+    });
+  });
+  const sorted = Object.entries(salesMap).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5);
+  const maxRev  = sorted[0]?.[1].rev || 1;
+
+  return (
+    <WidgetCard icon="🛒" title="Product Sales" t={t} accent="#f59e0b" editMode={editMode} onRemove={onRemove}>
+      {sorted.length === 0
+        ? <p style={{ color: t?.sub, fontSize: 12, textAlign: "center" }}>No sales data yet</p>
+        : sorted.map(([name, { qty, rev }], i) => (
+            <div key={name} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ color: t?.text, fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{name}</span>
+                <span style={{ color: "#f59e0b", fontWeight: 800, fontSize: 11 }}>{inr(rev)}</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 4, background: t?.border, overflow: "hidden" }}>
+                <div style={{ width: `${Math.round(rev / maxRev * 100)}%`, height: "100%", background: `hsl(${40 - i * 6},90%,${55 - i * 4}%)`, borderRadius: 4, transition: "width 0.6s ease" }} />
+              </div>
+              <p style={{ color: t?.sub, fontSize: 9, marginTop: 2 }}>{qty} units sold</p>
+            </div>
+          ))
+      }
+    </WidgetCard>
+  );
+}
+
+// ── Goal Tracker ──────────────────────────────────────────────
+function GoalTrackerWidget({ t, deliveries, customers, expenses, inr, today, editMode, onRemove }) {
+  const month = today().slice(0, 7);
+  const monthDeliveries = (deliveries || []).filter(d => (d.date || "").startsWith(month) && d.status === "Delivered");
+  const monthRev = monthDeliveries.reduce((s, d) => {
+    return s + (d.orderLines || []).reduce((ss, l) => ss + (l.qty || 0) * (l.price || 0), 0);
+  }, 0);
+  const monthCust = new Set(monthDeliveries.map(d => d.customerId)).size;
+  const monthExp  = (expenses || []).filter(e => (e.date || "").startsWith(month)).reduce((s, e) => s + (e.amount || 0), 0);
+
+  // Hardcoded monthly goals — in a real app these'd come from settings
+  const goals = [
+    { label: "Monthly Revenue", current: monthRev, target: 500000, color: "#10b981", fmt: inr },
+    { label: "Orders Delivered", current: monthDeliveries.length, target: 60,  color: "#3b82f6", fmt: v => v },
+    { label: "Active Customers", current: monthCust,  target: 30,  color: "#f59e0b", fmt: v => v },
+    { label: "Keep Expenses Under", current: monthExp, target: 100000, color: "#ef4444", fmt: inr, inverse: true },
+  ];
+
+  return (
+    <WidgetCard icon="🎯" title="Monthly Goals" t={t} accent="#10b981" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {goals.map(g => {
+          const raw = Math.min(100, Math.round(g.current / g.target * 100));
+          const pct  = g.inverse ? Math.max(0, 100 - raw) : raw;
+          const col  = pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444";
+          return (
+            <div key={g.label}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ color: t?.text, fontSize: 11, fontWeight: 600 }}>{g.label}</span>
+                <span style={{ color: col, fontSize: 11, fontWeight: 800 }}>{pct}%</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 6, background: t?.border, overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: g.color, borderRadius: 6, transition: "width 0.7s ease", boxShadow: `0 0 6px ${g.color}60` }} />
+              </div>
+              <p style={{ color: t?.sub, fontSize: 9, marginTop: 2 }}>{g.fmt(g.current)} / {g.fmt(g.target)}</p>
+            </div>
+          );
+        })}
+      </div>
+    </WidgetCard>
+  );
+}
+
+// ── Mini Calendar ─────────────────────────────────────────────
+function MiniCalendarWidget({ t, deliveries, today, editMode, onRemove }) {
+  const [viewDate, setViewDate] = useState(new Date());
+  const yr = viewDate.getFullYear(), mo = viewDate.getMonth();
+  const firstDay = new Date(yr, mo, 1).getDay();
+  const daysInMonth = new Date(yr, mo + 1, 0).getDate();
+  const todayStr = today();
+  const monthStr = `${yr}-${String(mo + 1).padStart(2, "0")}`;
+  const delivDates = new Set((deliveries || []).filter(d => (d.date || "").startsWith(monthStr)).map(d => d.date));
+  const days = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+
+  return (
+    <WidgetCard icon="📅" title="Mini Calendar" t={t} accent="#3b82f6" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <button onClick={() => setViewDate(new Date(yr, mo - 1, 1))} style={{ background: "none", border: "none", color: t?.sub, cursor: "pointer", fontSize: 16, padding: "0 4px" }}>‹</button>
+        <span style={{ color: t?.text, fontWeight: 700, fontSize: 12 }}>{viewDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</span>
+        <button onClick={() => setViewDate(new Date(yr, mo + 1, 1))} style={{ background: "none", border: "none", color: t?.sub, cursor: "pointer", fontSize: 16, padding: "0 4px" }}>›</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+        {days.map(d => <div key={d} style={{ textAlign: "center", color: t?.sub, fontSize: 9, fontWeight: 700, padding: "2px 0" }}>{d}</div>)}
+        {[...Array(firstDay)].map((_, i) => <div key={`e${i}`} />)}
+        {[...Array(daysInMonth)].map((_, i) => {
+          const day = i + 1;
+          const dateStr = `${monthStr}-${String(day).padStart(2, "0")}`;
+          const isToday = dateStr === todayStr;
+          const hasDelivery = delivDates.has(dateStr);
+          return (
+            <div key={day} style={{ textAlign: "center", position: "relative" }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 22, height: 22, borderRadius: "50%", fontSize: 10, fontWeight: isToday ? 900 : 500,
+                background: isToday ? "#3b82f6" : "transparent",
+                color: isToday ? "#fff" : t?.text,
+              }}>{day}</span>
+              {hasDelivery && !isToday && <span style={{ position: "absolute", bottom: 1, left: "50%", transform: "translateX(-50%)", width: 4, height: 4, borderRadius: "50%", background: "#10b981", display: "block" }} />}
+            </div>
+          );
+        })}
+      </div>
+    </WidgetCard>
+  );
+}
+
+// ── Waste Tracker ─────────────────────────────────────────────
+function WasteTrackerWidget({ t, wastage, inr, today, editMode, onRemove }) {
+  const month = today().slice(0, 7);
+  const monthWaste = (wastage || []).filter(w => (w.date || "").startsWith(month));
+  const byType = {};
+  monthWaste.forEach(w => {
+    const k = w.item || w.product || "Other";
+    if (!byType[k]) byType[k] = { qty: 0, cost: 0 };
+    byType[k].qty  += w.qty || 0;
+    byType[k].cost += w.cost || 0;
+  });
+  const sorted = Object.entries(byType).sort((a, b) => b[1].cost - a[1].cost).slice(0, 5);
+  const totalCost = monthWaste.reduce((s, w) => s + (w.cost || 0), 0);
+
+  return (
+    <WidgetCard icon="♻️" title="Waste Tracker" t={t} accent="#f97316" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ color: t?.sub, fontSize: 10 }}>This month</span>
+        <span style={{ color: "#ef4444", fontWeight: 900, fontSize: 14 }}>{inr(totalCost)}</span>
+      </div>
+      {sorted.length === 0
+        ? <p style={{ color: t?.sub, fontSize: 12, textAlign: "center" }}>No waste recorded 🎉</p>
+        : sorted.map(([item, { qty, cost }]) => (
+            <div key={item} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ color: t?.text, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>♻️ {item}</span>
+              <span style={{ color: t?.sub, fontSize: 10 }}>{qty} units</span>
+              <span style={{ color: "#f97316", fontSize: 11, fontWeight: 700 }}>{inr(cost)}</span>
+            </div>
+          ))
+      }
+    </WidgetCard>
+  );
+}
+
+// ── Vehicle Status ────────────────────────────────────────────
+function VehicleStatusWidget({ t, deliveries, today, editMode, onRemove }) {
+  const tStr = today();
+  // Derive vehicle activity from deliveries that have a vehicle field
+  const active = (deliveries || []).filter(d => d.date === tStr && d.vehicle && d.status === "In Transit");
+  const done   = (deliveries || []).filter(d => d.date === tStr && d.vehicle && d.status === "Delivered");
+  const vehicles = [...new Set((deliveries || []).filter(d => d.vehicle).map(d => d.vehicle))];
+  const vehicleStats = vehicles.slice(0, 5).map(v => {
+    const vDeliveries = (deliveries || []).filter(d => d.vehicle === v && d.date === tStr);
+    return {
+      name: v,
+      total: vDeliveries.length,
+      done: vDeliveries.filter(d => d.status === "Delivered").length,
+      active: vDeliveries.filter(d => d.status === "In Transit").length,
+    };
+  });
+
+  return (
+    <WidgetCard icon="🚛" title="Vehicle Status" t={t} accent="#0ea5e9" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 12 }}>
+        {[
+          { label: "Vehicles",  val: vehicles.length, color: "#0ea5e9" },
+          { label: "En Route",  val: active.length,   color: "#f59e0b" },
+          { label: "Completed", val: done.length,      color: "#10b981" },
+        ].map(s => (
+          <div key={s.label} style={{ background: `${s.color}10`, border: `1px solid ${s.color}25`, borderRadius: 10, padding: "8px", textAlign: "center" }}>
+            <p style={{ color: s.color, fontWeight: 900, fontSize: 18, lineHeight: 1 }}>{s.val}</p>
+            <p style={{ color: t?.sub, fontSize: 8, marginTop: 3, fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+      {vehicleStats.length === 0
+        ? <p style={{ color: t?.sub, fontSize: 11, textAlign: "center" }}>No vehicle data today</p>
+        : vehicleStats.map(v => (
+            <div key={v.name} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 14 }}>🚛</span>
+              <span style={{ color: t?.text, fontSize: 11, flex: 1, fontWeight: 600 }}>{v.name}</span>
+              <span style={{ background: "#f59e0b20", color: "#f59e0b", borderRadius: 6, padding: "2px 6px", fontSize: 9, fontWeight: 700 }}>{v.active} active</span>
+              <span style={{ background: "#10b98120", color: "#10b981", borderRadius: 6, padding: "2px 6px", fontSize: 9, fontWeight: 700 }}>{v.done} done</span>
+            </div>
+          ))
+      }
+    </WidgetCard>
+  );
+}
+
+// ── Notice Board ──────────────────────────────────────────────
+function NoticeBoardWidget({ t, notices = [], setNotices, editMode, onRemove }) {
+  const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const addNotice = () => {
+    if (!draft.trim()) return;
+    const next = [{ id: Date.now(), text: draft.trim(), ts: new Date().toISOString() }, ...(notices || [])].slice(0, 8);
+    setNotices?.(next);
+    setDraft(""); setAdding(false);
+  };
+  const removeNotice = id => setNotices?.((notices || []).filter(n => n.id !== id));
+
+  return (
+    <WidgetCard icon="📌" title="Notice Board" t={t} accent="#ec4899" editMode={editMode} onRemove={onRemove}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+        {(notices || []).slice(0, 5).map(n => (
+          <div key={n.id} style={{ display: "flex", gap: 8, background: "#ec489910", border: "1px solid #ec489920", borderRadius: 10, padding: "8px 10px" }}>
+            <span style={{ fontSize: 12, flexShrink: 0 }}>📌</span>
+            <p style={{ color: t?.text, fontSize: 11, flex: 1, lineHeight: 1.4 }}>{n.text}</p>
+            <button onClick={() => removeNotice(n.id)} style={{ background: "none", border: "none", color: t?.sub, cursor: "pointer", fontSize: 12, flexShrink: 0, padding: 0 }}>×</button>
+          </div>
+        ))}
+        {(notices || []).length === 0 && !adding && <p style={{ color: t?.sub, fontSize: 11, textAlign: "center" }}>No notices pinned</p>}
+      </div>
+      {adding
+        ? <div style={{ display: "flex", gap: 6 }}>
+            <input
+              autoFocus
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") addNotice(); if (e.key === "Escape") setAdding(false); }}
+              placeholder="Type notice…"
+              style={{ flex: 1, background: t?.inp, border: `1px solid #ec489940`, borderRadius: 8, padding: "6px 10px", color: t?.text, fontSize: 12, outline: "none" }}
+            />
+            <button onClick={addNotice} style={{ background: "#ec489920", border: "1px solid #ec489940", color: "#ec4899", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Pin</button>
+            <button onClick={() => setAdding(false)} style={{ background: "none", border: `1px solid ${t?.border}`, color: t?.sub, borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>✕</button>
+          </div>
+        : <button onClick={() => setAdding(true)} style={{ width: "100%", background: "#ec489910", border: "1px dashed #ec489940", color: "#ec4899", borderRadius: 8, padding: "7px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Add Notice</button>
+      }
+    </WidgetCard>
+  );
+}
+
 // ── Widget renderer ───────────────────────────────────────────
 function renderWidget(id, props) {
   const map = {
@@ -650,6 +1071,15 @@ function renderWidget(id, props) {
     recentActions:     RecentActionsWidget,
     syncStatus:        SyncStatusWidget,
     cashFlow:          CashFlowWidget,
+    // new
+    clockWidget:       ClockWidget,
+    expenseBreakdown:  ExpenseBreakdownWidget,
+    productSales:      ProductSalesWidget,
+    goalTracker:       GoalTrackerWidget,
+    miniCalendar:      MiniCalendarWidget,
+    wasteTracker:      WasteTrackerWidget,
+    vehicleStatus:     VehicleStatusWidget,
+    noticeBoard:       NoticeBoardWidget,
   };
   const W = map[id];
   return W ? <W key={id} {...props} /> : null;
@@ -700,6 +1130,7 @@ export function SmartDashboard({
     actLog, paymentLedger, allBatches,
     chartData, lowStockItems, dashStats, settings,
     inr, lineTotal, today,
+    notices, setNotices,
     setTab, setDetailModal,
     setDsh, setDf, blkD,
     _syncListeners,

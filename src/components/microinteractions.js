@@ -21,15 +21,12 @@
 
 import React, {
   useState, useEffect, useRef, useCallback,
-  useMemo, forwardRef,
+  useMemo,
 } from "react";
 
 // ── Easing ──────────────────────────────────────────────────
 function easeOutExpo(t) {
   return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-}
-function easeOutCubic(t) {
-  return 1 - Math.pow(1 - t, 3);
 }
 
 // ══════════════════════════════════════════════════════════════
