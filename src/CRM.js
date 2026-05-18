@@ -6193,6 +6193,19 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           }}
         />
       )}
+      {/* ── QUICK ENTRY FAB (mobile) ── */}
+      <QuickEntryFAB
+        dm={dm} t={t} tab={tab} sess={sess} can={can} isAdmin={isAdmin}
+        customers={customers} products={products} settings={settings}
+        today={today}
+        onNewDelivery={() => { setDf(blkD()); setDsh("new"); setTab("Deliveries"); }}
+        onNewCustomer={() => { setCf(blkC()); setCsh("new"); setTab("Customers"); }}
+        onNewExpense={()  => { setEf(blkE()); setEsh("new"); setTab("Expenses"); }}
+        onNewSupply={()   => { setSf(blkS()); setSsh("new"); setTab("Supplies"); }}
+        onNewWastage={() => { setWF(blkW()); setWSh("new"); setTab("Wastage"); }}
+        onRecordPayment={() => { setPayLedgerSh(true); }}
+      />
+
       <SystemHealthBar
         dm={dm} t={t}
         _syncListeners={_syncListeners}

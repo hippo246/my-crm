@@ -47,7 +47,9 @@ export const SHORTCUTS = [
 
   // Panels
   { group: "Panels", key: "/",   label: "Search",            description: "Focus the search bar" },
-  { group: "Panels", key: "k",   mod: "meta", label: "Command Palette", description: "Open command palette" },
+  { group: "Panels", key: "k",   mod: "meta", label: "Command Palette",        description: "Open command palette" },
+  { group: "Panels", key: "Tab",             label: "Quick Action Chips",       description: "Cycle through quick-add chips inside the command palette" },
+  { group: "Panels", key: "←→",             label: "Navigate Chips",           description: "Move between quick-add chips once chip row is focused" },
   { group: "Panels", key: "t",   mod: "shift", label: "Trash",          description: "Open trash panel",    adminOnly: true },
   { group: "Panels", key: "a",   mod: "shift", label: "Activity Log",   description: "Open activity timeline" },
   { group: "Panels", key: "b",   mod: "shift", label: "Kanban Board",   description: "Open order pipeline board" },
@@ -185,6 +187,18 @@ export function KeyboardHelpModal({ open, onClose, dm, t, isAdmin, can }) {
   const inp    = t?.inp    || (dm ? "#0f172a" : "#f8fafc");
   const border = t?.border || (dm ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)");
 
+  const [winWidth, setWinWidth] = React.useState(
+    typeof window !== "undefined" ? window.innerWidth : 1024
+  );
+  React.useEffect(() => {
+    let raf;
+    const handle = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setWinWidth(window.innerWidth)); };
+    window.addEventListener("resize", handle);
+    window.addEventListener("orientationchange", handle);
+    return () => { window.removeEventListener("resize", handle); window.removeEventListener("orientationchange", handle); cancelAnimationFrame(raf); };
+  }, []);
+  const isMobile = winWidth < 640;
+
   useEffect(() => {
     if (!open) return;
     const close = (e) => { if (e.key === "Escape") onClose(); };
@@ -202,8 +216,6 @@ export function KeyboardHelpModal({ open, onClose, dm, t, isAdmin, can }) {
     if (s.permKey && can && !can(s.permKey) && !isAdmin) return false;
     return true;
   }
-
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
 
   return (
     <>
@@ -308,7 +320,14 @@ export function KeyboardHelpModal({ open, onClose, dm, t, isAdmin, can }) {
                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
                           {s.mod === "meta" && <Kbd dm={dm} t={t}>⌘</Kbd>}
                           {s.mod === "shift" && <Kbd dm={dm} t={t}>⇧</Kbd>}
-                          <Kbd dm={dm} t={t}>{s.key === "Escape" ? "Esc" : s.key === "/" ? "/" : s.key === "?" ? "?" : s.key.toUpperCase()}</Kbd>
+                          <Kbd dm={dm} t={t}>
+                            {s.key === "Escape" ? "Esc"
+                              : s.key === "Tab"  ? "Tab"
+                              : s.key === "←→"   ? "← →"
+                              : s.key === "/" ? "/"
+                              : s.key === "?" ? "?"
+                              : s.key.toUpperCase()}
+                          </Kbd>
                         </div>
                       )}
                     </div>

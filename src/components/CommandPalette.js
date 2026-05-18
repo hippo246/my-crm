@@ -127,6 +127,9 @@ export function CommandPalette({
   isAdmin,
   // open/setOpen passed in from CRM so the header button can trigger it
   open, setOpen,
+  // Called with true when palette opens, false when it fully closes
+  // Use this to hide the Kanban / Audit floating buttons while palette is open
+  onPaletteOpenChange,
 }) {
   const t           = T(dm);
   const windowWidth = useWindowWidth();
@@ -201,11 +204,17 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // Lock body scroll while open
+  // Lock body scroll while open + notify parent to hide floaters
   useEffect(() => {
-    if (open) { document.body.style.overflow = "hidden"; }
+    if (open || closing) {
+      document.body.style.overflow = "hidden";
+      onPaletteOpenChange?.(true);
+    } else {
+      document.body.style.overflow = "";
+      onPaletteOpenChange?.(false);
+    }
     return () => { document.body.style.overflow = ""; };
-  }, [open]);
+  }, [open, closing]);
 
   // Cleanup timer on unmount
   useEffect(() => () => clearTimeout(closeTimer.current), []);
@@ -229,14 +238,71 @@ export function CommandPalette({
     return fuse.search(query).map(r => r.item).slice(0, 18);
   }, [query, fuse, isAdmin]);
 
+  // Chip keyboard navigation — track focused chip index separately
+  const [chipCursor, setChipCursor] = useState(-1);
+  const chipRefs = useRef([]);
+  const visibleChips = useMemo(
+    () => QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin),
+    [isAdmin]
+  );
+
   useEffect(() => setCursor(0), [results]);
   useEffect(() => { itemRefs.current[cursor]?.scrollIntoView({ block:"nearest" }); }, [cursor]);
+  useEffect(() => { chipRefs.current[chipCursor]?.scrollIntoView({ block:"nearest", inline:"nearest" }); }, [chipCursor]);
+
+  // Reset chip focus when query changes
+  useEffect(() => { setChipCursor(-1); }, [query]);
 
   const handleKeyDown = useCallback(e => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setCursor(c => Math.min(c+1, results.length-1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setCursor(c => Math.max(c-1, 0)); }
-    else if (e.key === "Enter")  { e.preventDefault(); if (results[cursor]) activate(results[cursor]); }
-  }, [results, cursor]);
+    const inChipMode = !query.trim() && chipCursor >= 0;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (inChipMode) {
+        // Leave chip row, enter results list
+        setChipCursor(-1);
+        setCursor(0);
+      } else {
+        setCursor(c => Math.min(c + 1, results.length - 1));
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!query.trim() && cursor === 0 && !inChipMode) {
+        // Move up into chip row
+        setChipCursor(visibleChips.length - 1);
+      } else if (inChipMode) {
+        // Already in chip row, do nothing (or could move up out)
+      } else {
+        setCursor(c => Math.max(c - 1, 0));
+      }
+    } else if (e.key === "ArrowLeft" && inChipMode) {
+      e.preventDefault();
+      setChipCursor(c => Math.max(c - 1, 0));
+    } else if (e.key === "ArrowRight" && inChipMode) {
+      e.preventDefault();
+      setChipCursor(c => Math.min(c + 1, visibleChips.length - 1));
+    } else if (e.key === "Tab" && !query.trim()) {
+      e.preventDefault();
+      if (chipCursor < 0) {
+        // Enter chip row
+        setChipCursor(0);
+      } else if (e.shiftKey) {
+        if (chipCursor === 0) { setChipCursor(-1); inputRef.current?.focus(); }
+        else setChipCursor(c => c - 1);
+      } else {
+        if (chipCursor >= visibleChips.length - 1) { setChipCursor(-1); setCursor(0); }
+        else setChipCursor(c => c + 1);
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (inChipMode) {
+        const chip = visibleChips[chipCursor];
+        if (chip) activate({ _type:"action", _id:chip.id, icon:chip.icon, label:chip.label, tab:chip.tab });
+      } else if (results[cursor]) {
+        activate(results[cursor]);
+      }
+    }
+  }, [results, cursor, chipCursor, query, visibleChips]);
 
   const activate = useCallback(item => {
     triggerClose();
@@ -295,9 +361,8 @@ export function CommandPalette({
   return (
     <>
       <style>{`
-        .cp-list::-webkit-scrollbar{width:4px}
-        .cp-list::-webkit-scrollbar-track{background:transparent}
-        .cp-list::-webkit-scrollbar-thumb{background:${dm?"#252d3a":"#e2e8f0"};border-radius:4px}
+        .cp-list::-webkit-scrollbar{display:none}
+        .cp-chips::-webkit-scrollbar{display:none}
         .cp-item{transition:background 0.08s;}
       `}</style>
 
@@ -392,19 +457,24 @@ export function CommandPalette({
             <div style={{
               display:"flex", gap:6, padding:"10px 16px 0",
               overflowX:"auto", WebkitOverflowScrolling:"touch",
-              scrollbarWidth:"none",
-            }}>
-              {QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin).map(a => (
+              scrollbarWidth:"none", msOverflowStyle:"none",
+            }} className="cp-chips">
+              {visibleChips.map((a, ci) => (
                 <button key={a.id}
+                  ref={el => (chipRefs.current[ci] = el)}
                   onPointerDown={e => { e.stopPropagation(); if (!isClosing) activate({ _type:"action", _id:a.id, icon:a.icon, label:a.label, tab:a.tab }); }}
+                  onPointerEnter={() => setChipCursor(ci)}
                   style={{
                     display:"flex", alignItems:"center", gap:6,
-                    background:`${a.color}15`,
-                    border:`1.5px solid ${a.color}30`,
+                    background: chipCursor === ci ? `${a.color}30` : `${a.color}15`,
+                    border: chipCursor === ci ? `1.5px solid ${a.color}90` : `1.5px solid ${a.color}30`,
                     borderRadius:10, padding:"7px 12px",
                     color:a.color, fontSize:12, fontWeight:700,
                     cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
                     WebkitTapHighlightColor:"transparent",
+                    outline: "none",
+                    boxShadow: chipCursor === ci ? `0 0 0 2px ${a.color}40` : "none",
+                    transition: "background 0.1s, border-color 0.1s, box-shadow 0.1s",
                   }}>
                   <span style={{ fontSize:13 }}>{a.icon}</span>
                   {a.label}
@@ -423,6 +493,8 @@ export function CommandPalette({
               overflowY:"auto",
               padding:"6px 0 8px",
               WebkitOverflowScrolling:"touch",
+              scrollbarWidth:"none",
+              msOverflowStyle:"none",
             }}
           >
             {results.length === 0 ? (
@@ -495,11 +567,20 @@ export function CommandPalette({
             padding: isMobile ? "8px 16px" : "8px 18px",
             borderTop: `1px solid ${dm?"#1e2736":"#f0f4f8"}`,
           }}>
-            {!isMobile && [["↑↓","navigate"],["↵","open"],["Esc","close"]].map(([k,l]) => (
-              <span key={k} style={{ fontSize:10, color:dm?"#2e3f52":"#cbd5e1", display:"flex", alignItems:"center", gap:5 }}>
-                <kbd style={kbdStyle}>{k}</kbd> {l}
-              </span>
-            ))}
+            {!isMobile && (
+              <>
+                {[["↑↓","navigate"],["↵","open"],["Esc","close"]].map(([k,l]) => (
+                  <span key={k} style={{ fontSize:10, color:dm?"#2e3f52":"#cbd5e1", display:"flex", alignItems:"center", gap:5 }}>
+                    <kbd style={kbdStyle}>{k}</kbd> {l}
+                  </span>
+                ))}
+                {!query.trim() && (
+                  <span style={{ fontSize:10, color:dm?"#2e3f52":"#cbd5e1", display:"flex", alignItems:"center", gap:5 }}>
+                    <kbd style={kbdStyle}>Tab</kbd> quick actions
+                  </span>
+                )}
+              </>
+            )}
             {isMobile && (
               <span style={{ fontSize:11, color:dm?"#2e3f52":"#cbd5e1" }}>Tap a result to open</span>
             )}
@@ -521,7 +602,7 @@ export function CommandPalette({
  * Props: dm, t, onClick, windowWidth
  */
 export function CommandPaletteButton({ dm, t, onClick }) {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const isMobile = useWindowWidth() < 640;
   return (
     <button
       onClick={onClick}

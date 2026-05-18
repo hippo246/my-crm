@@ -489,7 +489,7 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
         </div>
 
         {/* List */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px calc(24px + env(safe-area-inset-bottom))", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px calc(24px + env(safe-area-inset-bottom))", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {filtered.length === 0 ? (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
