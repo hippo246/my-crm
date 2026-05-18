@@ -5,6 +5,37 @@
 // ═══════════════════════════════════════════════════════════════
 
 function today() { return new Date().toISOString().slice(0, 10); }
+
+// ── Util helpers (mirrors lib/utils.js — kept local so exports.js has zero imports) ──
+function inr(n) {
+  const num = Number(n) || 0;
+  return "₹" + num.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+function lineTotal(orderLines) {
+  if (!orderLines || typeof orderLines !== "object") return 0;
+  return Object.values(orderLines).reduce((s, l) => {
+    if (!l || !l.qty || !l.price) return s;
+    return s + (Number(l.qty) || 0) * (Number(l.price) || 0);
+  }, 0);
+}
+function lineRows(orderLines, products) {
+  if (!orderLines || typeof orderLines !== "object") return [];
+  return Object.entries(orderLines)
+    .map(([prodId, l]) => {
+      if (!l || !l.qty || Number(l.qty) === 0) return null;
+      const prod = (products || []).find(p => p.id === prodId);
+      return {
+        prodId,
+        name: prod?.name || l.name || prodId,
+        unit: prod?.unit || l.unit || "",
+        qty: Number(l.qty) || 0,
+        price: Number(l.price) || 0,
+        priceAmount: Number(l.price) || 0,
+        total: (Number(l.qty) || 0) * (Number(l.price) || 0),
+      };
+    })
+    .filter(Boolean);
+}
 function exportPDF(record, products, type, settings, deliveries) {
   const rows   = lineRows(record.orderLines||record.orders||{}, products);
   const total  = lineTotal(record.orderLines||record.orders||{});

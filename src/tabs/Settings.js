@@ -1,5 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps, no-unused-vars */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { db } from "../firebase";
+import { ref, onValue, remove } from "firebase/database";
 import { SectionHeader, TabStatCards, StatCard, Card, Sheet, Inp, Sel, Btn, Hr, Tog, Search, Pill, DataTable, FilterBar, StatusPill, AvatarCircle, Pagination, BottomNav, Toast, Confirm, ProdRow, OrderEditor } from "../components/ui";
 import { T } from "../lib/theme";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, Cell, ReferenceLine } from "recharts";
@@ -187,6 +189,76 @@ function SecHeading({ t, title, sub }) {
   );
 }
 
+
+function CrashLogsPanel({ t, dm, ask, notify }) {
+    const [crashLogs, setCrashLogs] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+      const r = ref(db, "tas9_crash_logs");
+      const unsub = onValue(r, (snap) => {
+        if (snap.exists()) {
+          const data = snap.val();
+          const logs = Object.entries(data)
+            .map(([id, v]) => ({ id, ...v }))
+            .sort((a, b) => b.ts - a.ts)
+            .slice(0, 50);
+          setCrashLogs(logs);
+        } else {
+          setCrashLogs([]);
+        }
+        setLoading(false);
+      });
+      return () => unsub();
+    }, []);
+
+    const clearAll = () => {
+      remove(ref(db, "tas9_crash_logs"));
+      notify("Crash logs cleared");
+    };
+
+    return (
+      <>
+        <SCard t={t} dm={dm} icon="🪲" title="Crash Logs" subtitle="Auto-logged errors from the app. Useful for debugging.">
+          {loading && <p style={{ color: t.sub, fontSize: 13 }}>Loading logs…</p>}
+          {!loading && crashLogs.length === 0 && (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <p style={{ fontSize: 28, marginBottom: 8 }}>✅</p>
+              <p style={{ color: t.sub, fontSize: 13 }}>No crashes logged. All good!</p>
+            </div>
+          )}
+          {!loading && crashLogs.length > 0 && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <p style={{ color: t.sub, fontSize: 12 }}>{crashLogs.length} crash{crashLogs.length !== 1 ? "es" : ""} recorded</p>
+                <Btn dm={dm} v="danger" size="sm" onClick={() => ask("Clear all crash logs?", clearAll)}>🗑️ Clear All</Btn>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {crashLogs.map(log => (
+                  <div key={log.id} style={{ background: dm ? "#1a1a2e" : "#fff8f8", border: `1px solid ${dm ? "#ef444430" : "#fca5a530"}`, borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                      <p style={{ color: "#ef4444", fontWeight: 700, fontSize: 13, flex: 1 }}>⚠️ {log.message || "Unknown error"}</p>
+                      <p style={{ color: t.sub, fontSize: 11, whiteSpace: "nowrap" }}>{log.tsISO ? new Date(log.tsISO).toLocaleString() : "—"}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {log.deviceId && <span style={{ background: dm ? "#ffffff10" : "#00000008", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: t.sub }}>Device: {log.deviceId.slice(0, 8)}…</span>}
+                      {log.url && <span style={{ background: dm ? "#ffffff10" : "#00000008", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: t.sub }}>{log.url.replace(window.location.origin, "")}</span>}
+                    </div>
+                    {log.stack && (
+                      <pre style={{ marginTop: 8, color: t.sub, fontSize: 10, whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 80, overflowY: "auto", background: dm ? "#00000030" : "#00000008", borderRadius: 6, padding: "6px 8px" }}>
+                        {log.stack.split("\n").slice(0, 5).join("\n")}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </SCard>
+      </>
+    );
+  }
+
 export default function SettingsTab({
   dm, t, isAdmin, sess, can, canSeePrices, canSeeFinancials,
   settings, setSettings, displayName, notify, ask, addLog, today, inr, uid, ts,
@@ -219,6 +291,7 @@ export default function SettingsTab({
     { id: "alerts",     icon: "🔔",  label: "Alerts"       },
     { id: "security",   icon: "🛡️",  label: "Security"     },
     { id: "data",       icon: "💾",  label: "Data"         },
+    { id: "crashlogs",  icon: "🪲",  label: "Crash Logs"   },
   ];
 
   // ─── Staff portal helpers ────────────────────────────────────────────────
@@ -1686,6 +1759,8 @@ export default function SettingsTab({
     );
   }
 
+
+
   function renderData() {
     return (
       <>
@@ -1747,6 +1822,7 @@ export default function SettingsTab({
     alerts: renderAlerts,
     security: renderSecurity,
     data: renderData,
+    crashlogs: () => <CrashLogsPanel t={t} dm={dm} ask={ask} notify={notify} />,
   };
 
   return (

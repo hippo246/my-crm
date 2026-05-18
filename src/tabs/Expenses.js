@@ -47,7 +47,7 @@ export default function ExpensesTab({
   const { from:eFr, to:eTo } = getExpDateRange();
 
   // ── filtered expenses ──
-  const filteredExp = expenses.filter(e => {
+  const filteredExp = expenses.filter(e => !e.deleted).filter(e => {
     const inDate   = e.date>=eFr && e.date<=eTo;
     const inCat    = expCatFilter==="all" || e.category===expCatFilter;
     const q        = (expSearch||"").toLowerCase();

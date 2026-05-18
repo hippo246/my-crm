@@ -97,6 +97,11 @@ export async function checkExportQuota(sess, settings = {}) {
 // ── checkRowLimit ────────────────────────────────────────────────
 // Returns { allowed: bool, capped: bool, count: number }
 export function checkRowLimit(data, exportType, sess, settings = {}) {
+  // Guard: if data is missing or not an array, return safe defaults
+  if (!data || !Array.isArray(data)) {
+    return { allowed: true, capped: false, count: 0 };
+  }
+
   if (sess?.role === "admin") return { allowed: true, capped: false, count: data.length };
 
   const limits = { ...DEFAULT_EXPORT_LIMITS, ...(settings?.exportControls || {}) };
@@ -215,39 +220,63 @@ export function useExportLogs(filter = {}) {
 //   });
 
 export async function guardedExport({
-  exportFn,          // the raw export function to call
+  // CRM.js calling convention
+  fn,           // bundled export thunk: () => void
+  type,         // "csv" | "excel" | "pdf"
+  label,        // human label for the log
+  notify,       // notify(msg) for user feedback
+  addLog,       // addLog(action, detail)
+  // Legacy / lower-level calling convention
+  exportFn,     // raw export function(data)
   data,
-  exportType,        // "csv" | "excel" | "pdf"
-  tabName,
+  exportType,   // alias for type
+  tabName,      // alias for label
   filters = {},
+  onBlocked,    // callback(reason) -- legacy callers
+  onCapped,     // callback(count, originalCount) -- legacy callers
+  // Shared
   sess,
   settings = {},
-  onBlocked,         // callback(reason) when quota exceeded
-  onCapped,          // callback(count, originalCount) when rows were capped
 }) {
+  const _type   = type || exportType || "pdf";
+  const _label  = label || tabName || "Export";
+  const _notify = notify || onBlocked || (() => {});
+  const _fn     = fn || (exportFn && data ? () => exportFn(data) : null);
+
+  if (!_fn) { _notify("No export function provided."); return false; }
+
   // 1. Check quota
   const quota = await checkExportQuota(sess, settings);
-  if (!quota.allowed) {
-    onBlocked?.(quota.reason);
-    return false;
-  }
+  if (!quota.allowed) { _notify(quota.reason); return false; }
 
-  // 2. Check/cap rows
-  let exportData = data;
-  const rowCheck = checkRowLimit(data, exportType, sess, settings);
-  if (rowCheck.capped) {
-    exportData = data.slice(0, rowCheck.count);
-    onCapped?.(rowCheck.count, rowCheck.originalCount);
+  // 2. Row cap only applies on legacy path where data is passed separately
+  if (data && Array.isArray(data)) {
+    const rowCheck = checkRowLimit(data, _type, sess, settings);
+    if (rowCheck.capped) {
+      onCapped?.(rowCheck.count, rowCheck.originalCount);
+      _notify("Showing first " + rowCheck.count + " of " + rowCheck.originalCount + " rows due to export limits.");
+    }
   }
 
   // 3. Run export
-  exportFn(exportData);
+  try {
+    const result = _fn();
+    if (result instanceof Promise) await result;
+  } catch (e) {
+    console.error("Export error:", e);
+    _notify("Export failed — " + (e?.message || "unknown error"));
+    return false;
+  }
 
   // 4. Log it (fire and forget)
-  logExport({ sess, exportType, tabName, rowCount: exportData.length, filters, settings });
+  logExport({ sess, settings, exportType: _type, tabName: _label, rowCount: Array.isArray(data) ? data.length : 0, filters });
+
+  // 5. Activity log (CRM.js path)
+  if (addLog) addLog("Exported", _label);
 
   return true;
 }
+
 
 // ── USAGE GUIDE ──────────────────────────────────────────────────
 //

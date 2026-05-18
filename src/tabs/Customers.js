@@ -17,7 +17,7 @@ export default function CustomersTab({
   clvFilter, setClvFilterP, clvSort, setClvSort,
   invRegistry, paymentLedger, mergeEnabled, recordPaymentLedger,
   setPaymentsSubTab,
-  exportTabPDF, exportTabExcel, exportCSV,
+  exportTabPDF, exportTabExcel, exportCSV, exportPDF, exportCustomerReports,
   Btn, Inp, Sel, Card, Sheet, Tog, Pill, Hr, SectionHeader, TabStatCards, StatusPill,
 }) {
   const [isMobile, setIsMobile] = React.useState(typeof window!=="undefined"&&window.innerWidth<768);
@@ -868,6 +868,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             PDF
                           </button>}
+                          {can("cust_export")&&<button onClick={()=>exportCustomerReports([cFull.id])}
+                            title="Full customer report — all deliveries, batches & activity log"
+                            style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed40",borderRadius:10,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            Report
+                          </button>}
                           {can("cust_export")&&<button onClick={()=>{exportTabExcel("Customer",[{...cFull}],[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}}
                             style={{background:"#059669",color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
@@ -1211,6 +1217,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginRight:4,flexShrink:0}}>Actions:</p>
                         {can("cust_edit")&&<button onClick={()=>{setCsh(cFull);setCf(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {can("cust_export")&&<button onClick={()=>exportPDF(cFull,products,"customer",settings,deliveries)} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>}
+                        {can("cust_export")&&<button onClick={()=>exportCustomerReports([cFull.id])} title="Full customer report — all deliveries, batches & activity log" style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed40",borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Report</button>}
                         {can("cust_export")&&<button onClick={()=>{const rows=[{...cFull}];exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📊 Excel</button>}
                         {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(cFull);setPayAmt(String(cDue));setSelectedCustomer(null);}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
                         {can("cust_deactivate")&&<button onClick={()=>{togActive(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:9,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{cFull.active?"⏸ Pause":"▶ Activate"}</button>}
@@ -1442,7 +1449,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                                     can("cust_seePrices")&&{label:"🚚  View Deliveries",action:()=>{setTab("Deliveries");setDelivStatusFilter("all");(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
                                     can("cust_markPaid")&&c.pending>0&&{label:"💰  Mark Paid",action:()=>{setPaySh(c);setPayAmt(String(c.pending||0));(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
                                     can("cust_deactivate")&&{label:c.active?"🔒  Deactivate":"🔓  Activate",action:()=>{setCust(p=>safeArr(p).map(x=>x.id===c.id?{...x,active:!x.active}:x));addLog(c.active?"Deactivated":"Activated",c.name);(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;}},
-                                    can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;ask(`Delete "${c.name}"?`,()=>{setCust(p=>safeArr(p).filter(x=>x.id!==c.id));addLog("Deleted customer",c.name);});}},
+                                    can("cust_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{(()=>{const _el=document.getElementById(`c3dot_${c.id}`);if(_el)_el.style.display="none";})() ;delC(c);}},
                                   ].filter(Boolean).map((item,ii)=>(
                                     <button key={ii} onClick={item.action}
                                       style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"20px 24px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
@@ -1636,9 +1643,10 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                     </div>}
 
                     {/* Action buttons */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
                       {can("cust_edit")&&<button onClick={()=>{setCsh(c);setCf(c);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>✏️ Edit</button>}
                       {can("cust_export")&&<button onClick={()=>exportPDF(c,products,"customer",settings,deliveries)} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📄 PDF</button>}
+                      {can("cust_export")&&<button onClick={()=>exportCustomerReports([c.id])} title="Full customer report" style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed40",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📋 Report</button>}
                       {can("cust_export")&&<button onClick={()=>{const rows=[{...c}];exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings);}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:10,padding:"10px 8px",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>📊 XLS</button>}
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>

@@ -16,6 +16,7 @@ import { MachinesTab } from "./tabs/Machines";
 import { VehiclesTab } from "./tabs/Vehicles";
 
 // ── lib imports ──────────────────────────────────────────────────────────────
+import { CRMContext } from "./lib/CRMContext";
 import { useStore, fbWrite, atomicInvoiceSeq, _syncListeners } from "./lib/store";
 import { uid, today, ts, inr, cx, safeO, safeArr, mapU, lineTotal, lineTotalWithTax, lineRows, prodNamesMatch } from "./lib/utils";
 import { hashPw, checkPw, SESSION_TTL, getDeviceInfo, DEVICE_ID } from "./lib/auth";
@@ -50,6 +51,11 @@ import { QuickEntryFAB, QuickEntryBar } from "./components/QuickEntry";
 import { PermissionMatrix, TabAccessEditor, RoleBadge,
          RoleTemplateSelector, useRoleManager } from "./components/RoleManager";
 import { initBrowserSupport, BrowserBanner, injectBrowserCSS } from "./components/BrowserSupport";
+import { ActivityTimelineButton, ActivityTimeline } from "./components/ActivityTimeline";
+import { useKeyboardNav, KeyboardHelpModal } from "./components/KeyboardNav";
+import { useDraggableWidgets, DraggableWidget, WidgetCustomizer, WidgetCustomizerButton } from "./components/DraggableWidgets";
+import { KanbanBoard, KanbanButton } from "./components/KanbanBoard";
+import { AuditLogButton, AuditLogPanel, useAuditLog } from "./components/AuditLog";
 
 function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSettings}){
   const isAdmin=sess.role==="admin";
@@ -196,10 +202,13 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     if(invNo) return `RCP-${invNo.replace(prefix+"-","")}`;
     return `RCP-${(deliveryId||"").slice(-8).toUpperCase()}`;
   }
+  const [kanbanOpen, setKanbanOpen] = useState(false);
+  const [auditOpen,  setAuditOpen]  = useState(false);
   const [notifOpen, setNotifOpen]=useState(false);
   const [avatarOpen, setAvatarOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
   const [trashOpen, setTrashOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const trashedItems = React.useMemo(() => [
     ...onlyDeleted(supplies).map(r    => ({ ...r, _collection: "supplies",    _label: r.item        || r.id })),
     ...onlyDeleted(expenses).map(r    => ({ ...r, _collection: "expenses",    _label: r.category    || r.id })),
@@ -285,7 +294,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   // Also supports displayOverride from staff picker mode
   const subStaff=sess.subStaff||[];
   const [activeStaff,setActiveStaff]=useState(()=>sess.displayOverride||( subStaff.length>0?subStaff[0]:sess.name));
-  const displayName=useMemo(()=>sess.displayOverride||( subStaff.length>0?activeStaff:sess.name),[sess.displayOverride,sess.name,subStaff.length,activeStaff]);
+  const displayName=useMemo(()=>sess.displayOverride||(subStaff.length>0?activeStaff:sess.name)||"Admin",[sess.displayOverride,sess.name,subStaff.length,activeStaff]);
 
   // ── #18 Command Palette open state (lifted so header button can trigger it) ──
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -298,6 +307,8 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
       browser:dev.browser,os:dev.os,deviceType:dev.deviceType,deviceId:DEVICE_ID};
     setAct(p=>[e,...p.slice(0,999)]);
   },[displayName,sess.role]);
+
+  const { logEdit } = useAuditLog({ addLog, displayName, sess });
 
   // ── GPS LOCATION LOGS — Firebase-stored breadcrumb trail ──────
   // Instead of live broadcasting, we capture a one-shot GPS snapshot
@@ -423,7 +434,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   },[rawCustomers,deliveries,paymentLedger,taxRtGlobal]);
 
   // Enrich customers with computed pending — all c.pending reads get the live value
-  const customers=useMemo(()=>safeArr(rawCustomers).map(c=>({
+  const customers=useMemo(()=>safeArr(rawCustomers).filter(c=>!c.deleted).map(c=>({
     ...c,
     pending: computedPendingMap[c.id]??c.pending??0,
   })),[rawCustomers,computedPendingMap]);
@@ -550,7 +561,7 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
     const tStr=today();
     const yStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
     const wStr=(()=>{const d=new Date(tStr);d.setDate(d.getDate()-6);return d.toISOString().slice(0,10);})();
-    return deliveries.filter(d=>{
+    return deliveries.filter(d=>!d.deleted).filter(d=>{
       const invNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
       const rcptNo=invNo?`RCP-${invNo.replace(/^[A-Z]+-/,"")}`:`RCP-${(d.id||"").slice(-6).toUpperCase()}`;
       const batchLabels=(allBatches||[]).filter(pt=>pt.date===d.date).map(b=>b.batchLabel||"Batch").join(" ");
@@ -598,6 +609,31 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   const [uSh,setUsh]=useState(null); const [uF,setUf]=useState(blkU());
   const [paySh,setPaySh]=useState(null); const [payAmt,setPayAmt]=useState("");
   const [wSh,setWSh]=useState(null); const [wF,setWF]=useState(blkW());
+
+  // ── Keyboard shortcuts ───────────────────────────────────────
+  const { helpOpen, setHelpOpen } = useKeyboardNav({
+    setTab,
+    setDsh, setDf, blkD,
+    setCsh, setCf, blkC,
+    setSsh, setSf, blkS,
+    setEsh, setEf, blkE,
+    setWSh, setWF, blkW,
+    setTrashOpen,
+    setTimelineOpen,
+    setCmdOpen,
+    setKanbanOpen,
+    setAuditOpen,
+    isAdmin, can,
+  });
+
+  // ── Draggable widgets ────────────────────────────────────────
+  const { dragHandlers, customizerOpen, setCustOpen, reorderWidgets } = useDraggableWidgets({
+    userDashWidgets,
+    setUserDashWidgets,
+    settings,
+    featureOn: !!settings?.featureCustomDashboard,
+    isAdmin,
+  });
 
   // ── #18 Presence — track what record the current user has open ───────────────
   // Must be after all sheet states (dSh, cSh, sSh, eSh, wSh) are declared
@@ -1442,6 +1478,461 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
   const t18n = useT(settings, sess?.lang);
   const TAB_LABELS = {"Dashboard":t18n("dashboard"),"Customers":t18n("customers"),"Deliveries":t18n("deliveries"),"Payments":t18n("payments"),"Supplies":t18n("supplies"),"Expenses":t18n("expenses"),"P&L":t18n("pandl"),"Analytics":t18n("analytics"),"Production":t18n("production"),"Ingredients":t18n("ingredients"),"Staff":t18n("staff"),"Machines":t18n("machines"),"Vehicles":t18n("vehicles"),"GPS":t18n("gps"),"Settings":t18n("settings"),"Wastage":t18n("wastage")};
 
+  // ── PER-CUSTOMER PDF REPORT ─────────────────────────────────────────────────
+  // Generates one professional A4 page per customer with:
+  //   full profile · all deliveries + batch info · financials · activity log
+  function exportCustomerReports(customerIds = null) {
+    const co = settings?.companyName || "TAS Healthy World";
+    const now = new Date().toLocaleString("en-IN");
+    const prefix = settings?.invoicePrefix || "TAS";
+
+    // Filter to requested customers (or all active if none specified)
+    const targetCustomers = customers.filter(c =>
+      !c.deleted && (customerIds ? customerIds.includes(c.id) : true)
+    );
+
+    if (!targetCustomers.length) { notify("No customers to export"); return; }
+
+    const custPages = targetCustomers.map(c => {
+      const cDelivs = deliveries
+        .filter(d => !d.deleted && (d.customerId === c.id || d.customer === c.name))
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+      const cDelivered = cDelivs.filter(d => d.status === "Delivered");
+      const cPending   = cDelivs.filter(d => d.status === "Pending");
+      const cTransit   = cDelivs.filter(d => d.status === "In Transit");
+      const cCancelled = cDelivs.filter(d => d.status === "Cancelled");
+
+      const cGrossRev  = cDelivered.reduce((s, d) => s + lineTotal(d.orderLines), 0);
+      const cReplTotal = cDelivs.reduce((s, d) => s + (+d.replacement?.amount || 0), 0);
+      const cNetRev    = Math.max(0, cGrossRev - cReplTotal);
+      const cCollected = c.paid || 0;
+      const cDue       = c.pending || 0;
+      const collPct    = cCollected + cDue > 0
+        ? Math.round(cCollected / (cCollected + cDue) * 100) : 100;
+
+      // Product breakdown
+      const prodBreakdown = products.map(p => {
+        const qty = cDelivered.reduce((s, d) => s + (safeO(d.orderLines)[p.id]?.qty || 0), 0);
+        const rev = cDelivered.reduce((s, d) => {
+          const l = safeO(d.orderLines)[p.id];
+          return s + ((l?.qty || 0) * (l?.priceAmount || 0));
+        }, 0);
+        return { name: p.name, qty, rev };
+      }).filter(x => x.qty > 0).sort((a, b) => b.rev - a.rev);
+
+      // Activity log for this customer — match by customer name or id
+      const custActLog = safeArr(actLog)
+        .filter(e =>
+          (e.detail && (e.detail.includes(c.name) || e.detail.includes(c.id))) ||
+          (e.entityId && e.entityId === c.id)
+        )
+        .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""))
+        .slice(0, 60); // cap at 60 entries per customer
+
+      // Batch info helper
+      function getBatchInfo(d) {
+        if (!d.batchId) return null;
+        const batch = allBatches.find(b => b.id === d.batchId || b.batchId === d.batchId);
+        if (!batch) return d.batchId;
+        return `${batch.batchLabel || "Batch"} · ${batch.product || ""} · ${batch.date || ""}${batch.shift ? " · " + batch.shift : ""}${batch.actual ? " · " + batch.actual + " units" : ""}${batch.qcGrade ? " · QC:" + batch.qcGrade : ""}`.replace(/\s·\s+$/,"").trim();
+      }
+
+      const invIssued = invRegistry?.issued || {};
+
+      return `
+<!-- ══════════════════════════════════════════════════════ CUSTOMER PAGE -->
+<div class="page" id="cust-${c.id}">
+
+  <!-- Header bar -->
+  <div class="page-header">
+    <div class="header-left">
+      <div class="company-badge">${settings?.appEmoji || "🫓"}</div>
+      <div>
+        <div class="company-name">${co}</div>
+        <div class="report-label">Customer Intelligence Report</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="report-date">Generated ${now}</div>
+      <div class="confidential-badge">CONFIDENTIAL</div>
+    </div>
+  </div>
+
+  <!-- Customer identity block -->
+  <div class="identity-block">
+    <div class="avatar">${(c.name || "?")[0].toUpperCase()}</div>
+    <div class="identity-info">
+      <div class="cust-name">${c.name}</div>
+      <div class="cust-meta">
+        ${c.phone ? `📞 ${c.phone}` : ""}
+        ${c.phone && c.address ? " &nbsp;·&nbsp; " : ""}
+        ${c.address ? `📍 ${c.address}` : ""}
+        ${c.joinDate ? ` &nbsp;·&nbsp; Customer since ${c.joinDate}` : ""}
+      </div>
+      ${c.notes ? `<div class="cust-notes">${c.notes}</div>` : ""}
+    </div>
+    <div class="identity-status">
+      <span class="status-pill ${c.active ? "active" : "inactive"}">${c.active ? "● Active" : "○ Inactive"}</span>
+      <div class="coll-rate-label">Collection Rate</div>
+      <div class="coll-rate-val" style="color:${collPct>=90?"#059669":collPct>=60?"#d97706":"#dc2626"}">${collPct}%</div>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-val green">₹${cNetRev.toLocaleString("en-IN")}</div><div class="kpi-lbl">Net Revenue</div></div>
+    <div class="kpi"><div class="kpi-val green">₹${cCollected.toLocaleString("en-IN")}</div><div class="kpi-lbl">Collected</div></div>
+    <div class="kpi"><div class="kpi-val ${cDue > 0 ? "red" : "green"}">₹${cDue.toLocaleString("en-IN")}</div><div class="kpi-lbl">Outstanding</div></div>
+    <div class="kpi"><div class="kpi-val blue">${cDelivs.length}</div><div class="kpi-lbl">Total Orders</div></div>
+    <div class="kpi"><div class="kpi-val green">${cDelivered.length}</div><div class="kpi-lbl">Delivered</div></div>
+    <div class="kpi"><div class="kpi-val amber">${cPending.length + cTransit.length}</div><div class="kpi-lbl">In Progress</div></div>
+    ${cReplTotal > 0 ? `<div class="kpi"><div class="kpi-val orange">₹${cReplTotal.toLocaleString("en-IN")}</div><div class="kpi-lbl">Replacements</div></div>` : ""}
+    <div class="kpi"><div class="kpi-val ${cDue > 0 ? "red" : "green"}">${collPct}%</div><div class="kpi-lbl">Coll. Rate</div></div>
+  </div>
+
+  <!-- Collection progress bar -->
+  ${(cCollected + cDue) > 0 ? `
+  <div class="coll-bar-wrap">
+    <div class="coll-bar-labels">
+      <span class="green">Collected ₹${cCollected.toLocaleString("en-IN")}</span>
+      <span class="${cDue > 0 ? "red" : "green"}">Due ₹${cDue.toLocaleString("en-IN")}</span>
+    </div>
+    <div class="coll-bar">
+      <div class="coll-bar-fill" style="width:${collPct}%"></div>
+    </div>
+  </div>` : ""}
+
+  <!-- Product breakdown -->
+  ${prodBreakdown.length > 0 ? `
+  <div class="section-title">Products Ordered</div>
+  <table>
+    <thead><tr><th>Product</th><th class="num">Units Ordered</th><th class="num">Revenue</th></tr></thead>
+    <tbody>
+      ${prodBreakdown.map(p => `
+      <tr>
+        <td><b>${p.name}</b></td>
+        <td class="num">${p.qty.toLocaleString("en-IN")}</td>
+        <td class="num green">₹${p.rev.toLocaleString("en-IN")}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>` : ""}
+
+  <!-- Delivery history — full detail including batch -->
+  ${cDelivs.length > 0 ? `
+  <div class="section-title">Complete Delivery History (${cDelivs.length} orders)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Invoice / Receipt</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Items</th>
+        <th>Batch Info</th>
+        <th class="num">Order Total</th>
+        <th class="num">Replacement</th>
+        <th class="num">Net</th>
+        <th class="num">Collected</th>
+        <th class="num">Balance Due</th>
+        <th>Created By</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${cDelivs.map(d => {
+        const invNo = invIssued[d.id] || d.invNo || `${prefix}-${(d.date||"").replace(/-/g,"")}-${(d.id||"").slice(-4).toUpperCase()}`;
+        const rcptNo = `RCP-${invNo.replace(/^[A-Z]+-/, "")}`;
+        const tot  = lineTotal(d.orderLines);
+        const repl = +d.replacement?.amount || 0;
+        const net  = Math.max(0, tot - repl);
+        const paid = d.partialPayment?.enabled ? (+d.partialPayment?.amount || 0) : 0;
+        const bal  = Math.max(0, net - paid);
+        const stCls = d.status === "Delivered" ? "bg" : d.status === "In Transit" ? "bb" : d.status === "Cancelled" ? "bred" : "by";
+        const items = Object.entries(safeO(d.orderLines))
+          .filter(([, l]) => l.qty > 0)
+          .map(([pid, l]) => {
+            const p = products.find(p => p.id === pid);
+            return `${l.qty}× ${p?.name || l.name || pid}`;
+          }).join(", ") || "—";
+        const batchInfo = getBatchInfo(d);
+        return `
+        <tr>
+          <td style="font-family:monospace;font-size:8px">
+            <span class="inv-no">${invNo}</span><br>
+            <span class="rcpt-no">${rcptNo}</span>
+          </td>
+          <td class="nowrap">${d.date || "—"}</td>
+          <td><span class="badge ${stCls}">${d.status}</span></td>
+          <td style="font-size:9px">${items}${d.replacement?.done ? `<br><span class="badge bo">🔄 ${d.replacement.item || "repl"} ${d.replacement.qty ? "×" + d.replacement.qty : ""}</span>` : ""}</td>
+          <td style="font-size:9px;color:#7c3aed">${batchInfo || "—"}</td>
+          <td class="num">₹${tot.toLocaleString("en-IN")}</td>
+          <td class="num orange">${repl > 0 ? "−₹" + repl.toLocaleString("en-IN") : "—"}</td>
+          <td class="num">₹${net.toLocaleString("en-IN")}</td>
+          <td class="num green">${paid > 0 ? "₹" + paid.toLocaleString("en-IN") : "—"}</td>
+          <td class="num ${bal > 0 ? "red" : "green"}">${bal > 0 ? "₹" + bal.toLocaleString("en-IN") : "✓ Settled"}</td>
+          <td style="font-size:9px">${d.createdBy || "—"}</td>
+          <td style="font-size:9px;color:#78716c;font-style:italic">${d.notes ? d.notes.slice(0, 60) + (d.notes.length > 60 ? "…" : "") : "—"}</td>
+        </tr>
+        ${d.replacement?.done && d.replacement?.reason ? `
+        <tr class="repl-row">
+          <td colspan="12" style="font-size:9px;color:#ea580c;padding:4px 8px">
+            🔄 Replacement reason: ${d.replacement.reason}
+          </td>
+        </tr>` : ""}
+        ${d.partialPayment?.enabled && d.partialPayment?.note ? `
+        <tr class="repl-row">
+          <td colspan="12" style="font-size:9px;color:#059669;padding:4px 8px">
+            💬 Payment note: ${d.partialPayment.note}
+          </td>
+        </tr>` : ""}`;
+      }).join("")}
+    </tbody>
+    <tfoot>
+      <tr class="totals-row">
+        <td colspan="5"><b>Customer Totals</b></td>
+        <td class="num"><b>₹${cGrossRev.toLocaleString("en-IN")}</b></td>
+        <td class="num orange"><b>${cReplTotal > 0 ? "−₹" + cReplTotal.toLocaleString("en-IN") : "—"}</b></td>
+        <td class="num"><b>₹${cNetRev.toLocaleString("en-IN")}</b></td>
+        <td class="num green"><b>₹${cCollected.toLocaleString("en-IN")}</b></td>
+        <td class="num ${cDue > 0 ? "red" : "green"}"><b>${cDue > 0 ? "₹" + cDue.toLocaleString("en-IN") : "✓ Settled"}</b></td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>` : `<div class="empty-state">No delivery records found for this customer.</div>`}
+
+  <!-- Activity Log -->
+  ${custActLog.length > 0 ? `
+  <div class="section-title">Activity Log (${custActLog.length} events)</div>
+  <table>
+    <thead>
+      <tr><th>Timestamp</th><th>Action</th><th>Detail</th><th>User</th><th>Role</th><th>Device</th></tr>
+    </thead>
+    <tbody>
+      ${custActLog.map(e => `
+      <tr>
+        <td class="nowrap" style="font-family:monospace;font-size:8px">${e.ts ? new Date(e.ts).toLocaleString("en-IN") : "—"}</td>
+        <td style="font-size:9px;font-weight:600">${e.action || "—"}</td>
+        <td style="font-size:9px;color:#57534e">${e.detail || "—"}</td>
+        <td style="font-size:9px">${e.user || "—"}</td>
+        <td style="font-size:9px;color:#7c3aed">${e.role || "—"}</td>
+        <td style="font-size:8px;color:#a8a29e">${[e.deviceType, e.browser, e.os].filter(Boolean).join(" · ") || "—"}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>` : ""}
+
+  <!-- Page footer -->
+  <div class="page-footer">
+    <span>${co} · Customer Report · ${c.name}</span>
+    <span>Exported ${now} · CONFIDENTIAL</span>
+  </div>
+</div>`;
+    }).join('<div class="page-break"></div>');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Customer Reports — ${co}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 11px;
+    color: #1c1917;
+    background: #f5f5f4;
+    padding: 20px;
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .page-break { page-break-after: always; }
+    @page { margin: 1.5cm 1.2cm; size: A4 portrait; }
+  }
+  .page {
+    background: #fff;
+    max-width: 960px;
+    margin: 0 auto 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+    padding-bottom: 24px;
+  }
+  @media print { .page { box-shadow: none; margin: 0; border-radius: 0; max-width: 100%; } }
+
+  /* Header */
+  .page-header {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%);
+    color: #fff;
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .company-badge {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .company-name { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+  .report-label { font-size: 10px; opacity: 0.7; margin-top: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .header-right { text-align: right; flex-shrink: 0; }
+  .report-date { font-size: 10px; opacity: 0.7; }
+  .confidential-badge {
+    margin-top: 4px;
+    display: inline-block;
+    font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
+    background: rgba(239,68,68,0.25); color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.4);
+    border-radius: 4px; padding: 2px 8px;
+  }
+
+  /* Identity block */
+  .identity-block {
+    display: flex; align-items: flex-start; gap: 18px;
+    padding: 22px 28px 18px;
+    border-bottom: 2px solid #f5f5f4;
+  }
+  .avatar {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: #fef3c7; color: #92400e;
+    font-size: 24px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .identity-info { flex: 1; min-width: 0; }
+  .cust-name { font-size: 18px; font-weight: 900; color: #1c1917; line-height: 1.2; }
+  .cust-meta { font-size: 11px; color: #78716c; margin-top: 4px; line-height: 1.6; }
+  .cust-notes {
+    font-size: 10px; color: #57534e; font-style: italic; margin-top: 6px;
+    background: #fafaf9; border-left: 3px solid #e7e5e4; padding: 4px 10px; border-radius: 0 6px 6px 0;
+  }
+  .identity-status { text-align: right; flex-shrink: 0; }
+  .status-pill {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    border-radius: 99px; padding: 3px 10px;
+  }
+  .status-pill.active  { background: #d1fae5; color: #065f46; }
+  .status-pill.inactive{ background: #f5f5f4; color: #78716c; }
+  .coll-rate-label { font-size: 9px; color: #a8a29e; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .coll-rate-val { font-size: 22px; font-weight: 900; line-height: 1.1; }
+
+  /* KPI strip */
+  .kpi-strip {
+    display: flex; flex-wrap: wrap; gap: 0;
+    border-bottom: 1px solid #f5f5f4;
+  }
+  .kpi {
+    flex: 1; min-width: 100px;
+    padding: 14px 16px;
+    border-right: 1px solid #f5f5f4;
+    text-align: center;
+  }
+  .kpi:last-child { border-right: none; }
+  .kpi-val { font-size: 15px; font-weight: 900; line-height: 1; }
+  .kpi-lbl { font-size: 9px; color: #78716c; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* Collection bar */
+  .coll-bar-wrap { padding: 10px 28px 6px; }
+  .coll-bar-labels { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+  .coll-bar { height: 8px; background: #fecaca; border-radius: 99px; overflow: hidden; }
+  .coll-bar-fill { height: 100%; background: #059669; border-radius: 99px; }
+
+  /* Sections */
+  .section-title {
+    font-size: 9px; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #a8a29e;
+    padding: 18px 28px 8px;
+    border-top: 1px solid #f5f5f4;
+    margin-top: 6px;
+  }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 0 0 0; font-size: 10px; }
+  thead th {
+    font-size: 8px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #a8a29e;
+    padding: 7px 6px 7px 8px;
+    border-bottom: 2px solid #e7e5e4;
+    text-align: left; background: #fafaf9;
+  }
+  thead th.num { text-align: right; }
+  tbody td {
+    padding: 7px 6px 7px 8px;
+    border-bottom: 1px solid #f5f5f4;
+    vertical-align: top;
+  }
+  tbody tr:hover { background: #fafaf9; }
+  .num { text-align: right; }
+  tfoot .totals-row td {
+    padding: 8px 6px 8px 8px;
+    font-size: 10px;
+    background: #f5f5f4;
+    border-top: 2px solid #e7e5e4;
+  }
+  .repl-row td { background: #fff7ed; border-bottom: 1px solid #fed7aa; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 99px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+  .bg  { background: #d1fae5; color: #065f46; }
+  .bb  { background: #dbeafe; color: #1e40af; }
+  .by  { background: #fef3c7; color: #92400e; }
+  .bred{ background: #fee2e2; color: #991b1b; }
+  .bo  { background: #ffedd5; color: #9a3412; }
+
+  /* Colours */
+  .green  { color: #059669; }
+  .red    { color: #dc2626; }
+  .amber  { color: #d97706; }
+  .orange { color: #ea580c; }
+  .blue   { color: #0369a1; }
+
+  /* Invoice/receipt codes */
+  .inv-no  { color: #7c3aed; font-family: monospace; }
+  .rcpt-no { color: #0ea5e9; font-family: monospace; }
+  .nowrap { white-space: nowrap; }
+
+  /* Footer */
+  .page-footer {
+    margin: 20px 28px 0;
+    padding-top: 10px;
+    border-top: 1px solid #e7e5e4;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #a8a29e;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; color: #a8a29e; font-size: 11px; padding: 24px 28px;
+    font-style: italic;
+  }
+  .page-break { display: none; }
+  @media print { .page-break { display: block; } }
+</style>
+</head>
+<body>
+${custPages}
+<script>window.addEventListener("load", function(){ window.print(); });</script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    addLog("Exported customer reports", `${targetCustomers.length} customer PDF${targetCustomers.length > 1 ? "s" : ""}`);
+    notify(`📄 ${targetCustomers.length} customer report${targetCustomers.length > 1 ? "s" : ""} opening…`);
+  }
+
+  // ── PER-CUSTOMER PDF REPORT ─────────────────────────────────────────────────
+
   if(!dataLoaded) return <div style={{background:dm?"#0c0c10":"#f2f2ed",height:"100svh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/><p style={{color:"#f59e0b",fontSize:12,fontWeight:600,letterSpacing:1}}>Loading data…</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   // ─────────────────────────────────────────────────────────────
@@ -1499,9 +1990,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
         .crm-nav-bottom{display:flex!important;position:fixed;bottom:0;left:0;right:0;z-index:100;background:#0d1b2a;border-top:1px solid #1e2d3d;padding-bottom:env(safe-area-inset-bottom,0px);}
       }
 
-      /* Main content area safe-area + bottom nav clearance */
-      @media(max-width:1023px){
-        .crm-main-content{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))!important;}
+      /* Main content area safe-area + bottom nav + FAB dock clearance */
+      @media(max-width:639px){
+        /* mobile: bottom nav (~64px) + FAB dock (~48px) + gap */
+        .crm-main-content{padding-bottom:calc(78px + 56px + env(safe-area-inset-bottom,0px))!important;}
+      }
+      @media(min-width:640px) and (max-width:1023px){
+        /* tablet: FAB dock at bottom:24px + its height (~48px) + breathing room */
+        .crm-main-content{padding-bottom:calc(24px + 56px + 16px + env(safe-area-inset-bottom,0px))!important;}
       }
 
       /* Mobile-first content padding */
@@ -1669,6 +2165,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
           {/* RIGHT — notifications + avatar + dark mode */}
           <div className="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0">
 
+            {/* Kanban + Audit — desktop only; FAB dock handles mobile/tablet */}
+            <div className="hidden lg:flex items-center gap-1.5">
+              <KanbanButton dm={dm} t={t} onClick={() => setKanbanOpen(true)} />
+              {isAdmin && (
+                <AuditLogButton dm={dm} t={t} onClick={() => setAuditOpen(true)} />
+              )}
+            </div>
+
             {/* #18 Search / Command Palette button */}
             {isAdmin && (
               <CommandPaletteButton dm={dm} t={t} onClick={() => setCmdOpen(true)} />
@@ -1680,6 +2184,14 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             {/* Trash */}
             {isAdmin && (
               <TrashButton count={trashedItems.length} dm={dm} t={t} onClick={() => setTrashOpen(true)} />
+            )}
+
+            {/* Activity Timeline */}
+            <ActivityTimelineButton dm={dm} t={t} onClick={() => setTimelineOpen(true)} />
+
+            {/* Widget Customizer (only on Dashboard when featureCustomDashboard is on) */}
+            {tab === "Dashboard" && settings?.featureCustomDashboard && (
+              <WidgetCustomizerButton dm={dm} t={t} onClick={() => setCustOpen(true)} />
             )}
 
             {/* Bell */}
@@ -1794,6 +2306,8 @@ ${wastage.map(w=>`<tr><td>${w.product}</td><td>${w.type}</td><td>${w.qty}</td><t
             userDashWidgets={userDashWidgets}
             setUserDashWidgets={setUserDashWidgets}
             _syncListeners={_syncListeners}
+            dragHandlers={dragHandlers}
+            featureCustomDashboard={!!settings?.featureCustomDashboard}
           />
           {/* #19 Predictive summary badges */}
           {isAdmin && (
@@ -2175,6 +2689,13 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                 style={{width:38,height:38,borderRadius:10,background:t.inp,border:`1.5px solid ${t.border}`,color:t.sub,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
               </button>}
+              {/* ── Customer Reports: one professional page per customer ── */}
+              {can("cust_export")&&<button
+                onClick={()=>exportCustomerReports()}
+                title="Customer Reports — full per-customer PDF with batches & activity log"
+                style={{width:38,height:38,borderRadius:10,background:"#7c3aed18",border:"1.5px solid #7c3aed50",color:"#7c3aed",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </button>}
               {can("cust_add")&&<button onClick={()=>{setCsh("add");setCf(blkC());}}
                 style={{display:"flex",alignItems:"center",gap:6,background:"#2563eb",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -2269,6 +2790,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
 ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin:36px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Per-Customer Delivery Breakdown</div>${custBreakdownHtml}`:""}
 `),"Customers PDF");
               }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:4,verticalAlign:"middle"}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF</Btn>}
+              {/* ── Reports: professional per-customer PDF ── */}
+              {can("cust_export")&&<Btn dm={dm} v="outline" size="sm"
+                onClick={()=>exportCustomerReports()}
+                title="One full-detail page per customer — batches, items, activity log"
+                style={{borderColor:"#7c3aed60",color:"#7c3aed",background:"#7c3aed0d"}}
+              ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:4,verticalAlign:"middle"}}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Reports</Btn>}
               {can("cust_export")&&<Btn dm={dm} v="outline" size="sm" onClick={()=>{
                 const enriched=customers.map(c=>{
                   const cDelivs=deliveries.filter(d=>d.customerId===c.id);
@@ -2627,6 +3154,12 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             PDF
                           </button>}
+                          {can("cust_export")&&<button onClick={()=>exportCustomerReports([cFull.id])}
+                            title="Full customer report — batches, items, activity log"
+                            style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed40",borderRadius:10,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            Report
+                          </button>}
                           {can("cust_export")&&<button onClick={()=>{gExport("excel",()=>exportTabExcel("Customer",[{...cFull}],[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings),"Customer Excel");}}
                             style={{background:"#059669",color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
@@ -2970,6 +3503,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
                         <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginRight:4,flexShrink:0}}>Actions:</p>
                         {can("cust_edit")&&<button onClick={()=>{setCsh(cFull);setCf(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {can("cust_export")&&<button onClick={()=>gExport("pdf",()=>exportPDF(cFull,products,"customer",settings,deliveries),"Customer PDF")} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>}
+                        {can("cust_export")&&<button onClick={()=>exportCustomerReports([cFull.id])} title="Full customer report — all deliveries, batches & activity log" style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed40",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Report</button>}
                         {can("cust_export")&&<button onClick={()=>{const rows=[{...cFull}];gExport("excel",()=>exportTabExcel("Customer",rows,[{label:"Name",key:"name"},{label:"Phone",key:"phone"},{label:"Address",key:"address"},{label:"Paid",key:"paid",num:true},{label:"Pending",key:"pending",num:true}],settings),"Customer Excel");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📊 Excel</button>}
                         {isAdmin&&cDue>0&&<button onClick={()=>{setPaySh(cFull);setPayAmt(String(cDue));setSelectedCustomer(null);}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
                         {can("cust_deactivate")&&<button onClick={()=>{togActive(cFull);setSelectedCustomer(null);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.sub,borderRadius:9,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{cFull.active?"⏸ Pause":"▶ Activate"}</button>}
@@ -3848,6 +4382,136 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
       })()}
       </div>{/* end desktop flex child */}
     </div>{/* end outer flex */}
+
+      {/* ── FLOATING KANBAN + AUDIT FAB DOCK — mobile/tablet only (<1024px) ── */}
+      <style>{`
+        @keyframes fabDockEnter {
+          from { opacity:0; transform:translateX(-50%) translateY(6px) scale(0.96); }
+          to   { opacity:1; transform:translateX(-50%) translateY(0)   scale(1);   }
+        }
+        .fab-dock {
+          display:flex;
+          position:fixed;
+          left:50%;
+          transform:translateX(-50%);
+          z-index:1150;
+          align-items:center;
+          gap:4px;
+          border-radius:999px;
+          padding:5px 7px;
+          pointer-events:auto;
+          -webkit-tap-highlight-color:transparent;
+          animation:fabDockEnter 0.28s cubic-bezier(0.25,0.46,0.45,0.94) 0.05s both;
+          bottom:calc(78px + env(safe-area-inset-bottom, 0px));
+        }
+        @media (min-width:640px) and (max-width:1023px) {
+          .fab-dock { bottom:24px; }
+        }
+        @media (min-width:1024px) {
+          .fab-dock { display:none !important; }
+        }
+        .fab-btn {
+          display:flex; align-items:center; gap:6px;
+          border-radius:999px; padding:7px 13px;
+          font-size:12px; font-weight:700; cursor:pointer;
+          white-space:nowrap; min-height:36px;
+          touch-action:manipulation;
+          transition:background 0.15s, transform 0.12s, box-shadow 0.12s;
+          -webkit-tap-highlight-color:transparent;
+        }
+        .fab-btn:hover  { transform:scale(1.04); }
+        .fab-btn:active { transform:scale(0.96); }
+        .fab-kbd { font-size:9px; font-weight:800; border-radius:4px; padding:1px 5px; letter-spacing:0.05em; }
+      `}</style>
+
+      <div
+        className="fab-dock lg:hidden"
+        style={{
+          background: dm ? "rgba(30,41,59,0.85)" : "rgba(255,255,255,0.88)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: `1.5px solid ${dm ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
+          boxShadow: dm
+            ? "0 8px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)"
+            : "0 8px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
+        }}
+      >
+        {/* Kanban */}
+        <button
+          onClick={()=>setKanbanOpen(true)}
+          title="Kanban Board (Shift+B)"
+          className="fab-btn"
+          style={{
+            background: kanbanOpen ? "#6366f120" : (dm ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"),
+            border: `1px solid ${kanbanOpen ? "#6366f160" : (dm ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)")}`,
+            color: kanbanOpen ? "#6366f1" : t.sub,
+            boxShadow: kanbanOpen ? "0 0 0 2px #6366f140" : "none",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.background = kanbanOpen ? "#6366f128" : (dm?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.07)"); }}
+          onMouseLeave={e=>{ e.currentTarget.style.background = kanbanOpen ? "#6366f120" : (dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)"); }}
+        >
+          <span style={{fontSize:14}}>📌</span>
+          <span>Kanban</span>
+          <span className="fab-kbd hidden sm:inline" style={{background:"#6366f118",color:"#6366f1"}}>⇧B</span>
+        </button>
+
+        <div style={{width:1, background: dm ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)", height:20, flexShrink:0}}/>
+
+        {/* Audit — admin only */}
+        {isAdmin&&(
+          <button
+            onClick={()=>setAuditOpen(true)}
+            title="Audit Log (Shift+L)"
+            className="fab-btn"
+            style={{
+              background: auditOpen ? "#10b98120" : (dm ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"),
+              border: `1px solid ${auditOpen ? "#10b98160" : (dm ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)")}`,
+              color: auditOpen ? "#10b981" : t.sub,
+              boxShadow: auditOpen ? "0 0 0 2px #10b98140" : "none",
+            }}
+            onMouseEnter={e=>{ e.currentTarget.style.background = auditOpen ? "#10b98128" : (dm?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.07)"); }}
+            onMouseLeave={e=>{ e.currentTarget.style.background = auditOpen ? "#10b98120" : (dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)"); }}
+          >
+            <span style={{fontSize:14}}>🔍</span>
+            <span>Audit</span>
+            <span className="fab-kbd hidden sm:inline" style={{background:"#10b98118",color:"#10b981"}}>⇧L</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── KANBAN BOARD ── */}
+      <KanbanBoard
+        open={kanbanOpen}
+        onClose={()=>setKanbanOpen(false)}
+        deliveries={deliveries}
+        setDeliv={setDeliv}
+        customers={customers}
+        products={products}
+        settings={settings}
+        addLog={addLog}
+        notify={notify}
+        inr={inr}
+        lineTotal={lineTotal}
+        canSeePrices={canSeePrices}
+        isAdmin={isAdmin}
+        can={can}
+        dm={dm}
+        t={t}
+        setDsh={setDsh}
+        setDf={setDf}
+        ts={ts}
+      />
+
+      {/* ── AUDIT LOG PANEL ── */}
+      <AuditLogPanel
+        open={auditOpen}
+        onClose={()=>setAuditOpen(false)}
+        actLog={actLog}
+        dm={dm}
+        t={t}
+        isAdmin={isAdmin}
+        currentUser={displayName}
+      />
 
       {/* ═══════ SHEETS ═══════ */}
 
@@ -5443,28 +6107,60 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         </div>
       </>)}
 
-      {/* ── UNIVERSAL DETAIL MODAL ── */}
-      {detailModal&&<DetailModal
-        modal={detailModal}
-        invRegistry={invRegistry}
-        onClose={closeDetail}
+      {/* ── UNIVERSAL DETAIL MODAL — wrapped in CRMContext.Provider ── */}
+      {detailModal && (
+        <CRMContext.Provider value={{
+          t, dm, isAdmin, sess,
+          customers, deliveries, expenses, supplies, wastage, products, settings,
+          actLog,
+          invRegistry,
+          setDetailModal,
+          setEsh, setEf,
+          setDsh, setDf,
+          delE, delD,
+          setPaySh, setPayAmt,
+        }}>
+          <DetailModal
+            modal={detailModal}
+            onClose={closeDetail}
+          />
+        </CRMContext.Provider>
+      )}
+
+      {/* ── ACTIVITY TIMELINE ── */}
+      <ActivityTimeline
+        open={timelineOpen}
+        onClose={() => setTimelineOpen(false)}
+        actLog={actLog}
+        currentUser={displayName}
+        isAdmin={isAdmin}
+        sess={sess}
         dm={dm}
         t={t}
-        actLog={actLog}
-        customers={customers}
-        deliveries={deliveries}
-        expenses={expenses}
-        supplies={supplies}
-        wastage={wastage}
-        products={products}
-        settings={settings}
-        setDetailModal={setDetailModal}
-        setEsh={setEsh} setEf={setEf}
-        setDsh={setDsh} setDf={setDf}
-        delE={delE} delD={delD}
-        setPaySh={setPaySh} setPayAmt={setPayAmt}
-        isAdmin={isAdmin} sess={sess}
-      />}
+      />
+
+      {/* ── WIDGET CUSTOMIZER ── */}
+      {settings?.featureCustomDashboard && (
+        <WidgetCustomizer
+          open={customizerOpen}
+          onClose={() => setCustOpen(false)}
+          widgets={userDashWidgets || settings?.dashWidgets || ["stats","chart","pendingDeliveries","outstanding"]}
+          onSave={reorderWidgets}
+          dm={dm}
+          t={t}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {/* ── KEYBOARD HELP MODAL ── */}
+      <KeyboardHelpModal
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        dm={dm}
+        t={t}
+        isAdmin={isAdmin}
+        can={can}
+      />
 
       {isAdmin && (
         <CommandPalette
@@ -5481,16 +6177,19 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           vehList={vehList}
           ingItems={ingItems}
           dm={dm}
+          isAdmin={isAdmin}
           onNavigate={(tabId) => setTab(tabId)}
           onOpenDetail={(modal) => setDetailModal(modal)}
           onQuickAction={(actionId, tab) => {
-            setTab(tab);
+            if (tab) setTab(tab);
             if (actionId === "qa_new_delivery") { setDsh("new"); setDf(blkD()); }
             if (actionId === "qa_new_customer") { setCsh("new"); setCf(blkC()); }
             if (actionId === "qa_new_expense")  { setEsh("new"); setEf(blkE()); }
             if (actionId === "qa_new_supply")   { setSsh("new"); setSf(blkS()); }
             if (actionId === "qa_new_payment")  { setPaySh(true); }
             if (actionId === "qa_new_wastage")  { setWSh("new"); setWF(blkW()); }
+            if (actionId === "qa_open_kanban")  { setKanbanOpen(true); }
+            if (actionId === "qa_open_audit")   { setAuditOpen(true); }
           }}
         />
       )}

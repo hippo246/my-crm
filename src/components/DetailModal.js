@@ -7,14 +7,15 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useState, useRef, useCallback } from "react";
-import { useCRM } from "../lib/CRMContext";
+import { CRMContext, useCRM } from "../lib/CRMContext";
 import { safeArr, safeO, lineTotal, lineRows, inr, today, ts, uid, mapU } from "../lib/utils";
 import { exportPDF, exportDeliveryInvoice, exportDeliveryReceipt, exportTabExcel, shareWhatsApp } from "../lib/exports";
 import { DeliveryAuditLog } from "./DeliveryAuditLog";
 import { ActivitySection } from "./ActivityTimeline";
 import { Btn, Inp, Sel, Hr, Sheet, Pill } from "./ui";
 
-function DetailModal({ modal, onClose }) {
+// ── Inner component — uses useCRM() safely inside the Provider ────────────────
+function DetailModalInner({ modal, onClose }) {
   const {
     t, dm, isAdmin, sess,
     customers, deliveries, expenses, supplies, wastage, products, settings,
@@ -672,6 +673,26 @@ function DetailModal({ modal, onClose }) {
   }
 
   return null;
+}
+
+// ── Public export — wraps in CRMContext.Provider if needed ────────────────────
+// This means DetailModal is safe to render anywhere in the tree:
+//   • If CRM.js already has a Provider higher up → useCRM() reads from it normally.
+//   • If (during a transition / mis-placement) it's outside the Provider →
+//     we render a no-op (null) and log a dev warning instead of crashing.
+function DetailModal({ modal, onClose }) {
+  const ctx = React.useContext(CRMContext);
+  if (!ctx) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[DetailModal] Rendered outside <CRMContext.Provider>. " +
+        "Make sure CRM.js wraps the component tree in <CRMContext.Provider value={...}>. " +
+        "DetailModal will not render until the context is available."
+      );
+    }
+    return null; // Fail silently in prod, dev warning above guides the fix
+  }
+  return <DetailModalInner modal={modal} onClose={onClose} />;
 }
 
 export { DetailModal };

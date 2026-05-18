@@ -5,22 +5,53 @@ import { D_USERS, D_SETTINGS } from "../lib/constants";
 import { SESSION_TTL, DEVICE_ID } from "../lib/auth";
 import { Login } from "./Login";
 import StaffRouter from "../StaffRouter";
+import { db } from "../firebase";
+import { ref, push, set } from "firebase/database";
+
+// ── ERROR LOGGER — writes crash reports to Firebase ─────────────────────────
+function logCrashToFirebase(error, info) {
+  try {
+    const crashRef = push(ref(db, "tas9_crash_logs"));
+    set(crashRef, {
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+      componentStack: info?.componentStack || "",
+      ts: Date.now(),
+      tsISO: new Date().toISOString(),
+      deviceId: DEVICE_ID,
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+    });
+  } catch (e) {
+    console.warn("Failed to log crash to Firebase:", e);
+  }
+}
 
 // ── GLOBAL ERROR BOUNDARY ────────────────────────────────────────────────────
 class AppErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { err: null }; }
+  constructor(props) { super(props); this.state = { err: null, errId: null }; }
   static getDerivedStateFromError(e) { return { err: e }; }
-  componentDidCatch(e, info) { console.error("App crash:", e, info); }
+  componentDidCatch(e, info) {
+    console.error("App crash:", e, info);
+    const errId = "ERR-" + Date.now().toString(36).toUpperCase();
+    this.setState({ errId });
+    logCrashToFirebase(e, info);
+  }
   render() {
     if (!this.state.err) return this.props.children;
     const msg = this.state.err?.message || String(this.state.err);
+    const errId = this.state.errId;
     return (
       <div style={{minHeight:"100vh",background:"#0b1120",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px",fontFamily:"-apple-system,sans-serif"}}>
         <div style={{fontSize:40,marginBottom:16}}>⚠️</div>
         <p style={{color:"#e8edf5",fontWeight:700,fontSize:20,marginBottom:8,textAlign:"center"}}>Something went wrong</p>
-        <p style={{color:"#4a6080",fontSize:14,marginBottom:24,textAlign:"center",maxWidth:320}}>The app encountered an error. Try refreshing the page.</p>
-        <button onClick={()=>window.location.reload()} style={{background:"#3b6ef6",color:"#fff",border:"none",borderRadius:12,padding:"14px 28px",fontSize:16,fontWeight:600,cursor:"pointer"}}>Refresh Page</button>
-        <pre style={{marginTop:24,color:"#4a6080",fontSize:11,maxWidth:"90vw",overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{msg}</pre>
+        <p style={{color:"#4a6080",fontSize:14,marginBottom:8,textAlign:"center",maxWidth:320}}>The app encountered an error. This crash has been logged automatically.</p>
+        {errId&&<p style={{color:"#f59e0b",fontSize:11,fontWeight:700,marginBottom:20,letterSpacing:1}}>Error ID: {errId}</p>}
+        <div style={{display:"flex",gap:10,marginBottom:24}}>
+          <button onClick={()=>window.location.reload()} style={{background:"#3b6ef6",color:"#fff",border:"none",borderRadius:12,padding:"14px 28px",fontSize:16,fontWeight:600,cursor:"pointer"}}>Refresh Page</button>
+          <button onClick={()=>{localStorage.clear();sessionStorage.clear();window.location.reload();}} style={{background:"rgba(239,68,68,0.15)",color:"#f87171",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:"14px 28px",fontSize:16,fontWeight:600,cursor:"pointer"}}>Clear & Reset</button>
+        </div>
+        <pre style={{marginTop:8,color:"#4a6080",fontSize:11,maxWidth:"90vw",overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{msg}</pre>
       </div>
     );
   }

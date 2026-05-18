@@ -139,25 +139,14 @@ export function AuditLogButton({ dm, t, onClick }) {
   );
 }
 
-// ── AuditLogPanel ─────────────────────────────────────────────
-// ── Action type filter buckets (module-level so useMemo deps stay clean) ──
-const ACTION_TYPES = [
-  { id: "all",    label: "All" },
-  { id: "edit",   label: "Edits",    test: a => a.includes("Edit") || a.includes("edit") || a.includes("Updated") },
-  { id: "create", label: "Creates",  test: a => a.includes("Add") || a.includes("Log") || a.includes("Record") || a.includes("Created") },
-  { id: "delete", label: "Deletes",  test: a => a.includes("delet") || a.includes("Delet") || a.includes("Removed") },
-  { id: "status", label: "Status",   test: a => a.includes("Status") || a.includes("status") || a.includes("Dispatch") || a.includes("Bulk") },
-  { id: "system", label: "System",   test: a => a.includes("Login") || a.includes("Logout") || a.includes("backup") || a.includes("Backup") || a.includes("snapshot") || a.includes("Restore") },
-];
-
-// ── LogEntry: extracted so useState is legal (hooks can't be called inside .map()) ──
-function LogEntry({ e, inp, border, sub, text, dm }) {
+// ── LogEntry — extracted so useState is legal (hooks can't be called inside .map()) ──
+function LogEntry({ e, i, inp, border, sub, text, dm, card }) {
   const roleStyle = ROLE_COLOR[e.role] || ROLE_COLOR.agent;
   const hasDiff = e.changes && e.changes.length > 0;
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div style={{
+    <div key={e.id || i} style={{
       background: inp, border: `1px solid ${border}`,
       borderRadius: 12, overflow: "hidden",
     }}>
@@ -173,12 +162,12 @@ function LogEntry({ e, inp, border, sub, text, dm }) {
           }}>{deviceIcon(e)}</div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Action */}
+            {/* Action + category badge */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ color: text, fontSize: 12, fontWeight: 700 }}>{e.action}</span>
             </div>
 
-            {/* Detail */}
+            {/* Detail / diff summary */}
             {e.detail && (
               <div style={{
                 color: sub, fontSize: 11, marginTop: 2,
@@ -189,6 +178,7 @@ function LogEntry({ e, inp, border, sub, text, dm }) {
 
             {/* Meta row */}
             <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+              {/* User */}
               <span style={{
                 background: roleStyle.bg, color: roleStyle.color,
                 border: `1px solid ${roleStyle.border}`,
@@ -199,19 +189,21 @@ function LogEntry({ e, inp, border, sub, text, dm }) {
                 {e.role && <span style={{ opacity: 0.7, fontWeight: 400 }}> · {e.role}</span>}
               </span>
 
+              {/* Device */}
               {(e.browser || e.os) && (
                 <span style={{ color: sub, fontSize: 10 }}>
                   {e.browser && e.os ? `${e.browser} / ${e.os}` : e.browser || e.os}
                 </span>
               )}
 
+              {/* Timestamp */}
               <span title={fullDate(e.ts)} style={{ color: sub, fontSize: 10, marginLeft: "auto" }}>
                 {relTime(e.ts)}
               </span>
             </div>
           </div>
 
-          {/* Expand button */}
+          {/* Expand button if has diff */}
           {hasDiff && (
             <button
               onClick={() => setExpanded(x => !x)}
@@ -275,6 +267,17 @@ function LogEntry({ e, inp, border, sub, text, dm }) {
   );
 }
 
+// ── AuditLogPanel ─────────────────────────────────────────────
+// ── Action type filter buckets (module-level so useMemo deps stay clean) ──
+const ACTION_TYPES = [
+  { id: "all",    label: "All" },
+  { id: "edit",   label: "Edits",    test: a => a.includes("Edit") || a.includes("edit") || a.includes("Updated") },
+  { id: "create", label: "Creates",  test: a => a.includes("Add") || a.includes("Log") || a.includes("Record") || a.includes("Created") },
+  { id: "delete", label: "Deletes",  test: a => a.includes("delet") || a.includes("Delet") || a.includes("Removed") },
+  { id: "status", label: "Status",   test: a => a.includes("Status") || a.includes("status") || a.includes("Dispatch") || a.includes("Bulk") },
+  { id: "system", label: "System",   test: a => a.includes("Login") || a.includes("Logout") || a.includes("backup") || a.includes("Backup") || a.includes("snapshot") || a.includes("Restore") },
+];
+
 export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, currentUser }) {
   const [search, setSearch]       = useState("");
   const [userFilter, setUserFilter] = useState("all");
@@ -319,7 +322,7 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
         (ACTION_TYPES.find(t => t.id === actionFilter)?.test(e.action || "") ?? true);
       return matchSearch && matchUser && matchAction;
     }).sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actLog, search, userFilter, actionFilter]);
 
   // Group by day
@@ -504,8 +507,8 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
                 {grouped[day].map((e, i) => (
                   <LogEntry
                     key={e.id || i}
-                    e={e}
-                    inp={inp} border={border} sub={sub} text={text} dm={dm}
+                    e={e} i={i}
+                    inp={inp} border={border} sub={sub} text={text} dm={dm} card={card}
                   />
                 ))}
               </div>

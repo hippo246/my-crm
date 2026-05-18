@@ -11,7 +11,7 @@ import { WeatherWidget } from "../components/WeatherWidget";
 import { DetailModal } from "../components/DetailModal";
 import { dispatchDelivery, advanceDeliveryStatus, cancelDelivery } from "../lib/deliveryEngine";
 
-export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices, settings, notify, addLog, today, inr, ts, safeArr, safeO, lineTotal, exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, shareWhatsApp, deliveries, setDeliv, setDf, setDsh, blkD, delD, delivStatusFilter, setDelivStatusFilter, delivDateFilter, setDelivDateFilter, delivDateFrom, setDelivDateFrom, delivDateTo, setDelivDateTo, delivView, setDelivView, delivCalendar, setDelivCalendar, calOffset, setCalOffset, calExpandedDay, setCalExpandedDay, delivPage, setDelivPage, delivBatchFilter, setDelivBatchFilter, delivExportOpen, setDelivExportOpen, customers, products, prodTargets: prodTargetsProp, setDetailModal, bulkSelect, setBulkSelect, bulkSelected, setBulkSelected, invRegistry, expandedDeliveryCust, setExpandedDeliveryCust, setLastReceiptData }) {
+export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices, settings, notify, addLog, today, inr, ts, safeArr, safeO, lineTotal, exportCSV, exportTabPDF, exportTabExcel, exportPDF, exportDeliveryLabel, exportDeliveryInvoice, shareWhatsApp, exportCustomerReports, deliveries, setDeliv, setDf, setDsh, blkD, delD, delivStatusFilter, setDelivStatusFilter, delivDateFilter, setDelivDateFilter, delivDateFrom, setDelivDateFrom, delivDateTo, setDelivDateTo, delivView, setDelivView, delivCalendar, setDelivCalendar, calOffset, setCalOffset, calExpandedDay, setCalExpandedDay, delivPage, setDelivPage, delivBatchFilter, setDelivBatchFilter, delivExportOpen, setDelivExportOpen, customers, products, prodTargets: prodTargetsProp, setDetailModal, bulkSelect, setBulkSelect, bulkSelected, setBulkSelected, invRegistry, expandedDeliveryCust, setExpandedDeliveryCust, setLastReceiptData }) {
   // ── Computed from props ──
   const _actor = { name: sess?.name || "Admin", role: "admin", uid: sess?.uid || null };
   const delivStatusCounts = {
@@ -27,7 +27,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
   const srch = "";
   const fDeliv = deliveries.filter(d => delivStatusFilter==="all" || d.status===delivStatusFilter);
   const initBulkRows = () => {};
-  const exportFullReport = () => notify("Export not available here");
+  const exportFullReport = () => exportCustomerReports ? exportCustomerReports() : notify("Report not available");
   const delivExportBtnRef = React.useRef(null);
   const [collectSh, setCollectSh] = React.useState(null);
   const [collectAmt, setCollectAmt] = React.useState("");

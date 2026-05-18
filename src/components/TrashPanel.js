@@ -45,6 +45,7 @@ const ENTITY_META = {
   vehicles:   { label: "Vehicles",   icon: "🚗", color: "#0ea5e9" },
   machines:   { label: "Machines",   icon: "⚙️", color: "#a855f7" },
   ingredients:{ label: "Ingredients",icon: "🧂", color: "#84cc16" },
+  customers:  { label: "Customers",  icon: "👥", color: "#f97316" },
 };
 
 function formatDate(iso) {

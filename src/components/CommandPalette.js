@@ -72,6 +72,8 @@ const QUICK_ACTIONS = [
   { id: "qa_new_supply",    label: "New Supply",       icon: "📦", tab: "Supplies",   color: "#0ea5e9" },
   { id: "qa_new_payment",   label: "Record Payment",   icon: "💳", tab: "Payments",   color: "#10b981" },
   { id: "qa_new_wastage",   label: "Log Wastage",      icon: "♻️",  tab: "Wastage",    color: "#f97316" },
+  { id: "qa_open_kanban",   label: "Kanban Board",     icon: "📌", tab: null,         color: "#6366f1" },
+  { id: "qa_open_audit",    label: "Audit Log",        icon: "🔍", tab: null,         color: "#10b981", adminOnly: true },
 ];
 
 const TYPE_META = {
@@ -122,6 +124,7 @@ export function CommandPalette({
   wastage=[], products=[], staffList=[], machineList=[],
   vehList=[], ingItems=[], dm,
   onNavigate, onOpenDetail, onQuickAction,
+  isAdmin,
   // open/setOpen passed in from CRM so the header button can trigger it
   open, setOpen,
 }) {
@@ -191,12 +194,13 @@ export function CommandPalette({
   }), [index]);
 
   const results = useMemo(() => {
+    const visibleActions = QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin);
     if (!query.trim()) return [
-      ...QUICK_ACTIONS.map(a => ({ _type:"action", _id:a.id, icon:a.icon, label:a.label, sub:"Quick action", tab:a.tab, color:a.color })),
+      ...visibleActions.map(a => ({ _type:"action", _id:a.id, icon:a.icon, label:a.label, sub:"Quick action", tab:a.tab, color:a.color })),
       ...NAV_TABS.map(tab => ({ _type:"nav", _id:tab.id, icon:tab.icon, label:tab.id, sub:"Go to tab" })),
     ];
     return fuse.search(query).map(r => r.item).slice(0, 18);
-  }, [query, fuse]);
+  }, [query, fuse, isAdmin]);
 
   useEffect(() => setCursor(0), [results]);
   useEffect(() => { itemRefs.current[cursor]?.scrollIntoView({ block:"nearest" }); }, [cursor]);
@@ -213,7 +217,12 @@ export function CommandPalette({
     // Slight delay so close animation plays before modal opens
     setTimeout(() => {
       if (item._type === "nav")    { onNavigate?.(item._id); return; }
-      if (item._type === "action") { onQuickAction?.(item._id, item.tab); return; }
+      if (item._type === "action") {
+        // Actions with tab:null are pure callbacks (e.g. Kanban, Audit Log) — no tab navigation
+        if (item.tab) onNavigate?.(item.tab);
+        onQuickAction?.(item._id, item.tab);
+        return;
+      }
       const modalType = MODAL_TYPE_MAP[item._type];
       if (modalType && item.raw) onOpenDetail?.({ type:modalType, data:item.raw });
       else onNavigate?.(TAB_FALLBACK_MAP[item._type] || "Dashboard");
@@ -358,7 +367,7 @@ export function CommandPalette({
               overflowX:"auto", WebkitOverflowScrolling:"touch",
               scrollbarWidth:"none",
             }}>
-              {QUICK_ACTIONS.map(a => (
+              {QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin).map(a => (
                 <button key={a.id}
                   onPointerDown={e => { e.stopPropagation(); if (!isClosing) activate({ _type:"action", _id:a.id, icon:a.icon, label:a.label, tab:a.tab }); }}
                   style={{
