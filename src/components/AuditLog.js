@@ -236,11 +236,16 @@ function LogEntry({ e, i, inp, border, sub, text, dm, card }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {e.changes.map((c, ci) => (
               <div key={ci} style={{
-                display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.2fr)",
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.2fr)",
                 gap: 6, alignItems: "start",
                 padding: "6px 8px",
                 background: inp, border: `1px solid ${border}`,
                 borderRadius: 8, fontSize: 11,
+                // On very narrow screens collapse to single column
+                ...(typeof window !== "undefined" && window.innerWidth < 380
+                  ? { gridTemplateColumns: "1fr", gap: 4 }
+                  : {}),
               }}>
                 <span style={{ color: sub, fontWeight: 700 }}>{prettyField(c.field)}</span>
                 <span style={{
@@ -290,12 +295,20 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
   const inp    = t?.inp    || (dm ? "#0f172a" : "#f8fafc");
   const border = t?.border || (dm ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)");
 
-  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && (window.visualViewport?.width ?? window.innerWidth) < 640);
+  const getMobile = () =>
+    typeof window !== "undefined"
+      ? (window.visualViewport?.width ?? window.innerWidth) < 640
+      : false;
+
+  const [isMobile, setIsMobile] = useState(getMobile);
   useEffect(() => {
-    const update = () => setIsMobile((window.visualViewport?.width ?? window.innerWidth) < 640);
+    const update = () => setIsMobile(getMobile());
+    const mq = window.matchMedia("(max-width: 639px)");
+    mq.addEventListener("change", update);
     window.addEventListener("resize", update);
     window.visualViewport?.addEventListener("resize", update);
     return () => {
+      mq.removeEventListener("change", update);
       window.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("resize", update);
     };
@@ -361,30 +374,27 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
         display: "flex", flexDirection: "column",
         background: card, border: `1px solid ${border}`,
         ...(isMobile ? {
-          left: 0, right: 0, bottom: 0, top: "auto",
-          maxHeight: "92vh", borderRadius: "20px 20px 0 0",
-          borderTop: `1px solid ${border}`,
+          // Full-screen on mobile — bottom-sheet at 92vh clips the filter row and list
+          top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: 0,
         } : {
           top: 0, right: 0, bottom: 0,
           width: "min(620px, 100vw)",
           borderLeft: `1px solid ${border}`,
         }),
-        boxShadow: isMobile ? "0 -8px 40px rgba(0,0,0,0.3)" : "-8px 0 40px rgba(0,0,0,0.25)",
+        boxShadow: isMobile ? "none" : "-8px 0 40px rgba(0,0,0,0.25)",
       }}>
 
         {/* Header */}
         <div style={{
-          padding: isMobile ? "12px 16px" : "18px 20px 14px",
+          padding: isMobile
+            ? "calc(env(safe-area-inset-top,0px) + 10px) 16px 12px"
+            : "18px 20px 14px",
           borderBottom: `1px solid ${border}`, flexShrink: 0,
           background: dm
             ? "linear-gradient(135deg,rgba(99,102,241,0.12) 0%,rgba(0,0,0,0) 100%)"
             : "linear-gradient(135deg,rgba(99,102,241,0.05) 0%,rgba(0,0,0,0) 100%)",
         }}>
-          {isMobile && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, cursor: "grab", touchAction: "manipulation" }}>
-              <div style={{ width: 36, height: 4, borderRadius: 99, background: border }} />
-            </div>
-          )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{

@@ -115,19 +115,24 @@ export function KanbanBoard({
   const [dragOver, setDragOver]     = useState(null);
   const [expandedCard, setExpanded] = useState(null);
   const [mobileHintDismissed, setMobileHintDismissed] = useState(false);
-  const [isMobile, setIsMobile]     = useState(
-    typeof window !== "undefined" ? (window.visualViewport?.width ?? window.innerWidth) < 640 : false
-  );
+  const getMobile = () =>
+    typeof window !== "undefined"
+      ? (window.visualViewport?.width ?? window.innerWidth) < 640
+      : false;
+
+  const [isMobile, setIsMobile] = useState(getMobile);
 
   // Keep isMobile in sync with actual viewport width
   useEffect(() => {
-    const update = () => setIsMobile((window.visualViewport?.width ?? window.innerWidth) < 640);
+    const update = () => setIsMobile(getMobile());
     const mq = window.matchMedia("(max-width: 639px)");
     mq.addEventListener("change", update);
     window.visualViewport?.addEventListener("resize", update);
+    window.addEventListener("resize", update);
     return () => {
       mq.removeEventListener("change", update);
       window.visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
     };
   }, []);
 
@@ -221,32 +226,22 @@ export function KanbanBoard({
         position: "fixed", zIndex: 1201,
         background: card,
         display: "flex", flexDirection: "column",
-        ...(isMobile ? {
-          left: 0, right: 0, bottom: 0, top: "auto",
-          maxHeight: "96vh", borderRadius: "20px 20px 0 0",
-          borderTop: `1px solid ${border}`,
-        } : {
-          top: 0, left: 0, right: 0, bottom: 0,
-          // Full screen
-        }),
+        // Always full-screen — Kanban needs horizontal scroll across 8 columns;
+        // a bottom-sheet on mobile clips the board and breaks column scrolling.
+        top: 0, left: 0, right: 0, bottom: 0,
         boxShadow: "0 -8px 60px rgba(0,0,0,0.4)",
       }}>
 
         {/* Header */}
         <div style={{
-          padding: isMobile ? "14px 14px 10px" : "14px 20px",
+          padding: isMobile
+            ? "calc(env(safe-area-inset-top,0px) + 10px) 14px 10px"
+            : "14px 20px",
           borderBottom: `1px solid ${border}`, flexShrink: 0,
           background: dm
             ? "linear-gradient(135deg,rgba(99,102,241,0.1) 0%,rgba(0,0,0,0) 60%)"
             : "linear-gradient(135deg,rgba(99,102,241,0.04) 0%,rgba(0,0,0,0) 60%)",
         }}>
-          {/* Drag handle on mobile */}
-          {isMobile && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-              <div style={{ width: 36, height: 4, borderRadius: 99, background: border }} />
-            </div>
-          )}
-
           {/* Row 1: title + close */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 0, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
@@ -350,7 +345,10 @@ export function KanbanBoard({
         {/* Board */}
         <div style={{
           flex: 1, overflowX: "auto", overflowY: "hidden",
-          display: "flex", gap: 10, padding: "16px",
+          display: "flex", gap: 10,
+          padding: isMobile
+            ? "12px 12px calc(12px + env(safe-area-inset-bottom,0px))"
+            : "16px",
           WebkitOverflowScrolling: "touch",
         }}>
           {KANBAN_STAGES.map(stage => {
@@ -365,7 +363,7 @@ export function KanbanBoard({
                 onDrop={onDrop(stage.id)}
                 style={{
                   flexShrink: 0,
-                  width: isMobile ? 180 : 280,
+                  width: isMobile ? 200 : 280,
                   display: "flex", flexDirection: "column",
                   borderRadius: 14,
                   border: `2px solid ${isOver ? stage.color : "transparent"}`,
