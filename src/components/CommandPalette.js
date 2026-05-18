@@ -155,6 +155,33 @@ export function CommandPalette({
     }, 210);
   }
 
+  // Backdrop tap guard — only close if pointerdown AND pointerup
+  // both land on the backdrop with minimal movement (not a scroll drift).
+  const backdropDownPos = useRef(null);
+  // When the input loses focus (keyboard dismissed on mobile), briefly block
+  // backdrop closes so the keyboard-drop layout shift doesn't fire a false close.
+  const blockCloseUntil = useRef(0);
+  function onInputBlur() {
+    blockCloseUntil.current = Date.now() + 350;
+  }
+  function onBackdropPointerDown(e) {
+    if (e.target !== e.currentTarget) return;
+    if (Date.now() < blockCloseUntil.current) return;
+    backdropDownPos.current = { x: e.clientX, y: e.clientY };
+  }
+  function onBackdropPointerUp(e) {
+    if (e.target !== e.currentTarget) return;
+    if (!backdropDownPos.current) return;
+    const dx = Math.abs(e.clientX - backdropDownPos.current.x);
+    const dy = Math.abs(e.clientY - backdropDownPos.current.y);
+    backdropDownPos.current = null;
+    // Only close if pointer barely moved (real tap, not a scroll that drifted)
+    if (dx < 8 && dy < 8) triggerClose();
+  }
+  function onBackdropPointerCancel() {
+    backdropDownPos.current = null;
+  }
+
   // Keyboard shortcut — Cmd/Ctrl+K
   useEffect(() => {
     const handler = e => {
@@ -289,10 +316,9 @@ export function CommandPalette({
           paddingRight: isMobile ? 0 : 12,
           ...backdropAnim,
         }}
-        onPointerDown={e => {
-          // Only close if the backdrop itself was tapped, not a child
-          if (e.target === e.currentTarget) triggerClose();
-        }}
+        onPointerDown={onBackdropPointerDown}
+        onPointerUp={onBackdropPointerUp}
+        onPointerCancel={onBackdropPointerCancel}
       >
         {/* Panel */}
         <div
@@ -345,6 +371,7 @@ export function CommandPalette({
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
+              onBlur={onInputBlur}
               spellCheck={false}
               autoComplete="off"
               autoCorrect="off"
@@ -390,6 +417,7 @@ export function CommandPalette({
           <div
             ref={listRef}
             className="cp-list"
+            onPointerDown={e => e.stopPropagation()}
             style={{
               maxHeight: isMobile ? "48vh" : 380,
               overflowY:"auto",

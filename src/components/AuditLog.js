@@ -173,6 +173,7 @@ function LogEntry({ e, i, inp, border, sub, text, dm, card }) {
                 color: sub, fontSize: 11, marginTop: 2,
                 overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: expanded ? "normal" : "nowrap",
+                maxWidth: "100%",
               }}>{e.detail}</div>
             )}
 
@@ -197,7 +198,7 @@ function LogEntry({ e, i, inp, border, sub, text, dm, card }) {
               )}
 
               {/* Timestamp */}
-              <span title={fullDate(e.ts)} style={{ color: sub, fontSize: 10, marginLeft: "auto" }}>
+              <span title={fullDate(e.ts)} style={{ color: sub, fontSize: 10, marginLeft: "auto", flexShrink: 0 }}>
                 {relTime(e.ts)}
               </span>
             </div>
@@ -235,8 +236,8 @@ function LogEntry({ e, i, inp, border, sub, text, dm, card }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {e.changes.map((c, ci) => (
               <div key={ci} style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 8, alignItems: "center",
+                display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.2fr)",
+                gap: 6, alignItems: "start",
                 padding: "6px 8px",
                 background: inp, border: `1px solid ${border}`,
                 borderRadius: 8, fontSize: 11,
@@ -289,7 +290,12 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
   const inp    = t?.inp    || (dm ? "#0f172a" : "#f8fafc");
   const border = t?.border || (dm ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)");
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   useEffect(() => {
     if (!open) { setSearch(""); setUserFilter("all"); setActionFilter("all"); }
@@ -371,7 +377,7 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
             : "linear-gradient(135deg,rgba(99,102,241,0.05) 0%,rgba(0,0,0,0) 100%)",
         }}>
           {isMobile && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, cursor: "grab", touchAction: "manipulation" }}>
               <div style={{ width: 36, height: 4, borderRadius: 99, background: border }} />
             </div>
           )}
@@ -483,7 +489,7 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
         </div>
 
         {/* List */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 24px", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px calc(24px + env(safe-area-inset-bottom))", WebkitOverflowScrolling: "touch" }}>
           {filtered.length === 0 ? (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>

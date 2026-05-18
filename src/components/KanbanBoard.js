@@ -114,6 +114,7 @@ export function KanbanBoard({
   const [dragId, setDragId]         = useState(null);
   const [dragOver, setDragOver]     = useState(null);
   const [expandedCard, setExpanded] = useState(null);
+  const [mobileHintDismissed, setMobileHintDismissed] = useState(false);
   const [isMobile, setIsMobile]     = useState(
     typeof window !== "undefined" ? window.innerWidth < 640 : false
   );
@@ -351,7 +352,7 @@ export function KanbanBoard({
                 onDrop={onDrop(stage.id)}
                 style={{
                   flexShrink: 0,
-                  width: isMobile ? 240 : 220,
+                  width: isMobile ? 180 : 280,
                   display: "flex", flexDirection: "column",
                   borderRadius: 14,
                   border: `2px solid ${isOver ? stage.color : "transparent"}`,
@@ -414,7 +415,7 @@ export function KanbanBoard({
                         draggable
                         onDragStart={onDragStart(d.id)}
                         onDragEnd={onDragEnd}
-                        onClick={() => setExpanded(isExpanded ? null : d.id)}
+                        onClick={() => { setExpanded(isExpanded ? null : d.id); setMobileHintDismissed(true); }}
                         style={{
                           background: card,
                           border: `1px solid ${border}`,
@@ -454,6 +455,19 @@ export function KanbanBoard({
                           </p>
                         )}
 
+                        {/* Mobile tap hint — only shown when not expanded */}
+                        {isMobile && !isExpanded && !mobileHintDismissed && (
+                          <div style={{
+                            marginTop: 7,
+                            display: "flex", alignItems: "center", gap: 4,
+                            background: stage.color + "12",
+                            border: `1px solid ${stage.color}25`,
+                            borderRadius: 6, padding: "4px 8px",
+                          }}>
+                            <span style={{ color: stage.color, fontSize: 10, fontWeight: 700 }}>Tap to move stage →</span>
+                          </div>
+                        )}
+
                         {/* Expanded: quick stage move buttons */}
                         {isExpanded && (
                           <div style={{ marginTop: 8, borderTop: `1px solid ${border}`, paddingTop: 8 }}>
@@ -468,8 +482,10 @@ export function KanbanBoard({
                                   style={{
                                     background: s.color + "15", color: s.color,
                                     border: `1px solid ${s.color}30`,
-                                    borderRadius: 6, padding: "3px 7px",
-                                    fontSize: 10, fontWeight: 700, cursor: "pointer",
+                                    borderRadius: 6, padding: isMobile ? "5px 9px" : "3px 7px",
+                                    fontSize: isMobile ? 11 : 10, fontWeight: 700, cursor: "pointer",
+                                    minHeight: isMobile ? 32 : "auto",
+                                    WebkitTapHighlightColor: "transparent",
                                   }}
                                 >
                                   {s.icon} {s.label}
@@ -517,7 +533,7 @@ export function KanbanBoard({
             </div>
           ))}
           <span style={{ color: sub, fontSize: 10, marginLeft: "auto", flexShrink: 0 }}>
-            Drag cards to move · Click to expand
+            {isMobile ? "Tap a card to move between stages" : "Drag cards to move · Click to expand"}
           </span>
         </div>
       </div>

@@ -81,7 +81,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
               {key:"custom",label:"Custom"},
             ].map(({key,label})=>(
               <button key={key} onClick={()=>setDelivDateFilter(key)}
-                style={{flexShrink:0,background:delivDateFilter===key?"#3b82f620":t.inp,color:delivDateFilter===key?"#3b82f6":t.sub,border:`1.5px solid ${delivDateFilter===key?"#3b82f6":t.border}`,borderRadius:99,padding:"13px 22px",fontSize:11,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",whiteSpace:"nowrap",minHeight:36}}>
+                style={{flexShrink:0,background:delivDateFilter===key?"#3b82f620":t.inp,color:delivDateFilter===key?"#3b82f6":t.sub,border:`1.5px solid ${delivDateFilter===key?"#3b82f6":t.border}`,borderRadius:99,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",whiteSpace:"nowrap",minHeight:36}}>
                 {label}
               </button>
             ))}
@@ -102,17 +102,17 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
           </div>}
           {/* Secondary actions row — scrollable on mobile */}
           <div className="flex gap-2 overflow-x-auto pb-2" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",minWidth:0}}>
-            <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1.5px solid ${bulkSelect?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>{bulkSelect?"✕ Cancel":"☑ Bulk select"}</button>
-            <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
-            {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>📋 Bulk order</button>}
-            {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>📊 Report</button>}
-            {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=fDeliv.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=fDeliv.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=fDeliv.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const filterLabel=delivStatusFilter!=="all"?` — ${delivStatusFilter}`:"";const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${fDeliv.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Orders${filterLabel}</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${fDeliv.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${fDeliv.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF(`Deliveries${filterLabel}`,fDeliv,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>PDF{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
-            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
-            {can("deliv_export")&&<button ref={delivExportBtnRef} onClick={()=>setDelivExportOpen(v=>!v)} style={{background:delivExportOpen?"#3b82f625":"#3b82f615",color:"#3b82f6",border:`1.5px solid ${delivExportOpen?"#3b82f680":"#3b82f640"}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:28,cursor:"pointer",flexShrink:0,position:"relative"}}>📅 Date Export {delivExportOpen?"▴":"▾"}</button>}
+            <button onClick={()=>{setBulkSelect(v=>{if(v){setBulkSelected(new Set());}return !v;});}} style={{background:bulkSelect?"#f59e0b":t.inp,color:bulkSelect?"#000":t.sub,border:`1.5px solid ${bulkSelect?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{bulkSelect?"✕ Cancel":"☑ Bulk select"}</button>
+            <button onClick={()=>setDelivCalendar(v=>!v)} style={{background:delivCalendar?"#f59e0b":t.inp,color:delivCalendar?"#000":t.sub,border:`1.5px solid ${delivCalendar?"#f59e0b":t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>{delivCalendar?"📋 List":"📅 Calendar"}</button>
+            {can("deliv_add")&&(settings?.bulkOrderEnabled!==false)&&<button onClick={initBulkRows} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📋 Bulk order</button>}
+            {can("deliv_report")&&<button onClick={exportFullReport} style={{background:"#7c3aed15",color:"#7c3aed",border:"1.5px solid #7c3aed40",minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>📊 Report</button>}
+            {can("deliv_export")&&<button onClick={()=>exportCSV(fDeliv,`deliveries${delivStatusFilter!=="all"?"_"+delivStatusFilter:""}`,[ {label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines)},{label:"Repl Amount (₹)",val:r=>r.replacement?.amount||0},{label:"Net Amount (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0)},{label:"Partial Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0},{label:"Balance Due (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Amount Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0))},{label:"Replacement Done",val:r=>r.replacement?.done?"Yes":"No"},{label:"Replacement Item",val:r=>r.replacement?.item||""},{label:"Replacement Type",val:r=>r.replacement?.type||""},{label:"Replacement Qty",val:r=>r.replacement?.qty||""},{label:"Replacement Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"Created By",key:"createdBy"},{label:"Notes",key:"notes"}])} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>CSV{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||r.invNo||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id]||r.invNo;return inv?`RCP-${inv.replace(/^[A-Z]+-/,"")}`:"";}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Status",key:"status"},{label:"Total Order (₹)",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl (₹)",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amt (₹)",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Paid (₹)",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Remaining (₹)",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"}];const totalOrd=fDeliv.reduce((s,d)=>s+lineTotal(d.orderLines),0);const totalPaid=fDeliv.reduce((s,d)=>s+(d.partialPayment?.enabled?(+d.partialPayment?.amount||0):0),0);const totalRepl=fDeliv.reduce((s,d)=>s+(+d.replacement?.amount||0),0);const totalRem=totalOrd-totalRepl-totalPaid;const filterLabel=delivStatusFilter!=="all"?` — ${delivStatusFilter}`:"";const statsHtml=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">${fDeliv.length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Orders${filterLabel}</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">${fDeliv.filter(d=>d.status==="Delivered").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Delivered</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#f59e0b">${fDeliv.filter(d=>d.status==="Pending").length}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Pending</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#0f172a">₹${totalOrd.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Total Order Value</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#059669">₹${totalPaid.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Amount Paid</div></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:20px;font-weight:900;color:#dc2626">₹${totalRem.toLocaleString("en-IN")}</div><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px">Remaining</div></div></div>`;exportTabPDF(`Deliveries${filterLabel}`,fDeliv,cols,settings,statsHtml);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>PDF{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button onClick={()=>{const cols=[{label:"Invoice No",val:r=>(invRegistry?.issued||{})[r.id]||""},{label:"Receipt No",val:r=>{const inv=(invRegistry?.issued||{})[r.id];return inv?`RCP-${inv.replace(/^[A-Z0-9]+-/,"")}`:""}},{label:"Customer",key:"customer"},{label:"Date",key:"date"},{label:"Deliver By",key:"deliveryDate"},{label:"Status",key:"status"},{label:"Total Order",val:r=>lineTotal(r.orderLines),num:true},{label:"Repl Amount",val:r=>r.replacement?.amount||0,num:true},{label:"Net Amount",val:r=>lineTotal(r.orderLines)-(+r.replacement?.amount||0),num:true},{label:"Partial Paid",val:r=>r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0,num:true},{label:"Balance Due",val:r=>Math.max(0,lineTotal(r.orderLines)-(+r.replacement?.amount||0)-(r.partialPayment?.enabled?(+r.partialPayment?.amount||0):0)),num:true},{label:"Repl Item",val:r=>r.replacement?.done?(r.replacement.item||"Done"):"—"},{label:"Repl Qty",val:r=>r.replacement?.qty||""},{label:"Repl Reason",val:r=>r.replacement?.reason||""},{label:"Address",key:"address"},{label:"By",key:"createdBy"},{label:"Notes",key:"notes"}];exportTabExcel(`Deliveries${delivStatusFilter!=="all"?" - "+delivStatusFilter:""}`,fDeliv,cols,settings);}} style={{background:t.inp,color:t.sub,border:`1.5px solid ${t.border}`,minHeight:44,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>XLS{delivStatusFilter!=="all"?` (${fDeliv.length})`:""}</button>}
+            {can("deliv_export")&&<button ref={delivExportBtnRef} onClick={()=>setDelivExportOpen(v=>!v)} style={{background:delivExportOpen?"#3b82f625":"#3b82f615",color:"#3b82f6",border:`1.5px solid ${delivExportOpen?"#3b82f680":"#3b82f640"}`,minHeight:40,padding:"0 14px",borderRadius:10,fontSize:13,fontWeight:600,WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"flex",alignItems:"center",gap:6,cursor:"pointer",flexShrink:0,position:"relative"}}>📅 Date Export {delivExportOpen?"▴":"▾"}</button>}
           </div>
           {/* BULK ACTION BAR */}
-          {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"26px 28px"}} className="flex items-center justify-between gap-3 flex-wrap">
+          {bulkSelect&&<div style={{background:"#f59e0b15",border:"1.5px solid #f59e0b40",borderRadius:16,padding:"12px 16px"}} className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-5">
               <button onClick={()=>{const pending=fDeliv.filter(d=>d.status==="Pending").map(d=>d.id);setBulkSelected(new Set(pending));}} style={{color:"#f59e0b"}} className="text-xs font-semibold">Select all pending</button>
               <span style={{color:t.sub}} className="text-xs">|</span>
@@ -168,7 +168,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p style={{color:"#fff",fontWeight:900,fontSize:17,lineHeight:1}}>{mName}</p>
-                    <p style={{color:"rgba(255,255,255,0.55)",fontSize:11,marginTop:10}}>{mDelivs.length} deliveries this month</p>
+                    <p style={{color:"rgba(255,255,255,0.55)",fontSize:11,marginTop:2}}>{mDelivs.length} deliveries this month</p>
                   </div>
                   <div className="flex gap-5">
                     <button onClick={()=>setCalOffset(o=>o-1)} style={{background:"rgba(255,255,255,0.12)",color:"#fff",border:"none",borderRadius:8,width:32,height:32,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent"}}>‹</button>
@@ -177,14 +177,14 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   </div>
                 </div>
                 {/* Month stats row */}
-                <div className="crm-grid-4" style={{gap:28}}>
+                <div className="crm-grid-4" style={{gap:8}}>
                   {[
                     {label:"Pending",val:mPending,color:"#f59e0b"},
                     {label:"In Transit",val:mTransit,color:"#0ea5e9"},
                     {label:"Delivered",val:mDone,color:"#10b981"},
                     ...(canSeePrices?[{label:"Revenue",val:inr(mRevenue),color:"#a78bfa"}]:[{label:"Paid",val:inr(mPaid),color:"#a78bfa"}]),
                   ].map(({label,val,color})=>(
-                    <div key={label} style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"22px 26px",textAlign:"center"}}>
+                    <div key={label} style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
                       <p style={{color,fontWeight:800,fontSize:14,lineHeight:1}}>{val}</p>
                       <p style={{color:"rgba(255,255,255,0.5)",fontSize:9,marginTop:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</p>
                     </div>
@@ -199,9 +199,9 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   ))}
                 </div>
                 {/* Calendar grid */}
-                <div style={{display:"flex",flexDirection:"column",gap:22,paddingBottom:10}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8,paddingBottom:10}}>
                   {weeks.map((week,wi)=>(
-                    <div key={wi} className="grid grid-cols-7" style={{gap:22}}>
+                    <div key={wi} className="grid grid-cols-7" style={{gap:4}}>
                       {week.map((day,di)=>{
                         if(!day)return <div key={di} style={{minHeight:62}}/>;
                         const dateStr=`${monthStr}-${String(day).padStart(2,"0")}`;
@@ -272,24 +272,24 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                     <div className="flex items-center justify-between mb-3" style={{gap:20}}>
                       <div>
                         <p style={{color:"#7c3aed",fontWeight:900,fontSize:14,lineHeight:1.2}}>{dayLabel}</p>
-                        <p style={{color:t.sub,fontSize:11,marginTop:20}}>{expandedDelivs.length} {expandedDelivs.length===1?"delivery":"deliveries"}</p>
+                        <p style={{color:t.sub,fontSize:11,marginTop:2}}>{expandedDelivs.length} {expandedDelivs.length===1?"delivery":"deliveries"}</p>
                       </div>
                       <button onClick={()=>setCalExpandedDay(null)} style={{color:t.sub,background:t.inp,border:`1px solid ${t.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:32,WebkitTapHighlightColor:"transparent",flexShrink:0}}>✕ Close</button>
                     </div>
                     {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(140px,100%),1fr))",gap:28,marginBottom:12}}>
-                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"26px 28px"}}>
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
                         <p style={{color:"#10b981",fontWeight:800,fontSize:14}}>{inr(dayTotAmt)}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Orders</p>
                       </div>
-                      {dayTotReplAmt>0&&<div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"26px 28px"}}>
+                      {dayTotReplAmt>0&&<div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
                         <p style={{color:"#f97316",fontWeight:800,fontSize:14}}>−{inr(dayTotReplAmt)}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Replacements</p>
                       </div>}
-                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"26px 28px"}}>
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
                         <p style={{color:"#0ea5e9",fontWeight:800,fontSize:14}}>{inr(dayTotPaid)}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Collected</p>
                       </div>
-                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"26px 28px"}}>
+                      <div style={{background:dm?"#ffffff0a":t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 10px"}}>
                         <p style={{color:(dayTotAmt-dayTotReplAmt-dayTotPaid)>0?"#f59e0b":"#10b981",fontWeight:800,fontSize:14}}>{inr(Math.max(0,dayTotAmt-dayTotReplAmt-dayTotPaid))}</p>
                         <p style={{color:t.sub,fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:"0.05em"}}>Outstanding</p>
                       </div>
@@ -310,9 +310,9 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                               {d.address&&<p style={{color:t.sub,fontSize:10,marginTop:1}}>📍 {d.address}</p>}
                               {d.notes&&<p style={{color:t.sub,fontSize:10,marginTop:1,fontStyle:"italic"}}>"{d.notes}"</p>}
                             </div>
-                            <span style={{background:sc+"20",color:sc,borderRadius:8,padding:"13px 22px",fontSize:10,fontWeight:800,flexShrink:0,whiteSpace:"nowrap",border:`1px solid ${sc}40`}}>{d.status}</span>
+                            <span style={{background:sc+"20",color:sc,borderRadius:8,padding:"3px 8px",fontSize:10,fontWeight:800,flexShrink:0,whiteSpace:"nowrap",border:`1px solid ${sc}40`}}>{d.status}</span>
                           </div>
-                          {rows.length>0&&<div style={{background:t.inp,borderRadius:8,padding:"22px 28px",marginBottom:20}}>
+                          {rows.length>0&&<div style={{background:t.inp,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
                             {rows.map(r=>(
                               <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0",fontSize:12}}>
                                 <span style={{color:t.sub,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginRight:8}}>{r.qty} × {r.name}{canSeePrices?` @ ${inr(r.priceAmount)}`:""}</span>
@@ -320,20 +320,20 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                               </div>
                             ))}
                           </div>}
-                          {d.replacement?.done&&<div style={{background:"#f9731615",border:"1px solid #f9731630",borderRadius:8,padding:"22px 28px",marginBottom:20}}>
+                          {d.replacement?.done&&<div style={{background:"#f9731615",border:"1px solid #f9731630",borderRadius:8,padding:"8px 12px",marginBottom:8}}>
                             <p style={{color:"#f97316",fontSize:11,fontWeight:700}}>🔄 {d.replacement.item||"Replacement"}{d.replacement.qty?` × ${d.replacement.qty}`:""}${replAmt>0?` · −${inr(replAmt)}`:""}</p>
-                            {d.replacement.reason&&<p style={{color:t.sub,fontSize:10,marginTop:20}}>{d.replacement.reason}</p>}
+                            {d.replacement.reason&&<p style={{color:t.sub,fontSize:10,marginTop:4}}>{d.replacement.reason}</p>}
                           </div>}
-                          {canSeePrices&&<div style={{display:"flex",gap:20,flexWrap:"wrap",fontSize:11,marginBottom:20}}>
+                          {canSeePrices&&<div style={{display:"flex",gap:6,flexWrap:"wrap",fontSize:11,marginBottom:6}}>
                             <span style={{background:t.inp,borderRadius:6,padding:"5px 10px",color:t.text}}>Order: <b>{inr(tot)}</b></span>
                             {replAmt>0&&<span style={{background:"#f9731615",borderRadius:6,padding:"5px 10px",color:"#f97316"}}>Net: <b>{inr(netAmt)}</b></span>}
                             <span style={{background:"#10b98115",borderRadius:6,padding:"5px 10px",color:"#10b981"}}>Paid: <b>{inr(paid)}</b></span>
                             <span style={{background:remaining>0?"#f59e0b15":"#10b98115",borderRadius:6,padding:"5px 10px",color:remaining>0?"#f59e0b":"#10b981"}}>Due: <b>{inr(remaining)}</b></span>
                           </div>}
                           <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-                            <button onClick={e=>{e.stopPropagation();const _dateMode=d.date===today()?"today":d.date>today()?"future":"past";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
-                            <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
-                            {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();dispatchDelivery(d,_actor,setDeliv,notify);addLog("Dispatched",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
+                            <button onClick={e=>{e.stopPropagation();const _dateMode=d.date===today()?"today":d.date>today()?"future":"past";setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""},_dateMode});setDsh(d);}} style={{background:t.inp,color:t.text,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();exportPDF(d,products,"delivery",settings);}} style={{background:"#7c3aed",color:"#fff",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>📄 PDF</button>
+                            {can("deliv_dispatch")&&d.status==="Pending"&&<button onClick={e=>{e.stopPropagation();dispatchDelivery(d,_actor,setDeliv,notify);addLog("Dispatched",d.customer);}} style={{background:"#f59e0b",color:"#000",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>🚚 Dispatch</button>}
                             {can("deliv_markDone")&&(settings?.featureTickRedesign!==false?(
   <button onClick={e=>{e.stopPropagation();if(d.status==="Delivered"){setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Pending",deliveryDate:""}:x));addLog("Status changed",d.customer+" → Pending");notify("Marked Pending");}else{advanceDeliveryStatus(d,_actor,setDeliv,notify);addLog("Status changed",d.customer+" → Delivered");}}}
     style={{minHeight:40,padding:"0 14px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",display:"inline-flex",alignItems:"center",gap:7,transition:"all 0.15s",flexShrink:0,
@@ -346,7 +346,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
     {d.status==="Delivered"?"Done":"Mark Done"}
   </button>
 ):(
-  d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();advanceDeliveryStatus(d,_actor,setDeliv,notify);addLog("Status changed",d.customer+" → Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>
+  d.status!=="Delivered"&&<button onClick={e=>{e.stopPropagation();advanceDeliveryStatus(d,_actor,setDeliv,notify);addLog("Status changed",d.customer+" → Delivered");}} style={{background:"#10b981",color:"#fff",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer",minHeight:36,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>✓ Done</button>
 ))}
                           </div>
                         </div>;
@@ -359,7 +359,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                       return <button onClick={()=>{
                         safeArr(deliveries).filter(d=>d.date===todayStr&&d.status==="Pending").forEach(d=>advanceDeliveryStatus(d,_actor,setDeliv,notify));
                         addLog("Bulk delivered",`All pending on ${todayStr} (${pendingToday2.length})`);
-                      }} style={{background:"#10b98120",color:"#10b981",border:"1px solid #10b98140",borderRadius:10,padding:"16px 22px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",marginTop:10,WebkitTapHighlightColor:"transparent"}}>
+                      }} style={{background:"#10b98120",color:"#10b981",border:"1px solid #10b98140",borderRadius:10,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",marginTop:10,WebkitTapHighlightColor:"transparent"}}>
                         ✓ Mark all {pendingToday2.length} pending as Delivered
                       </button>;
                     })()}
@@ -382,7 +382,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
             const statusPill=(status,dm)=>{
               const cfg={"Delivered":{bg:"#10b98118",color:"#059669",border:"#10b98130"},"In Transit":{bg:"#3b82f618",color:"#2563eb",border:"#3b82f630"},"Pending":{bg:"#f59e0b18",color:"#d97706",border:"#f59e0b30"},"Cancelled":{bg:"#ef444418",color:"#dc2626",border:"#ef444430"}};
               const c=cfg[status]||{bg:t.inp,color:t.sub,border:t.border};
-              return <span style={{display:"inline-flex",alignItems:"center",gap:26,background:c.bg,color:c.color,border:`1px solid ${c.border}`,borderRadius:99,padding:"7px 15px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+              return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:c.bg,color:c.color,border:`1px solid ${c.border}`,borderRadius:99,padding:"7px 15px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
                 <span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block",flexShrink:0}}/>
                 {status}
               </span>;
@@ -411,7 +411,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   const allDone=group.delivs.every(d=>d.status==="Delivered");
                   return <div key={group.customerId||group.name} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
                     {/* Customer header */}
-                    <div style={{padding:"24px 26px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.01)"}}>
+                    <div style={{padding:"12px 16px",borderBottom:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.01)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
                         <div style={{width:38,height:38,borderRadius:11,background:"#f59e0b20",color:"#f59e0b",fontWeight:900,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
                           {group.name.charAt(0).toUpperCase()}
@@ -430,9 +430,9 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                     {/* Stats row */}
                     {canSeePrices&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(160px,100%),1fr))",borderBottom:`1px solid ${t.border}`}}>
                       {[["TOTAL BILLED",inr(totalAmt),"#f59e0b"],["REPLACEMENTS",totalRepl>0?inr(totalRepl):"None","#f97316"],["TOTAL PAID",inr(totalPaid),"#10b981"],["ALL CLEAR",totalDue===0?"✓ ALL CLEAR":inr(totalDue),totalDue===0?"#10b981":"#ef4444"]].map(([label,val,color])=>(
-                        <div key={label} style={{padding:"18px 22px",borderRight:`1px solid ${t.border}`,textAlign:"center"}}>
+                        <div key={label} style={{padding:"10px 12px",borderRight:`1px solid ${t.border}`,textAlign:"center"}}>
                           <p style={{color,fontWeight:800,fontSize:13}}>{val}</p>
-                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:20}}>{label}</p>
+                          <p style={{color:t.sub,fontSize:9,fontWeight:700,textTransform:"uppercase",marginTop:4}}>{label}</p>
                         </div>
                       ))}
                     </div>}
@@ -449,23 +449,23 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                         const sc=d.status==="Delivered"?"#10b981":d.status==="Cancelled"?"#ef4444":"#f59e0b";
                         const rows=Object.entries(safeO(d.orderLines)).filter(([,l])=>l.qty>0);
                         const batchLabel=d.batches?.map(b=>b.name||b).join(", ")||d.batch||"";
-                        return <div key={d.id||di} style={{borderTop:di>0?`1px solid ${t.border}`:"none",padding:"24px 26px"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:22,marginBottom:8,flexWrap:"wrap"}}>
+                        return <div key={d.id||di} style={{borderTop:di>0?`1px solid ${t.border}`:"none",padding:"12px 16px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                             <span style={{color:t.text,fontWeight:700,fontSize:13}}>{d.date}</span>
                             {d.deliveryDate&&d.deliveryDate!==d.date&&<><span style={{color:t.sub,fontSize:11}}>→ deliver by {d.deliveryDate}</span></>}
-                            <span style={{display:"inline-flex",alignItems:"center",gap:24,background:d.status==="Delivered"?"#10b98118":d.status==="Cancelled"?"#ef444418":"#f59e0b18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 10px",fontSize:11,fontWeight:700}}>{d.status}</span>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4,background:d.status==="Delivered"?"#10b98118":d.status==="Cancelled"?"#ef444418":"#f59e0b18",color:sc,border:`1px solid ${sc}30`,borderRadius:99,padding:"2px 10px",fontSize:11,fontWeight:700}}>{d.status}</span>
                             {settled&&<span style={{color:"#10b981",fontSize:11,fontWeight:700}}>✓ Settled</span>}
                           </div>
-                          <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:20}}>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
                             {d.createdBy&&<span style={{color:t.sub,fontSize:10}}>👤 {d.createdBy}</span>}
                             <span style={{color:"#2563eb",fontSize:10,fontFamily:"monospace",cursor:"pointer"}} onClick={()=>setDetailModal({type:"delivery",data:d})}>{invNo}</span>
                             <span style={{color:"#7c3aed",fontSize:10,fontFamily:"monospace"}}>{rcptNo}</span>
                             {batchLabel&&<span style={{color:"#f59e0b",fontSize:10}}>⚡ {batchLabel}</span>}
                           </div>
-                          <div style={{background:t.inp,borderRadius:10,padding:"18px 20px",marginBottom:20}}>
-                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:16}}>Items Ordered</p>
+                          <div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Items Ordered</p>
                             {rows.map(([pid,l])=>(
-                              <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                              <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                                 <span style={{color:t.text,fontSize:12}}>{l.qty} × <b>{l.name||pid}</b> @ ₹{l.priceAmount||0}</span>
                                 {canSeePrices&&<span style={{color:t.text,fontWeight:700,fontSize:12}}>{inr((l.qty||0)*(l.priceAmount||0))}</span>}
                               </div>
@@ -475,17 +475,17 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                               <span style={{color:"#f59e0b",fontWeight:800,fontSize:13}}>{inr(tot)}</span>
                             </div>}
                           </div>
-                          {canSeePrices&&<div style={{background:t.inp,borderRadius:10,padding:"18px 20px",marginBottom:20}}>
-                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:16}}>Payment Summary</p>
-                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                          {canSeePrices&&<div style={{background:t.inp,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                            <p style={{color:t.sub,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Payment Summary</p>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                               <span style={{color:t.sub,fontSize:12}}>Order total</span>
                               <span style={{color:t.text,fontSize:12,fontWeight:600}}>{inr(tot)}</span>
                             </div>
-                            {dRepl>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                            {dRepl>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                               <span style={{color:"#f97316",fontSize:12}}>Replacement deducted</span>
                               <span style={{color:"#f97316",fontSize:12,fontWeight:700}}>−{inr(dRepl)}</span>
                             </div>}
-                            {d.partialPayment?.enabled&&(+d.partialPayment.amount||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                            {d.partialPayment?.enabled&&(+d.partialPayment.amount||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                               <span style={{color:"#10b981",fontSize:12}}>💰 Collected</span>
                               <span style={{color:"#10b981",fontSize:12,fontWeight:700}}>−{inr(+d.partialPayment.amount)}</span>
                             </div>}
@@ -496,14 +496,14 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                           </div>}
                           {/* Action buttons */}
                           <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-                            {(d.address||groupCust?.address)&&<button onClick={()=>window.open(mapU(d.address||groupCust?.address,d.lat||groupCust?.lat,d.lng||groupCust?.lng),"_blank")} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📍 Nav</button>}
-                            {can("deliv_edit")&&<button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Edit</button>}
-                            <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed30",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>PDF</button>
-                            {settings?.receiptEnabled!==false&&<button onClick={()=>exportPDF(d,products,"receipt",settings)} style={{background:"#2563eb15",color:"#2563eb",border:"1px solid #2563eb30",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Receipt</button>}
-                            {settings?.agentInvoiceEnabled!==false&&<button onClick={()=>exportPDF(d,products,"invoice",settings)} style={{background:"#059669 15",color:"#059669",border:"1px solid #05996930",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 Invoice</button>}
-                            <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D36615",color:"#25D366",border:"1px solid #25D36630",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>WA</button>
-                            {(can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&<button onClick={()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
-                            {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"22px 28px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Delete</button>}
+                            {(d.address||groupCust?.address)&&<button onClick={()=>window.open(mapU(d.address||groupCust?.address,d.lat||groupCust?.lat,d.lng||groupCust?.lng),"_blank")} style={{background:"#3b82f615",color:"#3b82f6",border:"1px solid #3b82f630",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📍 Nav</button>}
+                            {can("deliv_edit")&&<button onClick={()=>{setDf({...d,orderLines:{...safeO(d.orderLines)},replacement:d.replacement||{done:false,item:"",reason:"",qty:""}});setDsh(d);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Edit</button>}
+                            <button onClick={()=>exportPDF(d,products,"delivery",settings)} style={{background:"#7c3aed15",color:"#7c3aed",border:"1px solid #7c3aed30",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>PDF</button>
+                            {settings?.receiptEnabled!==false&&<button onClick={()=>exportPDF(d,products,"receipt",settings)} style={{background:"#2563eb15",color:"#2563eb",border:"1px solid #2563eb30",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Receipt</button>}
+                            {settings?.agentInvoiceEnabled!==false&&<button onClick={()=>exportPDF(d,products,"invoice",settings)} style={{background:"#05966915",color:"#059669",border:"1px solid #05996930",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 Invoice</button>}
+                            <button onClick={()=>shareWhatsApp(d,products,"delivery",settings)} style={{background:"#25D36615",color:"#25D366",border:"1px solid #25D36630",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>WA</button>
+                            {(can("cust_markPaid")||can("deliv_markDone"))&&settings?.agentCollectEnabled!==false&&d.status!=="Cancelled"&&<button onClick={()=>{setCollectSh(d);const _r=+d.replacement?.amount||0;const _n=Math.max(0,lineTotal(d.orderLines)-_r);setCollectAmt(String(_n>0?_n:lineTotal(d.orderLines)));setCollectNote("");}} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>💰 Collect</button>}
+                            {can("deliv_delete")&&<button onClick={()=>delD(d)} style={{background:"#ef444415",color:"#ef4444",border:"1px solid #ef444430",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Delete</button>}
                           </div>
                         </div>;
                       })}
@@ -511,7 +511,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   </div>;
                 })}
                 {/* Pagination */}
-                {totalDelivRows>DELIV_PAGE_SIZE&&<div style={{display:"flex",justifyContent:"center",gap:28,padding:"8px 0"}}>
+                {totalDelivRows>DELIV_PAGE_SIZE&&<div style={{display:"flex",justifyContent:"center",gap:8,padding:"8px 0"}}>
                   <button onClick={()=>{if(delivPage>1)setDelivPage(delivPage-1);}} disabled={delivPage===1} style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:t.text,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===1?0.4:1}}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
@@ -692,23 +692,23 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                           </td>
                           {/* Customer + order number stacked */}
                           <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:160}}>
-                            <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:20}}>{d.customer}</p>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{d.customer}</p>
                             {orderNo&&<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"monospace"}}>{orderNo}</p>}
                           </td>
                           {/* Date + time stacked */}
                           <td style={{padding:"14px 12px",verticalAlign:"middle",whiteSpace:"nowrap"}}>
-                            <p style={{color:t.text,fontWeight:600,fontSize:13,marginBottom:20}}>{d.date}</p>
+                            <p style={{color:t.text,fontWeight:600,fontSize:13,marginBottom:2}}>{d.date}</p>
                             {d.deliveryDate&&d.deliveryDate!==d.date&&<p style={{color:t.sub,fontSize:10}}>Due {d.deliveryDate}</p>}
                             {!d.deliveryDate&&<p style={{color:t.sub,fontSize:10}}>—</p>}
                           </td>
                           {/* Items count + names stacked */}
                           <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:180}}>
-                            <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:20}}>{itemCount} item{itemCount!==1?"s":""}</p>
+                            <p style={{color:t.text,fontWeight:700,fontSize:13,marginBottom:2}}>{itemCount} item{itemCount!==1?"s":""}</p>
                             <p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:170}}>{itemNames||"—"}</p>
                           </td>
                           {/* Driver + vehicle stacked */}
                           <td style={{padding:"14px 12px",verticalAlign:"middle",maxWidth:140}}>
-                            <p style={{color:t.text,fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:20}}>{driver}</p>
+                            <p style={{color:t.text,fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{driver}</p>
                             {vehicle?<p style={{color:t.sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vehicle}</p>:<p style={{color:t.sub,fontSize:10}}>—</p>}
                           </td>
                           {/* Status pill */}
@@ -726,14 +726,14 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                               {can("deliv_markDone")&&d.status!=="Cancelled"&&(
                                 <button onClick={e=>{e.stopPropagation();if(d.status==="Delivered"){setDeliv(p=>safeArr(p).map(x=>x.id===d.id?{...x,status:"Pending",deliveryDate:""}:x));addLog("Status changed",`${d.customer} → Pending`);notify("Marked Pending");}else{advanceDeliveryStatus(d,_actor,setDeliv,notify);addLog("Status changed",`${d.customer} → Delivered`);}}}
                                   title={d.status==="Delivered"?"Mark Pending":"Mark Delivered"}
-                                  style={{padding:"20px 24px",borderRadius:7,border:"none",background:d.status==="Delivered"?"#f59e0b18":"#10b98118",color:d.status==="Delivered"?"#d97706":"#059669",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
+                                  style={{padding:"5px 8px",borderRadius:7,border:"none",background:d.status==="Delivered"?"#f59e0b18":"#10b98118",color:d.status==="Delivered"?"#d97706":"#059669",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
                                   {d.status==="Delivered"?"↩":"✓"}
                                 </button>
                               )}
                               {can("deliv_dispatch")&&d.status==="Pending"&&(
                                 <button onClick={e=>{e.stopPropagation();dispatchDelivery(d,_actor,setDeliv,notify);addLog("Dispatched",d.customer);}}
                                   title="Dispatch"
-                                  style={{padding:"20px 24px",borderRadius:7,border:"none",background:"#3b82f618",color:"#2563eb",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
+                                  style={{padding:"5px 8px",borderRadius:7,border:"none",background:"#3b82f618",color:"#2563eb",cursor:"pointer",fontSize:11,fontWeight:800,WebkitTapHighlightColor:"transparent",minHeight:0}}>
                                   🚚
                                 </button>
                               )}
@@ -768,7 +768,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                                     can("deliv_delete")&&{label:"🗑️  Delete",color:"#ef4444",action:()=>{delD(d);(()=>{const _el=document.getElementById(`dot3menu_${d.id}`);if(_el)_el.style.display="none";})() ;}},
                                   ].filter(Boolean).map((item,ii)=>(
                                     <button key={ii} onClick={item.action}
-                                      style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"20px 24px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
+                                      style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",padding:"10px 16px",fontSize:13,fontWeight:600,color:item.color||t.text,cursor:"pointer",transition:"background 0.1s",borderBottom:`1px solid ${t.border}`}}
                                       onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)";}}
                                       onMouseLeave={e=>{e.currentTarget.style.background="none";}}>
                                       {item.label}
@@ -785,7 +785,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                 </div>
 
                 {/* ── TABLE PAGINATION FOOTER ── */}
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"22px 28px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:22,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${t.border}`,flexWrap:"wrap",gap:12,background:dm?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.015)"}}>
                   {/* Left: showing X to Y of Z */}
                   <p style={{color:t.sub,fontSize:12,fontWeight:500,flexShrink:0}}>
                     Showing <b style={{color:t.text}}>{Math.min((delivPage-1)*DELIV_PAGE_SIZE+1,totalDelivRows)}</b> to <b style={{color:t.text}}>{Math.min(delivPage*DELIV_PAGE_SIZE,totalDelivRows)}</b> of <b style={{color:t.text}}>{totalDelivRows}</b> deliveries
@@ -798,7 +798,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                       if(p===1||p===totalPages||Math.abs(p-delivPage)<=1) pages.push(p);
                       else if(pages[pages.length-1]!=="…") pages.push("…");
                     }
-                    return <div style={{display:"flex",gap:24,alignItems:"center"}}>
+                    return <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <button onClick={()=>{if(delivPage>1){setDelivPage(delivPage-1);window.scrollTo({top:0,behavior:"smooth"});}}}
                         disabled={delivPage===1}
                         style={{width:32,height:32,borderRadius:8,background:t.inp,border:`1px solid ${t.border}`,color:delivPage===1?t.sub:t.text,cursor:delivPage===1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:delivPage===1?0.4:1}}>
@@ -816,9 +816,9 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                     </div>;
                   })()}
                   {/* Right: rows per page dropdown */}
-                  <div style={{display:"flex",alignItems:"center",gap:28,flexShrink:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     <span style={{color:t.sub,fontSize:11}}>Rows</span>
-                    <select value={DELIV_PAGE_SIZE} onChange={()=>{}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"16px 22px",fontSize:12,cursor:"pointer",outline:"none"}}>
+                    <select value={DELIV_PAGE_SIZE} onChange={()=>{}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12,cursor:"pointer",outline:"none"}}>
                       <option value={15}>15</option>
                       <option value={25}>25</option>
                       <option value={50}>50</option>

@@ -165,7 +165,7 @@ function Sel({label,dm,children,className="",...p}){
   return <div className={className} style={{position:"relative"}}>
     {label&&<label style={{color:t.sub,letterSpacing:"0.04em",fontSize:12,fontWeight:600,display:"block",marginBottom:6,marginLeft:1}}>{label}</label>}
     <select style={{background:t.inp,border:`1.5px solid ${t.inpB}`,color:t.text,fontSize:16,WebkitAppearance:"none",appearance:"none",borderRadius:13,touchAction:"manipulation",transition:"border-color 0.15s,box-shadow 0.15s",minHeight:50,width:"100%",padding:"13px 40px 13px 15px",outline:"none",display:"block"}} onFocus={e=>{e.target.style.borderColor="#2563eb";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.12)";}} onBlur={e=>{e.target.style.borderColor=t.inpB;e.target.style.boxShadow="none";}} {...p}>{children}</select>
-    <span style={{position:"absolute",right:14,top:"50%",transform:`translateY(${label?"-2px":"50%"})`,pointerEvents:"none",color:t.sub,fontSize:12}}>▾</span>
+    <span style={{position:"absolute",right:14,top:label?"calc(50% + 14px)":"50%",transform:"translateY(-50%)",pointerEvents:"none",color:t.sub,fontSize:12}}>▾</span>
   </div>;
 }
 function Btn({children,onClick,v="primary",size="md",className="",disabled=false,dm}){
@@ -223,14 +223,15 @@ function Sheet({open,title,onClose,children,dm}){
   const t=T(dm);
   const scrollYRef=useRef(0);
   useEffect(()=>{
-    if(open){
-      // Lock scroll on the main content area, not the body
-      // (body touchAction:none would kill scroll inside the sheet itself)
-      document.documentElement.style.overflow="hidden";
-    } else {
-      document.documentElement.style.overflow="";
-    }
-    return()=>{ document.documentElement.style.overflow=""; };
+    if(!open) return;
+    // Use body position:fixed trick — preserves iOS momentum scroll inside the sheet
+    // while preventing background page scroll (documentElement overflow:hidden breaks this)
+    const y=window.scrollY;
+    document.body.style.cssText=`overflow:hidden;position:fixed;top:-${y}px;left:0;right:0;`;
+    return()=>{
+      document.body.style.cssText="";
+      window.scrollTo(0,y);
+    };
   },[open]);
   if(!open)return null;
   return ReactDOM.createPortal(<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center crm-sheet-backdrop" style={{background:"rgba(0,0,0,0.65)",WebkitBackdropFilter:"blur(6px)",backdropFilter:"blur(6px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -251,9 +252,18 @@ function Sheet({open,title,onClose,children,dm}){
   </div>, document.body);
 }
 function Toast({msg,onDone}){
-  // Fix: empty dep array so the timer only starts once, not on every re-render
   useEffect(()=>{const t=setTimeout(onDone,2800);return()=>clearTimeout(t);},[]);
-  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast" style={{bottom:"calc(76px + env(safe-area-inset-bottom,0px))",background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",borderRadius:14,fontSize:14}}><span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>{msg}</div>;
+  return <div className="fixed left-1/2 -translate-x-1/2 z-[200] text-sm px-5 py-3.5 font-medium whitespace-nowrap pointer-events-none flex items-center gap-2.5 crm-toast"
+    style={{
+      // On mobile: sit above the 64px nav bar + safe area. On desktop (lg+): use a fixed offset from bottom
+      bottom:"calc(76px + env(safe-area-inset-bottom,0px))",
+      background:"#0f1923",color:"#e6edf3",border:"1px solid #21262d",
+      boxShadow:"0 4px 24px rgba(0,0,0,0.5)",WebkitBackdropFilter:"blur(8px)",backdropFilter:"blur(8px)",
+      borderRadius:14,fontSize:14
+    }}>
+    <span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block",animation:"pulse-dot 1.5s ease infinite"}}/>
+    {msg}
+  </div>;
 }
 function Confirm({msg,onYes,onNo,dm}){
   const t=T(dm);if(!msg)return null;
@@ -436,72 +446,74 @@ function sendBrowserNotif(title, body, icon = "🫓") {
 //           labels={TAB_LABELS} dm={dm} pendingCount={pendingD.length}
 //           onLogout={onLogout} onDm={()=>setDm(d=>!d)} />
 // ═══════════════════════════════════════════════════════════════
+// NavBtn lifted outside BottomNav to prevent re-creation on every render (avoids flicker)
+const NavBtn = React.memo(function NavBtn({ tb, activeTab, onTab, icons, labels, dm, pendingCount, BLUE, activeCol, inactiveCol }) {
+  const isA = activeTab === tb;
+  const hasBadge = tb === "Deliveries" && pendingCount > 0;
+  return (
+    <button
+      onClick={() => onTab(tb)}
+      style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        gap: 3, background: "transparent", border: "none",
+        cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        touchAction: "manipulation", position: "relative",
+        // minWidth ensures labels don't collapse on 320px phones
+        padding: "0 2px", minHeight: 64, minWidth: 44,
+        transition: "opacity 0.1s",
+      }}
+    >
+      {isA && (
+        <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+          width: 20, height: 3, borderRadius: "0 0 3px 3px", background: BLUE }} />
+      )}
+      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28 }}>
+        <span style={{ fontSize: isA ? 22 : 20, lineHeight: 1, transition: "font-size 0.15s",
+          filter: isA ? "none" : `opacity(0.55) ${dm ? "" : "grayscale(0.2)"}` }}>
+          {icons[tb] || "•"}
+        </span>
+        {hasBadge && (
+          <span style={{ position: "absolute", top: -3, right: -5, background: "#ef4444",
+            color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 99,
+            minWidth: 15, height: 15, display: "flex", alignItems: "center",
+            justifyContent: "center", padding: "0 3px",
+            border: `2px solid ${dm ? "#0a0b12" : "#fff"}` }}>
+            {pendingCount > 9 ? "9+" : pendingCount}
+          </span>
+        )}
+      </div>
+      <span style={{ fontSize: 10, fontWeight: isA ? 700 : 500, lineHeight: 1,
+        color: isA ? activeCol : inactiveCol,
+        letterSpacing: "0.01em", transition: "color 0.15s" }}>
+        {labels[tb] || tb}
+      </span>
+    </button>
+  );
+});
+
 function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[], isMoreActive, icons={}, labels={}, dm, pendingCount=0, onLogout, onDm }) {
   const t = T(dm);
-  const half = Math.floor(tabs.length / 2);
-  const leftTabs  = tabs.slice(0, half);
-  const rightTabs = tabs.slice(half);
 
   const BLUE = "#2563eb";
   const activeCol  = dm ? "#ffffff" : "#0f172a";
   const inactiveCol = dm ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.32)";
   const navBg = dm ? "rgba(10,11,18,0.97)" : "rgba(255,255,255,0.97)";
   const navBorder = dm ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
-
-  function NavBtn({ tb }) {
-    const isA = activeTab === tb;
-    const hasBadge = tb === "Deliveries" && pendingCount > 0;
-    return (
-      <button
-        onClick={() => onTab(tb)}
-        style={{
-          flex: 1, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          gap: 3, background: "transparent", border: "none",
-          cursor: "pointer", WebkitTapHighlightColor: "transparent",
-          touchAction: "manipulation", position: "relative",
-          padding: "0 2px", minHeight: 64,
-          transition: "opacity 0.1s",
-        }}
-      >
-        {/* Active top indicator */}
-        {isA && (
-          <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-            width: 20, height: 3, borderRadius: "0 0 3px 3px", background: BLUE }} />
-        )}
-        {/* Icon */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-          width: 28, height: 28 }}>
-          <span style={{ fontSize: isA ? 22 : 20, lineHeight: 1, transition: "font-size 0.15s",
-            filter: isA ? "none" : `opacity(0.55) ${dm ? "" : "grayscale(0.2)"}` }}>
-            {icons[tb] || "•"}
-          </span>
-          {hasBadge && (
-            <span style={{ position: "absolute", top: -3, right: -5, background: "#ef4444",
-              color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 99,
-              minWidth: 15, height: 15, display: "flex", alignItems: "center",
-              justifyContent: "center", padding: "0 3px",
-              border: `2px solid ${dm ? "#0a0b12" : "#fff"}` }}>
-              {pendingCount > 9 ? "9+" : pendingCount}
-            </span>
-          )}
-        </div>
-        {/* Label */}
-        <span style={{ fontSize: 10, fontWeight: isA ? 700 : 500, lineHeight: 1,
-          color: isA ? activeCol : inactiveCol,
-          letterSpacing: "0.01em", transition: "color 0.15s" }}>
-          {labels[tb] || tb}
-        </span>
-      </button>
-    );
-  }
+  // Dynamic grid columns: min 3 for aesthetics, max 4 on phone, 5 on tablet
+  // Avoids single-column or 2-column layouts on small phones
+  const moreGridCols = Math.min(Math.max(moreTabs.length, 3), moreTabs.length <= 6 ? 3 : moreTabs.length <= 10 ? 4 : 5);
 
   return (
     <>
       {/* ── More drawer backdrop ── */}
       {moreOpen && (
         <div onClick={() => onMore()} className="lg:hidden"
-          style={{ position: "fixed", inset: 0, zIndex: 48,
+          style={{
+            // Explicit position+inset before zIndex avoids Safari stacking context bugs
+            // where backdropFilter composites incorrectly when zIndex is the first paint
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 48,
             background: "rgba(0,0,0,0.35)", backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)" }} />
       )}
@@ -518,20 +530,21 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
             backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}>
           {/* drag handle */}
           <div style={{ width: 32, height: 4, borderRadius: 99, background: dm ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)", margin: "8px auto 12px" }} />
-          {/* Tab grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 10 }}>
+          {/* Tab grid — columns scale with tab count */}
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${moreGridCols},1fr)`, gap: 6, marginBottom: 10 }}>
             {moreTabs.map(tb => {
               const isA = activeTab === tb;
               return (
                 <button key={tb} onClick={() => { onTab(tb); onMore(); }}
                   style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                    padding: "12px 4px 10px", borderRadius: 16,
+                    padding: "12px 4px 10px", borderRadius: 16, minHeight: 72,
                     background: isA ? BLUE + "18" : "transparent",
                     border: `1.5px solid ${isA ? BLUE + "40" : navBorder}`,
                     cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>{icons[tb] || "•"}</span>
                   <span style={{ fontSize: 10, fontWeight: isA ? 700 : 500,
-                    color: isA ? BLUE : inactiveCol, lineHeight: 1.2, textAlign: "center" }}>
+                    color: isA ? BLUE : inactiveCol, lineHeight: 1.2, textAlign: "center",
+                    wordBreak: "break-word", maxWidth: "100%" }}>
                     {labels[tb] || tb}
                   </span>
                 </button>
@@ -562,10 +575,14 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
         </div>
       )}
 
-      {/* ── Floating action button (above nav) ── */}
+      {/* ── Floating action button (above nav) — only rendered when onFab is provided ── */}
+      {onFab && (
       <button onClick={onFab} className="lg:hidden"
-        style={{ position: "fixed", bottom: "calc(72px + env(safe-area-inset-bottom,0px))", right: 20,
-          zIndex: 47, width: 52, height: 52, borderRadius: 18,
+        style={{ position: "fixed",
+          // Sit above the nav bar; same calc as nav height (64px) + safe area + 12px breathing room
+          bottom: "calc(64px + env(safe-area-inset-bottom,0px) + 12px)", right: 20,
+          // zIndex 51: above nav (50) and More drawer (49) so it's always tappable
+          zIndex: 51, width: 52, height: 52, borderRadius: 18,
           background: dm ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "linear-gradient(135deg,#0f172a,#1e293b)",
           border: "none", cursor: "pointer",
           WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
@@ -575,6 +592,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
       </button>
+      )}
 
       {/* ── Fixed bottom nav bar ── */}
       <nav className="fixed bottom-0 left-0 right-0 lg:hidden"
@@ -587,8 +605,8 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
           willChange: "transform", contain: "layout style" }}>
         <div style={{ display: "flex", alignItems: "stretch", height: 64 }}>
 
-          {/* All 4 primary tabs — no FAB in the bar */}
-          {tabs.map(tb => <NavBtn key={tb} tb={tb} />)}
+          {/* All primary tabs */}
+          {tabs.map(tb => <NavBtn key={tb} tb={tb} activeTab={activeTab} onTab={onTab} icons={icons} labels={labels} dm={dm} pendingCount={pendingCount} BLUE={BLUE} activeCol={activeCol} inactiveCol={inactiveCol} />)}
 
           {/* More button */}
           <button onClick={() => onMore()}
