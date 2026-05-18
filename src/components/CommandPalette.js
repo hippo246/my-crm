@@ -1,44 +1,25 @@
 /* eslint-disable */
-/**
- * CommandPalette.js  v3
- *
- * Changes from v2:
- *  - FAB completely removed — trigger via Cmd/Ctrl+K on desktop,
- *    or the search button in the CRM header (see CRM.js wiring).
- *    This eliminates the z-index collision with QuickEntryFAB.
- *  - Mobile sheet: fixed ghost-tap bug (onTouchEnd preventDefault +
- *    pointer-events guard during close animation).
- *  - Backdrop uses onPointerDown (not onTouchStart + onMouseDown)
- *    to avoid double-fire on hybrid devices.
- *  - Result rows use onPointerDown instead of mixed mouse/touch handlers.
- *  - Close animation: 220ms slide-down before unmounting (no flicker).
- *  - Empty state shows context-aware quick actions for the current tab.
- *  - "New [thing]" shortcut row pinned above results when query is empty.
- *  - Slightly tighter padding on mobile to fit more results above keyboard.
- *  - useWindowWidth debounced via rAF (unchanged from v2, kept).
- */
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Fuse from "fuse.js";
 import { T } from "../lib/theme";
 import { inr } from "../lib/utils";
 
-// ── reactive window width ─────────────────────────────────────
+// ── reactive window width — uses visualViewport so Android keyboard doesn't flip isMobile ──
 function useWindowWidth() {
-  const [width, setWidth] = useState(
-    typeof window !== "undefined" ? window.innerWidth : 1024
-  );
+  const getWidth = () => typeof window !== "undefined"
+    ? (window.visualViewport?.width ?? window.innerWidth)
+    : 1024;
+  const [width, setWidth] = useState(getWidth);
   useEffect(() => {
     let raf;
-    const handle = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setWidth(window.innerWidth));
-    };
+    const handle = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setWidth(getWidth())); };
     window.addEventListener("resize", handle);
     window.addEventListener("orientationchange", handle);
+    window.visualViewport?.addEventListener("resize", handle);
     return () => {
       window.removeEventListener("resize", handle);
       window.removeEventListener("orientationchange", handle);
+      window.visualViewport?.removeEventListener("resize", handle);
       cancelAnimationFrame(raf);
     };
   }, []);
@@ -66,38 +47,38 @@ const NAV_TABS = [
 ];
 
 const QUICK_ACTIONS = [
-  { id: "qa_new_delivery",  label: "New Delivery",     icon: "🚚", tab: "Deliveries", color: "#3b82f6" },
-  { id: "qa_new_customer",  label: "New Customer",     icon: "👤", tab: "Customers",  color: "#f59e0b" },
-  { id: "qa_new_expense",   label: "New Expense",      icon: "💸", tab: "Expenses",   color: "#8b5cf6" },
-  { id: "qa_new_supply",    label: "New Supply",       icon: "📦", tab: "Supplies",   color: "#0ea5e9" },
-  { id: "qa_new_payment",   label: "Record Payment",   icon: "💳", tab: "Payments",   color: "#10b981" },
-  { id: "qa_new_wastage",   label: "Log Wastage",      icon: "♻️",  tab: "Wastage",    color: "#f97316" },
-  { id: "qa_open_kanban",   label: "Kanban Board",     icon: "📌", tab: null,         color: "#6366f1" },
-  { id: "qa_open_audit",    label: "Audit Log",        icon: "🔍", tab: null,         color: "#10b981", adminOnly: true },
+  { id: "qa_new_delivery",  label: "New Delivery",   icon: "🚚", tab: "Deliveries", color: "#3b82f6" },
+  { id: "qa_new_customer",  label: "New Customer",   icon: "👤", tab: "Customers",  color: "#f59e0b" },
+  { id: "qa_new_expense",   label: "New Expense",    icon: "💸", tab: "Expenses",   color: "#8b5cf6" },
+  { id: "qa_new_supply",    label: "New Supply",     icon: "📦", tab: "Supplies",   color: "#0ea5e9" },
+  { id: "qa_new_payment",   label: "Record Payment", icon: "💳", tab: "Payments",   color: "#10b981" },
+  { id: "qa_new_wastage",   label: "Log Wastage",    icon: "♻️",  tab: "Wastage",    color: "#f97316" },
+  { id: "qa_open_kanban",   label: "Kanban Board",   icon: "📌", tab: null,         color: "#6366f1" },
+  { id: "qa_open_audit",    label: "Audit Log",      icon: "🔍", tab: null,         color: "#10b981", adminOnly: true },
 ];
 
 const TYPE_META = {
-  nav:        { label: "Go to",         pill: "tab",         tx: "#64748b", bg: null },
-  action:     { label: "Quick Actions", pill: "action",      tx: "#22c55e", bg: "#14532d" },
-  customer:   { label: "Customers",     pill: "customer",    tx: "#3b82f6", bg: "#1e3a5f" },
-  delivery:   { label: "Deliveries",    pill: "delivery",    tx: "#a855f7", bg: "#2d1b69" },
-  expense:    { label: "Expenses",      pill: "expense",     tx: "#f87171", bg: "#7f1d1d" },
-  supply:     { label: "Supplies",      pill: "supply",      tx: "#34d399", bg: "#1c3a2a" },
-  wastage:    { label: "Wastage",       pill: "wastage",     tx: "#f97316", bg: "#431407" },
-  product:    { label: "Products",      pill: "product",     tx: "#f59e0b", bg: "#451a03" },
-  staff:      { label: "Staff",         pill: "staff",       tx: "#818cf8", bg: "#1e1b4b" },
-  machine:    { label: "Machines",      pill: "machine",     tx: "#38bdf8", bg: "#0c2a3a" },
-  vehicle:    { label: "Vehicles",      pill: "vehicle",     tx: "#c084fc", bg: "#1a1a2e" },
-  ingredient: { label: "Ingredients",   pill: "ingredient",  tx: "#4ade80", bg: "#14291a" },
+  nav:        { label: "Go to",        pill: "tab",        tx: "#64748b", bg: null },
+  action:     { label: "Quick Actions",pill: "action",     tx: "#22c55e", bg: "#14532d" },
+  customer:   { label: "Customers",    pill: "customer",   tx: "#3b82f6", bg: "#1e3a5f" },
+  delivery:   { label: "Deliveries",   pill: "delivery",   tx: "#a855f7", bg: "#2d1b69" },
+  expense:    { label: "Expenses",     pill: "expense",    tx: "#f87171", bg: "#7f1d1d" },
+  supply:     { label: "Supplies",     pill: "supply",     tx: "#34d399", bg: "#1c3a2a" },
+  wastage:    { label: "Wastage",      pill: "wastage",    tx: "#f97316", bg: "#431407" },
+  product:    { label: "Products",     pill: "product",    tx: "#f59e0b", bg: "#451a03" },
+  staff:      { label: "Staff",        pill: "staff",      tx: "#818cf8", bg: "#1e1b4b" },
+  machine:    { label: "Machines",     pill: "machine",    tx: "#38bdf8", bg: "#0c2a3a" },
+  vehicle:    { label: "Vehicles",     pill: "vehicle",    tx: "#c084fc", bg: "#1a1a2e" },
+  ingredient: { label: "Ingredients", pill: "ingredient",  tx: "#4ade80", bg: "#14291a" },
 };
 
 const MODAL_TYPE_MAP = {
-  customer: "customer", delivery: "delivery",
-  expense: "expense", supply: "supply", wastage: "wastage",
+  customer:"customer", delivery:"delivery",
+  expense:"expense", supply:"supply", wastage:"wastage",
 };
 const TAB_FALLBACK_MAP = {
-  product: "Production", staff: "Staff",
-  machine: "Machines", vehicle: "Vehicles", ingredient: "Ingredients",
+  product:"Production", staff:"Staff",
+  machine:"Machines", vehicle:"Vehicles", ingredient:"Ingredients",
 };
 
 // ── index builder ─────────────────────────────────────────────
@@ -124,109 +105,141 @@ export function CommandPalette({
   wastage=[], products=[], staffList=[], machineList=[],
   vehList=[], ingItems=[], dm,
   onNavigate, onOpenDetail, onQuickAction,
-  isAdmin,
-  // open/setOpen passed in from CRM so the header button can trigger it
-  open, setOpen,
-  // Called with true when palette opens, false when it fully closes
-  // Use this to hide the Kanban / Audit floating buttons while palette is open
-  onPaletteOpenChange,
+  isAdmin, open, setOpen, onPaletteOpenChange,
 }) {
   const t           = T(dm);
   const windowWidth = useWindowWidth();
   const isMobile    = windowWidth < 640;
 
-  const [query, setQuery]   = useState("");
-  const [cursor, setCursor] = useState(0);
-  // closing animation state
+  const [query, setQuery]     = useState("");
+  const [cursor, setCursor]   = useState(0);
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef(null);
 
   const inputRef = useRef(null);
   const listRef  = useRef(null);
   const itemRefs = useRef([]);
-
-  // Guard: while closing animation plays, block pointer events on items
   const isClosing = closing;
 
   function triggerClose() {
     if (closing) return;
     setClosing(true);
     clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => {
-      setOpen(false);
-      setClosing(false);
-    }, 210);
+    closeTimer.current = setTimeout(() => { setOpen(false); setClosing(false); }, 210);
   }
 
-  // Backdrop tap guard — only close if pointerdown AND pointerup
-  // both land on the backdrop with minimal movement (not a scroll drift).
-  const backdropDownPos = useRef(null);
-  // When the input loses focus (keyboard dismissed on mobile), briefly block
-  // backdrop closes so the keyboard-drop layout shift doesn't fire a false close.
-  const blockCloseUntil = useRef(0);
+  // ── Backdrop close — separate touch vs pointer paths ──────────
+  // iOS touch events are more reliable than pointer events for detecting
+  // real taps vs scroll-drift on the backdrop.
+  const blockCloseUntil        = useRef(0);
+  const listScrolling          = useRef(false);
+  const listScrollTimer        = useRef(null);
+  const touchStartedOnBackdrop = useRef(false);
+  const touchStartPos          = useRef(null);
+  const backdropDownPos        = useRef(null);
+
   function onInputBlur() {
-    blockCloseUntil.current = Date.now() + 350;
+    // iOS/Android reflow after keyboard dismiss takes up to ~700ms
+    blockCloseUntil.current = Date.now() + 700;
   }
+  function onListScroll() {
+    listScrolling.current = true;
+    clearTimeout(listScrollTimer.current);
+    listScrollTimer.current = setTimeout(() => { listScrolling.current = false; }, 400);
+  }
+
+  // Touch path (iOS + Android)
+  function onBackdropTouchStart(e) {
+    if (e.target !== e.currentTarget) { touchStartedOnBackdrop.current = false; return; }
+    touchStartedOnBackdrop.current = true;
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function onBackdropTouchEnd(e) {
+    if (!touchStartedOnBackdrop.current) return;
+    touchStartedOnBackdrop.current = false;
+    if (Date.now() < blockCloseUntil.current || listScrolling.current || !touchStartPos.current) return;
+    const dx = Math.abs(e.changedTouches[0].clientX - touchStartPos.current.x);
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartPos.current.y);
+    touchStartPos.current = null;
+    if (dx < 10 && dy < 10) triggerClose();
+  }
+  function onBackdropTouchCancel() {
+    touchStartedOnBackdrop.current = false;
+    touchStartPos.current = null;
+  }
+
+  // Pointer path (desktop mouse only — skipped on mobile)
   function onBackdropPointerDown(e) {
-    if (e.target !== e.currentTarget) return;
-    if (Date.now() < blockCloseUntil.current) return;
+    if (isMobile || e.target !== e.currentTarget) return;
     backdropDownPos.current = { x: e.clientX, y: e.clientY };
   }
   function onBackdropPointerUp(e) {
-    if (e.target !== e.currentTarget) return;
-    if (!backdropDownPos.current) return;
+    if (isMobile || e.target !== e.currentTarget || !backdropDownPos.current) return;
     const dx = Math.abs(e.clientX - backdropDownPos.current.x);
     const dy = Math.abs(e.clientY - backdropDownPos.current.y);
     backdropDownPos.current = null;
-    // Only close if pointer barely moved (real tap, not a scroll that drifted)
     if (dx < 8 && dy < 8) triggerClose();
   }
-  function onBackdropPointerCancel() {
-    backdropDownPos.current = null;
-  }
 
-  // Keyboard shortcut — Cmd/Ctrl+K
+  // ── Keyboard shortcut ─────────────────────────────────────────
   useEffect(() => {
     const handler = e => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); if (open) triggerClose(); else setOpen(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); open ? triggerClose() : setOpen(true); }
       if (e.key === "Escape" && open) triggerClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, closing]);
 
-  // Focus input when opened
+  // ── Focus on open ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!open || closing) return;
+    setQuery(""); setCursor(0);
+    // Longer delay on mobile: wait for keyboard to finish animating up
+    const timer = setTimeout(() => inputRef.current?.focus(), isMobile ? 150 : 60);
+    return () => clearTimeout(timer);
+  }, [open, isMobile]);
+
+  // ── Body scroll lock ──────────────────────────────────────────
+  // position:fixed is the only approach that works on both iOS Safari and Android Chrome.
+  // overflow:hidden alone causes iOS to still scroll the background.
+  const savedScrollY = useRef(0);
   useEffect(() => {
     if (open && !closing) {
-      setQuery("");
-      setCursor(0);
-      setTimeout(() => inputRef.current?.focus(), 60);
-    }
-  }, [open]);
-
-  // Lock body scroll while open + notify parent to hide floaters
-  useEffect(() => {
-    if (open || closing) {
-      document.body.style.overflow = "hidden";
+      savedScrollY.current = window.scrollY;
+      document.body.style.cssText = `overflow:hidden;position:fixed;top:-${savedScrollY.current}px;left:0;right:0;width:100%;`;
       onPaletteOpenChange?.(true);
-    } else {
-      document.body.style.overflow = "";
+    } else if (!open) {
+      document.body.style.cssText = "";
+      window.scrollTo(0, savedScrollY.current);
       onPaletteOpenChange?.(false);
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => { document.body.style.cssText = ""; };
   }, [open, closing]);
 
-  // Cleanup timer on unmount
-  useEffect(() => () => clearTimeout(closeTimer.current), []);
+  // ── Panel slide-in animation ──────────────────────────────────
+  const [panelReady, setPanelReady] = useState(false);
+  useEffect(() => {
+    if (open && !closing) {
+      const raf = requestAnimationFrame(() => setPanelReady(true));
+      return () => cancelAnimationFrame(raf);
+    } else {
+      setPanelReady(false);
+    }
+  }, [open, closing]);
 
+  // ── Cleanup ───────────────────────────────────────────────────
+  useEffect(() => () => {
+    clearTimeout(closeTimer.current);
+    clearTimeout(listScrollTimer.current);
+  }, []);
+
+  // ── Search ────────────────────────────────────────────────────
   const index = useMemo(() => buildIndex({ customers, deliveries, expenses, supplies, wastage, products, staffList, machineList, vehList, ingItems }),
     [customers, deliveries, expenses, supplies, wastage, products, staffList, machineList, vehList, ingItems]);
 
   const fuse = useMemo(() => new Fuse(index, {
-    keys: ["keywords","label","sub"],
-    threshold: 0.35,
-    includeScore: true,
-    minMatchCharLength: 1,
+    keys:["keywords","label","sub"], threshold:0.35, includeScore:true, minMatchCharLength:1,
   }), [index]);
 
   const results = useMemo(() => {
@@ -238,132 +251,91 @@ export function CommandPalette({
     return fuse.search(query).map(r => r.item).slice(0, 18);
   }, [query, fuse, isAdmin]);
 
-  // Chip keyboard navigation — track focused chip index separately
+  // ── Chip nav ──────────────────────────────────────────────────
   const [chipCursor, setChipCursor] = useState(-1);
   const chipRefs = useRef([]);
-  const visibleChips = useMemo(
-    () => QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin),
-    [isAdmin]
-  );
+  const visibleChips = useMemo(() => QUICK_ACTIONS.filter(a => !a.adminOnly || isAdmin), [isAdmin]);
 
   useEffect(() => setCursor(0), [results]);
   useEffect(() => { itemRefs.current[cursor]?.scrollIntoView({ block:"nearest" }); }, [cursor]);
   useEffect(() => { chipRefs.current[chipCursor]?.scrollIntoView({ block:"nearest", inline:"nearest" }); }, [chipCursor]);
-
-  // Reset chip focus when query changes
   useEffect(() => { setChipCursor(-1); }, [query]);
 
   const handleKeyDown = useCallback(e => {
     const inChipMode = !query.trim() && chipCursor >= 0;
-
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (inChipMode) {
-        // Leave chip row, enter results list
-        setChipCursor(-1);
-        setCursor(0);
-      } else {
-        setCursor(c => Math.min(c + 1, results.length - 1));
-      }
+      if (inChipMode) { setChipCursor(-1); setCursor(0); }
+      else setCursor(c => Math.min(c + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (!query.trim() && cursor === 0 && !inChipMode) {
-        // Move up into chip row
-        setChipCursor(visibleChips.length - 1);
-      } else if (inChipMode) {
-        // Already in chip row, do nothing (or could move up out)
-      } else {
-        setCursor(c => Math.max(c - 1, 0));
-      }
-    } else if (e.key === "ArrowLeft" && inChipMode) {
+      if (!query.trim() && cursor === 0 && !inChipMode) setChipCursor(visibleChips.length - 1);
+      else if (!inChipMode) setCursor(c => Math.max(c - 1, 0));
+    } else if (e.key === "ArrowLeft"  && inChipMode) { e.preventDefault(); setChipCursor(c => Math.max(c - 1, 0)); }
+    else if (e.key === "ArrowRight" && inChipMode) { e.preventDefault(); setChipCursor(c => Math.min(c + 1, visibleChips.length - 1)); }
+    else if (e.key === "Tab" && !query.trim()) {
       e.preventDefault();
-      setChipCursor(c => Math.max(c - 1, 0));
-    } else if (e.key === "ArrowRight" && inChipMode) {
-      e.preventDefault();
-      setChipCursor(c => Math.min(c + 1, visibleChips.length - 1));
-    } else if (e.key === "Tab" && !query.trim()) {
-      e.preventDefault();
-      if (chipCursor < 0) {
-        // Enter chip row
-        setChipCursor(0);
-      } else if (e.shiftKey) {
-        if (chipCursor === 0) { setChipCursor(-1); inputRef.current?.focus(); }
-        else setChipCursor(c => c - 1);
-      } else {
-        if (chipCursor >= visibleChips.length - 1) { setChipCursor(-1); setCursor(0); }
-        else setChipCursor(c => c + 1);
-      }
+      if (chipCursor < 0) setChipCursor(0);
+      else if (e.shiftKey) { if (chipCursor === 0) { setChipCursor(-1); inputRef.current?.focus(); } else setChipCursor(c => c - 1); }
+      else { if (chipCursor >= visibleChips.length - 1) { setChipCursor(-1); setCursor(0); } else setChipCursor(c => c + 1); }
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (inChipMode) {
-        const chip = visibleChips[chipCursor];
-        if (chip) activate({ _type:"action", _id:chip.id, icon:chip.icon, label:chip.label, tab:chip.tab });
-      } else if (results[cursor]) {
-        activate(results[cursor]);
-      }
+      if (inChipMode) { const chip = visibleChips[chipCursor]; if (chip) activate({ _type:"action", _id:chip.id, icon:chip.icon, label:chip.label, tab:chip.tab }); }
+      else if (results[cursor]) activate(results[cursor]);
     }
   }, [results, cursor, chipCursor, query, visibleChips]);
 
   const activate = useCallback(item => {
     triggerClose();
     setQuery("");
-    // Slight delay so close animation plays before modal opens
     setTimeout(() => {
       if (item._type === "nav")    { onNavigate?.(item._id); return; }
-      if (item._type === "action") {
-        // Actions with tab:null are pure callbacks (e.g. Kanban, Audit Log) — no tab navigation
-        if (item.tab) onNavigate?.(item.tab);
-        onQuickAction?.(item._id, item.tab);
-        return;
-      }
+      if (item._type === "action") { if (item.tab) onNavigate?.(item.tab); onQuickAction?.(item._id, item.tab); return; }
       const modalType = MODAL_TYPE_MAP[item._type];
       if (modalType && item.raw) onOpenDetail?.({ type:modalType, data:item.raw });
       else onNavigate?.(TAB_FALLBACK_MAP[item._type] || "Dashboard");
     }, 60);
   }, [onNavigate, onOpenDetail, onQuickAction, closing]);
 
+  // ── Styles ────────────────────────────────────────────────────
   const kbdStyle = {
-    fontSize: 10,
-    color: dm ? "#4a6080" : "#94a3b8",
-    background: dm ? "#1e2736" : "#f1f5f9",
-    border: `1px solid ${dm?"#2a3347":"#e2e8f0"}`,
-    borderRadius: 5,
-    padding: "2px 6px",
-    fontFamily: "inherit",
-    fontWeight: 700,
+    fontSize:10, color:dm?"#4a6080":"#94a3b8", background:dm?"#1e2736":"#f1f5f9",
+    border:`1px solid ${dm?"#2a3347":"#e2e8f0"}`, borderRadius:5,
+    padding:"2px 6px", fontFamily:"inherit", fontWeight:700,
   };
-
   const pillStyle = type => {
     const m = TYPE_META[type] || TYPE_META.nav;
-    return {
-      fontSize: 9, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase",
+    return { fontSize:9, fontWeight:800, letterSpacing:"0.05em", textTransform:"uppercase",
       background: m.bg ? (dm?m.bg:m.bg+"44") : (dm?"#1e2736":"#f1f5f9"),
-      color: m.tx, borderRadius: 5, padding: "2px 6px", flexShrink: 0,
-    };
+      color:m.tx, borderRadius:5, padding:"2px 6px", flexShrink:0 };
   };
 
   if (!open && !closing) return null;
 
-  // Animation classes
   const backdropAnim = closing
-    ? { opacity: 0, transition: "opacity 0.2s" }
-    : { opacity: 1, transition: "opacity 0.15s" };
+    ? { opacity:0, transition:"opacity 0.2s" }
+    : { opacity:1, transition:"opacity 0.15s" };
+
   const panelAnim = closing
     ? isMobile
-      ? { transform: "translateY(100%)", transition: "transform 0.21s cubic-bezier(0.4,0,1,1)" }
-      : { opacity: 0, transform: "translateY(-8px) scale(0.98)", transition: "all 0.18s" }
-    : isMobile
-      ? { transform: "translateY(0)", transition: "transform 0.22s cubic-bezier(0.16,1,0.3,1)" }
-      : { opacity: 1, transform: "translateY(0) scale(1)", transition: "all 0.14s cubic-bezier(0.16,1,0.3,1)" };
+      ? { transform:"translateY(100%)", transition:"transform 0.21s cubic-bezier(0.4,0,1,1)" }
+      : { opacity:0, transform:"translateY(-8px) scale(0.98)", transition:"all 0.18s" }
+    : panelReady
+      ? isMobile
+        ? { transform:"translateY(0)", transition:"transform 0.22s cubic-bezier(0.16,1,0.3,1)" }
+        : { opacity:1, transform:"translateY(0) scale(1)", transition:"all 0.14s cubic-bezier(0.16,1,0.3,1)" }
+      : isMobile
+        ? { transform:"translateY(100%)" }
+        : { opacity:0, transform:"translateY(-10px) scale(0.98)" };
 
   let lastType = null;
 
   return (
     <>
       <style>{`
-        .cp-list::-webkit-scrollbar{display:none}
-        .cp-chips::-webkit-scrollbar{display:none}
-        .cp-item{transition:background 0.08s;}
+        .cp-list::-webkit-scrollbar { display:none }
+        .cp-chips::-webkit-scrollbar { display:none }
+        .cp-item { transition:background 0.08s; }
       `}</style>
 
       {/* Backdrop */}
@@ -371,8 +343,7 @@ export function CommandPalette({
         style={{
           position:"fixed", inset:0, zIndex:9999,
           background:"rgba(0,0,0,0.55)",
-          backdropFilter:"blur(6px)",
-          WebkitBackdropFilter:"blur(6px)",
+          backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)",
           display:"flex",
           alignItems: isMobile ? "flex-end" : "flex-start",
           justifyContent:"center",
@@ -381,42 +352,42 @@ export function CommandPalette({
           paddingRight: isMobile ? 0 : 12,
           ...backdropAnim,
         }}
+        onTouchStart={onBackdropTouchStart}
+        onTouchEnd={onBackdropTouchEnd}
+        onTouchCancel={onBackdropTouchCancel}
         onPointerDown={onBackdropPointerDown}
         onPointerUp={onBackdropPointerUp}
-        onPointerCancel={onBackdropPointerCancel}
       >
-        {/* Panel */}
+        {/* Panel — stopPropagation on both touch and pointer so panel taps never reach backdrop */}
         <div
           style={{
             width:"100%",
             maxWidth: isMobile ? "100%" : 620,
             background: dm ? "#13181f" : "#ffffff",
             borderRadius: isMobile ? "20px 20px 0 0" : 20,
-            border: `1.5px solid ${dm?"#252d3a":"#e2e8f0"}`,
+            border:`1.5px solid ${dm?"#252d3a":"#e2e8f0"}`,
             borderBottom: isMobile ? "none" : `1.5px solid ${dm?"#252d3a":"#e2e8f0"}`,
-            boxShadow: dm
-              ? "0 -20px 60px rgba(0,0,0,0.6)"
-              : "0 20px 60px rgba(0,0,0,0.15)",
+            boxShadow: dm ? "0 -20px 60px rgba(0,0,0,0.6)" : "0 20px 60px rgba(0,0,0,0.15)",
             overflow:"hidden",
+            overscrollBehavior:"contain",
             paddingBottom: isMobile ? "env(safe-area-inset-bottom, 0px)" : 0,
-            // initial position for animation
-            ...(closing ? {} : isMobile ? { transform:"translateY(100%)" } : { opacity:0, transform:"translateY(-10px) scale(0.98)" }),
             ...panelAnim,
           }}
           onPointerDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
         >
-          {/* Drag handle — mobile only */}
+          {/* Drag handle */}
           {isMobile && (
             <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 4px" }}>
               <div style={{ width:36, height:4, borderRadius:99, background:dm?"#2a3347":"#e2e8f0" }} />
             </div>
           )}
 
-          {/* Search input row */}
+          {/* Search row */}
           <div style={{
             display:"flex", alignItems:"center", gap:10,
             padding: isMobile ? "12px 16px" : "14px 18px",
-            borderBottom: `1px solid ${dm?"#1e2736":"#f0f4f8"}`,
+            borderBottom:`1px solid ${dm?"#1e2736":"#f0f4f8"}`,
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
               stroke={dm?"#4a6080":"#94a3b8"} strokeWidth="2.2"
@@ -427,7 +398,7 @@ export function CommandPalette({
               ref={inputRef}
               style={{
                 flex:1, background:"transparent", border:"none", outline:"none",
-                fontSize: isMobile ? 16 : 15, // 16px prevents iOS zoom
+                fontSize:16, // always 16px — prevents iOS Safari auto-zoom on focus
                 fontWeight:500,
                 color: dm ? "#e8edf5" : "#0f172a",
                 fontFamily:"inherit",
@@ -442,39 +413,58 @@ export function CommandPalette({
               autoCorrect="off"
               autoCapitalize="off"
             />
-            {query
-              ? <button
-                  onPointerDown={e => { e.stopPropagation(); setQuery(""); inputRef.current?.focus(); }}
-                  style={{ background:dm?"#1e2736":"#f1f5f9", border:"none", borderRadius:6, width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:dm?"#4a6080":"#94a3b8", fontSize:12, fontWeight:900, flexShrink:0 }}>
-                  ✕
-                </button>
-              : !isMobile && <kbd style={kbdStyle}>ESC</kbd>
-            }
+            {query ? (
+              <button
+                onPointerDown={e => { e.stopPropagation(); setQuery(""); inputRef.current?.focus(); }}
+                style={{ background:dm?"#1e2736":"#f1f5f9", border:"none", borderRadius:6,
+                  width:28, height:28, minWidth:28, display:"flex", alignItems:"center",
+                  justifyContent:"center", cursor:"pointer", color:dm?"#4a6080":"#94a3b8",
+                  fontSize:13, fontWeight:900, flexShrink:0,
+                  WebkitTapHighlightColor:"transparent" }}>
+                ✕
+              </button>
+            ) : isMobile ? (
+              <button
+                onPointerDown={e => { e.stopPropagation(); triggerClose(); }}
+                style={{ background:dm?"#1e2736":"#f1f5f9",
+                  border:`1px solid ${dm?"#2a3347":"#e2e8f0"}`,
+                  borderRadius:8, padding:"5px 12px", minHeight:36,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  cursor:"pointer", color:dm?"#94a3b8":"#64748b",
+                  fontSize:13, fontWeight:600, flexShrink:0,
+                  WebkitTapHighlightColor:"transparent" }}>
+                Done
+              </button>
+            ) : (
+              <kbd style={kbdStyle}>ESC</kbd>
+            )}
           </div>
 
-          {/* Quick-action chips — shown only when query is empty, above results */}
+          {/* Quick-action chips */}
           {!query.trim() && (
-            <div style={{
+            <div className="cp-chips" style={{
               display:"flex", gap:6, padding:"10px 16px 0",
               overflowX:"auto", WebkitOverflowScrolling:"touch",
               scrollbarWidth:"none", msOverflowStyle:"none",
-            }} className="cp-chips">
+            }}>
               {visibleChips.map((a, ci) => (
-                <button key={a.id}
+                <button
+                  key={a.id}
                   ref={el => (chipRefs.current[ci] = el)}
-                  onPointerDown={e => { e.stopPropagation(); if (!isClosing) activate({ _type:"action", _id:a.id, icon:a.icon, label:a.label, tab:a.tab }); }}
+                  onPointerDown={e => { e.stopPropagation(); if (!isMobile && !isClosing) activate({ _type:"action", _id:a.id, icon:a.icon, label:a.label, tab:a.tab }); }}
+                  onTouchEnd={e => { e.stopPropagation(); if (!isClosing) { e.preventDefault(); activate({ _type:"action", _id:a.id, icon:a.icon, label:a.label, tab:a.tab }); } }}
                   onPointerEnter={() => setChipCursor(ci)}
                   style={{
                     display:"flex", alignItems:"center", gap:6,
                     background: chipCursor === ci ? `${a.color}30` : `${a.color}15`,
                     border: chipCursor === ci ? `1.5px solid ${a.color}90` : `1.5px solid ${a.color}30`,
-                    borderRadius:10, padding:"7px 12px",
+                    borderRadius:10, padding: isMobile ? "9px 14px" : "7px 12px",
                     color:a.color, fontSize:12, fontWeight:700,
                     cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
-                    WebkitTapHighlightColor:"transparent",
-                    outline: "none",
+                    WebkitTapHighlightColor:"transparent", outline:"none",
+                    minHeight: isMobile ? 40 : "auto",
                     boxShadow: chipCursor === ci ? `0 0 0 2px ${a.color}40` : "none",
-                    transition: "background 0.1s, border-color 0.1s, box-shadow 0.1s",
+                    transition:"background 0.1s, border-color 0.1s, box-shadow 0.1s",
                   }}>
                   <span style={{ fontSize:13 }}>{a.icon}</span>
                   {a.label}
@@ -487,12 +477,15 @@ export function CommandPalette({
           <div
             ref={listRef}
             className="cp-list"
-            onPointerDown={e => e.stopPropagation()}
+            onScroll={onListScroll}
+            onTouchStart={e => e.stopPropagation()}
             style={{
-              maxHeight: isMobile ? "48vh" : 380,
+              maxHeight: isMobile ? "45dvh" : 380,
               overflowY:"auto",
-              padding:"6px 0 8px",
+              overflowX:"hidden",
               WebkitOverflowScrolling:"touch",
+              overscrollBehavior:"contain",
+              padding:"6px 0 8px",
               scrollbarWidth:"none",
               msOverflowStyle:"none",
             }}
@@ -502,70 +495,72 @@ export function CommandPalette({
                 <div style={{ fontSize:28, marginBottom:8 }}>🔍</div>
                 No results for <strong>"{query}"</strong>
               </div>
-            ) : (
-              results.map((item, i) => {
-                const showGroup = item._type !== lastType;
-                lastType = item._type;
-                const active = i === cursor;
-                const meta = TYPE_META[item._type] || TYPE_META.nav;
-                // Skip action chips in the list when query is empty — they're shown above
-                if (!query.trim() && item._type === "action") return null;
-                return (
-                  <React.Fragment key={item._id + i}>
-                    {showGroup && (
-                      <div style={{
-                        fontSize:9, fontWeight:800, letterSpacing:"0.1em",
-                        textTransform:"uppercase",
-                        color: dm?"#2e3f52":"#cbd5e1",
-                        padding:"8px 18px 3px",
-                      }}>
-                        {meta.label}
-                      </div>
-                    )}
-                    <div
-                      ref={el => (itemRefs.current[i] = el)}
-                      className="cp-item"
-                      style={{
-                        display:"flex", alignItems:"center", gap:10,
-                        padding: isMobile ? "11px 16px" : "9px 18px",
-                        cursor:"pointer",
-                        background: active ? (dm?"#1a2535":"#f0f7ff") : "transparent",
-                        borderLeft: `2.5px solid ${active?"#3b6ef6":"transparent"}`,
-                        pointerEvents: isClosing ? "none" : "auto",
-                      }}
-                      onPointerEnter={() => !isMobile && setCursor(i)}
-                      onPointerDown={e => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (!isClosing) activate(item);
-                      }}
-                    >
-                      <span style={{ fontSize:16, width:24, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
-                      <span style={{
-                        fontSize:13, fontWeight:600, flex:1, minWidth:0,
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                        color: active ? (dm?"#93c5fd":"#1d4ed8") : (dm?"#e8edf5":"#0f172a"),
-                      }}>{item.label}</span>
-                      {item.sub && (
-                        <span style={{
-                          fontSize:11, color:dm?"#3d5266":"#94a3b8",
-                          flexShrink:0, maxWidth:160,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                        }}>{item.sub}</span>
-                      )}
-                      <span style={pillStyle(item._type)}>{meta.pill}</span>
+            ) : results.map((item, i) => {
+              const showGroup = item._type !== lastType;
+              lastType = item._type;
+              const active = i === cursor;
+              const meta = TYPE_META[item._type] || TYPE_META.nav;
+              if (!query.trim() && item._type === "action") return null;
+              return (
+                <React.Fragment key={item._id + i}>
+                  {showGroup && (
+                    <div style={{
+                      fontSize:9, fontWeight:800, letterSpacing:"0.1em",
+                      textTransform:"uppercase", color:dm?"#2e3f52":"#cbd5e1",
+                      padding:"8px 18px 3px",
+                    }}>
+                      {meta.label}
                     </div>
-                  </React.Fragment>
-                );
-              })
-            )}
+                  )}
+                  <div
+                    ref={el => (itemRefs.current[i] = el)}
+                    className="cp-item"
+                    style={{
+                      display:"flex", alignItems:"center", gap:10,
+                      padding: isMobile ? "13px 16px" : "9px 18px",
+                      cursor:"pointer",
+                      background: active ? (dm?"#1a2535":"#f0f7ff") : "transparent",
+                      borderLeft:`2.5px solid ${active?"#3b6ef6":"transparent"}`,
+                      pointerEvents: isClosing ? "none" : "auto",
+                      minHeight: isMobile ? 52 : "auto",
+                      WebkitTapHighlightColor:"transparent",
+                      userSelect:"none",
+                    }}
+                    onPointerEnter={() => !isMobile && setCursor(i)}
+                    onPointerDown={e => {
+                      e.stopPropagation();
+                      if (!isMobile && !isClosing) activate(item);
+                    }}
+                    onTouchEnd={e => {
+                      e.stopPropagation();
+                      if (!isClosing) { e.preventDefault(); activate(item); }
+                    }}
+                  >
+                    <span style={{ fontSize:16, width:24, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
+                    <span style={{
+                      fontSize:13, fontWeight:600, flex:1, minWidth:0,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      color: active ? (dm?"#93c5fd":"#1d4ed8") : (dm?"#e8edf5":"#0f172a"),
+                    }}>{item.label}</span>
+                    {item.sub && (
+                      <span style={{
+                        fontSize:11, color:dm?"#3d5266":"#94a3b8",
+                        flexShrink:0, maxWidth:160,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      }}>{item.sub}</span>
+                    )}
+                    <span style={pillStyle(item._type)}>{meta.pill}</span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
 
           {/* Footer */}
           <div style={{
             display:"flex", alignItems:"center", gap:12,
             padding: isMobile ? "8px 16px" : "8px 18px",
-            borderTop: `1px solid ${dm?"#1e2736":"#f0f4f8"}`,
+            borderTop:`1px solid ${dm?"#1e2736":"#f0f4f8"}`,
           }}>
             {!isMobile && (
               <>
@@ -581,9 +576,7 @@ export function CommandPalette({
                 )}
               </>
             )}
-            {isMobile && (
-              <span style={{ fontSize:11, color:dm?"#2e3f52":"#cbd5e1" }}>Tap a result to open</span>
-            )}
+            {isMobile && <span style={{ fontSize:11, color:dm?"#2e3f52":"#cbd5e1" }}>Tap a result to open</span>}
             {query && results.length > 0 && (
               <span style={{ marginLeft:"auto", fontSize:10, color:dm?"#2e3f52":"#cbd5e1" }}>
                 {results.length} result{results.length !== 1 ? "s" : ""}
@@ -598,8 +591,6 @@ export function CommandPalette({
 
 /**
  * CommandPaletteButton — drop this in the CRM header.
- * On desktop shows "⌘K" hint, on mobile shows search icon only.
- * Props: dm, t, onClick, windowWidth
  */
 export function CommandPaletteButton({ dm, t, onClick }) {
   const isMobile = useWindowWidth() < 640;
@@ -611,14 +602,13 @@ export function CommandPaletteButton({ dm, t, onClick }) {
       style={{
         display:"flex", alignItems:"center", gap:6,
         background: t?.inp || "rgba(255,255,255,0.06)",
-        border: `1.5px solid ${t?.border || "rgba(255,255,255,0.08)"}`,
+        border:`1.5px solid ${t?.border || "rgba(255,255,255,0.08)"}`,
         borderRadius:11,
         padding: isMobile ? "0" : "0 12px",
-        width:  isMobile ? 38 : "auto",
-        height: 38,
+        width: isMobile ? 38 : "auto",
+        height:38,
         color: t?.sub || "#9ca3af",
-        cursor:"pointer",
-        flexShrink:0,
+        cursor:"pointer", flexShrink:0,
         WebkitTapHighlightColor:"transparent",
         touchAction:"manipulation",
         justifyContent:"center",
@@ -630,15 +620,14 @@ export function CommandPaletteButton({ dm, t, onClick }) {
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       {!isMobile && (
-        <span style={{ fontSize:12, fontWeight:600, color: t?.sub || "#9ca3af" }}>
+        <span style={{ fontSize:12, fontWeight:600, color:t?.sub || "#9ca3af" }}>
           Search
           <kbd style={{
             marginLeft:8, fontSize:10, fontWeight:700,
             background: dm?"#1e2736":"#f1f5f9",
             border:`1px solid ${dm?"#2a3347":"#e2e8f0"}`,
             borderRadius:5, padding:"1px 5px",
-            color: dm?"#4a6080":"#94a3b8",
-            fontFamily:"inherit",
+            color:dm?"#4a6080":"#94a3b8", fontFamily:"inherit",
           }}>⌘K</kbd>
         </span>
       )}

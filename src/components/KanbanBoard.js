@@ -116,15 +116,19 @@ export function KanbanBoard({
   const [expandedCard, setExpanded] = useState(null);
   const [mobileHintDismissed, setMobileHintDismissed] = useState(false);
   const [isMobile, setIsMobile]     = useState(
-    typeof window !== "undefined" ? window.innerWidth < 640 : false
+    typeof window !== "undefined" ? (window.visualViewport?.width ?? window.innerWidth) < 640 : false
   );
 
   // Keep isMobile in sync with actual viewport width
   useEffect(() => {
+    const update = () => setIsMobile((window.visualViewport?.width ?? window.innerWidth) < 640);
     const mq = window.matchMedia("(max-width: 639px)");
-    const handler = (e) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    mq.addEventListener("change", update);
+    window.visualViewport?.addEventListener("resize", update);
+    return () => {
+      mq.removeEventListener("change", update);
+      window.visualViewport?.removeEventListener("resize", update);
+    };
   }, []);
 
   const text   = t?.text   || (dm ? "#f1f5f9" : "#0f172a");
@@ -244,10 +248,10 @@ export function KanbanBoard({
           )}
 
           {/* Row 1: title + close */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: isMobile ? 18 : 22 }}>📌</span>
-              <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 0, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: isMobile ? 18 : 22, flexShrink: 0 }}>📌</span>
+              <div style={{ minWidth: 0 }}>
                 <p style={{ color: text, fontWeight: 800, fontSize: isMobile ? 14 : 16, lineHeight: 1 }}>Kanban Board</p>
                 <p style={{ color: sub, fontSize: 10, marginTop: 2 }}>
                   {activeDelivs.length} order{activeDelivs.length !== 1 ? "s" : ""} · {isMobile ? "tap to expand" : "drag to move through pipeline"}
@@ -257,7 +261,7 @@ export function KanbanBoard({
 
             {/* Search — inline on desktop, full-width row on mobile */}
             {!isMobile && (
-              <div style={{ flex: 1, position: "relative", maxWidth: 260, marginLeft: 8 }}>
+              <div style={{ flex: 1, position: "relative", maxWidth: 260, marginLeft: 8, minWidth: 0 }}>
                 <svg style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
                   width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -291,11 +295,20 @@ export function KanbanBoard({
             )}
 
             <button onClick={onClose} style={{
-              background: "transparent", border: "none", color: sub,
-              fontSize: 20, cursor: "pointer", padding: 8, borderRadius: 10,
-              minWidth: 36, minHeight: 36,
+              background: dm ? "#1e293b" : "#f1f5f9",
+              border: `1px solid ${border}`,
+              color: dm ? "#94a3b8" : "#475569",
+              fontSize: isMobile ? 18 : 20,
+              cursor: "pointer",
+              padding: 0,
+              borderRadius: 10,
+              width: isMobile ? 40 : 36,
+              height: isMobile ? 40 : 36,
+              minWidth: isMobile ? 40 : 36,
               display: "flex", alignItems: "center", justifyContent: "center",
-              marginLeft: "auto",
+              flexShrink: 0,
+              WebkitTapHighlightColor: "transparent",
+              touchAction: "manipulation",
             }}>✕</button>
           </div>
 

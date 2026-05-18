@@ -290,11 +290,15 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
   const inp    = t?.inp    || (dm ? "#0f172a" : "#f8fafc");
   const border = t?.border || (dm ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)");
 
-  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 640);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && (window.visualViewport?.width ?? window.innerWidth) < 640);
   useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 640);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
+    const update = () => setIsMobile((window.visualViewport?.width ?? window.innerWidth) < 640);
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+    };
   }, []);
 
   useEffect(() => {
@@ -396,9 +400,20 @@ export function AuditLogPanel({ open, onClose, actLog = [], dm, t, isAdmin, curr
               </div>
             </div>
             <button onClick={onClose} style={{
-              background: "transparent", border: "none", color: sub,
-              fontSize: 20, cursor: "pointer", padding: 8, borderRadius: 10,
-              minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center",
+              background: dm ? "#1e293b" : "#f1f5f9",
+              border: `1px solid ${border}`,
+              color: dm ? "#94a3b8" : "#475569",
+              fontSize: isMobile ? 18 : 20,
+              cursor: "pointer",
+              padding: 0,
+              borderRadius: 10,
+              width: isMobile ? 40 : 36,
+              height: isMobile ? 40 : 36,
+              minWidth: isMobile ? 40 : 36,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+              WebkitTapHighlightColor: "transparent",
+              touchAction: "manipulation",
             }}>✕</button>
           </div>
 
