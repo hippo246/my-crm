@@ -10,7 +10,7 @@ export default function CustomersTab({
   inr, lineTotal, safeO, safeArr, today, ts, uid,
   notify, addLog, addNotif, captureGPS, ask,
   setTab, setCsh, setCf, blkC,
-  csh, setCsh: _setCsh, cf, setCf: _setCf,
+  csh, cf,
   setDeliv, setPaySh, setPayAmt,
   setPayLedgerSh, setPayLedgerCust, setPayLedgerAmt, setPayLedgerNote, setPayLedgerMethod,
   overdueAlertExpanded, setOverdueAlertExpanded, overdueAlertDays, setOverdueAlertDays,
@@ -26,6 +26,26 @@ export default function CustomersTab({
     window.addEventListener("resize",handler);
     return()=>window.removeEventListener("resize",handler);
   },[]);
+
+  // ── All local state (previously missing — caused blank renders) ──
+  const [custSearch, setCustSearch] = React.useState("");
+  const [custView, setCustView] = React.useState("expanded");
+  const [custStatusFilter, setCustStatusFilter] = React.useState("all");
+  const [custSortField, setCustSortField] = React.useState("lastOrder");
+  const [selectedCustomer, setSelectedCustomer] = React.useState(null);
+  const [custDetailDelivFilter, setCustDetailDelivFilter] = React.useState("all");
+  const [custDetailPartialAmt, setCustDetailPartialAmt] = React.useState("");
+
+  // ── Filtered customer list (was undefined, causing crash) ──
+  const fCust = React.useMemo(() => {
+    const q = custSearch.trim().toLowerCase();
+    if(!q) return safeArr(customers);
+    return safeArr(customers).filter(c =>
+      (c.name||"").toLowerCase().includes(q) ||
+      (c.phone||"").toLowerCase().includes(q) ||
+      (c.address||"").toLowerCase().includes(q)
+    );
+  }, [customers, custSearch]);
   return (
 <div style={{display:"flex",flexDirection:"column",gap:32}}>
           <SectionHeader dm={dm} title="Customers" sub="Manage all your customers in one place"

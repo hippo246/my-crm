@@ -24,9 +24,32 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
   const lineRows = (orderLines, prods) => Object.entries(orderLines||{}).map(([id,qty])=>{const p=(prods||[]).find(x=>x.id===id)||{};return{id,qty:+qty,name:p.name||id,priceAmount:+(p.price||0)};}).filter(r=>r.qty>0);
   const mapU = (addr,lat,lng) => lat&&lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr||"")}`;
   const captureGPS = () => {};
-  const srch = "";
-  const fDeliv = deliveries.filter(d => delivStatusFilter==="all" || d.status===delivStatusFilter);
-  const initBulkRows = () => {};
+  const [srch, setSrch] = React.useState("");
+  const [delivPageSize, setDelivPageSize] = React.useState(30);
+
+  // ── Date filter helper ──
+  const passesDateFilter = (d) => {
+    const todayStr = today();
+    const yStr = (()=>{const x=new Date(todayStr);x.setDate(x.getDate()-1);return x.toISOString().slice(0,10);})();
+    const wStr = (()=>{const x=new Date(todayStr);x.setDate(x.getDate()-6);return x.toISOString().slice(0,10);})();
+    if(delivDateFilter==="today") return d.date===todayStr;
+    if(delivDateFilter==="yesterday") return d.date===yStr;
+    if(delivDateFilter==="week") return d.date>=wStr && d.date<=todayStr;
+    if(delivDateFilter==="custom") {
+      if(delivDateFrom && d.date<delivDateFrom) return false;
+      if(delivDateTo && d.date>delivDateTo) return false;
+      return true;
+    }
+    return true;
+  };
+
+  const fDeliv = deliveries.filter(d =>
+    (delivStatusFilter==="all" || d.status===delivStatusFilter) &&
+    passesDateFilter(d) &&
+    (delivBatchFilter==="all" || (d.batchId||"")===delivBatchFilter || (d.batchIds||[]).includes(delivBatchFilter)) &&
+    (!srch || (d.customer||"").toLowerCase().includes(srch.toLowerCase()) || (d.status||"").toLowerCase().includes(srch.toLowerCase()) || (d.address||"").toLowerCase().includes(srch.toLowerCase()))
+  );
+  const initBulkRows = () => notify("Bulk order not configured");
   const exportFullReport = () => exportCustomerReports ? exportCustomerReports() : notify("Report not available");
   const delivExportBtnRef = React.useRef(null);
   const [collectSh, setCollectSh] = React.useState(null);
@@ -70,6 +93,12 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                 <Pill dm={dm} c={delivStatusFilter===key?c:"stone"}>{label}</Pill>
               </button>
             ))}
+          </div>
+          {/* ── SEARCH BAR ── */}
+          <div style={{position:"relative",marginBottom:4}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",pointerEvents:"none"}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={srch} onChange={e=>{setSrch(e.target.value);setDelivPage(1);}} placeholder="Search deliveries…" style={{width:"100%",background:t.inp,border:`1.5px solid ${t.border}`,color:t.text,borderRadius:12,padding:"10px 12px 10px 36px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            {srch&&<button onClick={()=>setSrch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:t.sub,cursor:"pointer",fontSize:16,lineHeight:1}}>✕</button>}
           </div>
           {/* ── DATE FILTER ROW ── */}
           <div className="flex gap-2 overflow-x-auto pb-2" style={{WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",minWidth:0}}>
@@ -373,7 +402,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
           {!delivCalendar&&(()=>{
             const sortedDelivs=[...fDeliv].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
             const totalDelivRows=sortedDelivs.length;
-            const DELIV_PAGE_SIZE=30;
+            const DELIV_PAGE_SIZE=delivPageSize;
             const pagedDelivs=sortedDelivs.slice((delivPage-1)*DELIV_PAGE_SIZE,delivPage*DELIV_PAGE_SIZE);
             const statusDot=(status)=>{
               const m={"Delivered":"#10b981","In Transit":"#3b82f6","Pending":"#f59e0b","Cancelled":"#ef4444"};
@@ -544,12 +573,17 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                     expandedDeliveryCust === d.id,
                     (v) => setExpandedDeliveryCust(v ? d.id : null),
                   ];
-                  return <div key={d.id||di} style={{background:t.card,border:`1.5px solid ${cardOpen ? sc+"60" : t.border}`,borderRadius:16,overflow:"hidden",transition:"border-color 0.15s"}}>
+                  return <div key={d.id||di} style={{background:t.card,border:`1.5px solid ${bulkSelect&&bulkSelected.has(d.id)?"#f59e0b":cardOpen ? sc+"60" : t.border}`,borderRadius:16,overflow:"hidden",transition:"border-color 0.15s"}}>
                     {/* Card header — always visible */}
-                    <div onClick={() => setCardOpen(!cardOpen)}
+                    <div onClick={() => { if(bulkSelect){setBulkSelected(prev=>{const n=new Set(prev);n.has(d.id)?n.delete(d.id):n.add(d.id);return n;});}else setCardOpen(!cardOpen);}}
                       style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
-                      {/* Status dot */}
-                      <div style={{width:10,height:10,borderRadius:"50%",background:sc,flexShrink:0,boxShadow:`0 0 6px ${sc}60`}}/>
+                      {/* Bulk checkbox or status dot */}
+                      {bulkSelect
+                        ? <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${bulkSelected.has(d.id)?"#f59e0b":t.border}`,background:bulkSelected.has(d.id)?"#f59e0b":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.12s"}}>
+                            {bulkSelected.has(d.id)&&<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3 4L11 1" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                        : <div style={{width:10,height:10,borderRadius:"50%",background:sc,flexShrink:0,boxShadow:`0 0 6px ${sc}60`}}/>
+                      }
                       {/* Main info */}
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -679,12 +713,17 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                         const orderNo=(invRegistry?.issued||{})[d.id]||d.invNo||"";
                         const isEven=di%2===0;
                         return <tr key={d.id||di}
-                          style={{borderBottom:`1px solid ${t.border}`,background:isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",cursor:"pointer",transition:"background 0.12s"}}
-                          onMouseEnter={e=>{e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(37,99,235,0.04)";}}
-                          onMouseLeave={e=>{e.currentTarget.style.background=isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
-                          {/* Status dot */}
-                          <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}}>
-                            {statusDot(d.status)}
+                          style={{borderBottom:`1px solid ${t.border}`,background:bulkSelect&&bulkSelected.has(d.id)?"#f59e0b10":isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent",cursor:"pointer",transition:"background 0.12s"}}
+                          onMouseEnter={e=>{if(!bulkSelect)e.currentTarget.style.background=dm?"rgba(255,255,255,0.04)":"rgba(37,99,235,0.04)";}}
+                          onMouseLeave={e=>{e.currentTarget.style.background=bulkSelect&&bulkSelected.has(d.id)?"#f59e0b10":isEven?(dm?"rgba(255,255,255,0.01)":"rgba(0,0,0,0.007)"):"transparent";}}>
+                          {/* Status dot / bulk checkbox */}
+                          <td style={{padding:"14px 4px 14px 16px",verticalAlign:"middle"}} onClick={bulkSelect?e=>{e.stopPropagation();setBulkSelected(prev=>{const n=new Set(prev);n.has(d.id)?n.delete(d.id):n.add(d.id);return n;});}:undefined}>
+                            {bulkSelect
+                              ? <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${bulkSelected.has(d.id)?"#f59e0b":t.border}`,background:bulkSelected.has(d.id)?"#f59e0b":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.12s"}}>
+                                  {bulkSelected.has(d.id)&&<svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5l3 4L11 1" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                </div>
+                              : statusDot(d.status)
+                            }
                           </td>
                           {/* Delivery ID */}
                           <td style={{padding:"14px 12px",verticalAlign:"middle"}}>
@@ -818,7 +857,7 @@ export default function DeliveriesTab({ dm, t, isAdmin, sess, can, canSeePrices,
                   {/* Right: rows per page dropdown */}
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     <span style={{color:t.sub,fontSize:11}}>Rows</span>
-                    <select value={DELIV_PAGE_SIZE} onChange={()=>{}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12,cursor:"pointer",outline:"none"}}>
+                    <select value={DELIV_PAGE_SIZE} onChange={e=>{setDelivPageSize(+e.target.value);setDelivPage(1);}} style={{background:t.inp,border:`1px solid ${t.border}`,color:t.text,borderRadius:8,padding:"4px 8px",fontSize:12,cursor:"pointer",outline:"none"}}>
                       <option value={15}>15</option>
                       <option value={25}>25</option>
                       <option value={50}>50</option>

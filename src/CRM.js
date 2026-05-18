@@ -204,6 +204,14 @@ function CRM({sess,onLogout,onSessUpdate,dm,setDm,users,setUsers,settings,setSet
   }
   const [kanbanOpen, setKanbanOpen] = useState(false);
   const [auditOpen,  setAuditOpen]  = useState(false);
+  const [fabDockVisible, setFabDockVisible] = useState(true);
+  // Hide the fab dock on any tap/click, show it again after 4s of inactivity
+  const fabDockTimerRef = React.useRef(null);
+  const hideFabDock = React.useCallback(() => {
+    setFabDockVisible(false);
+    clearTimeout(fabDockTimerRef.current);
+    fabDockTimerRef.current = setTimeout(() => setFabDockVisible(true), 4000);
+  }, []);
   const [notifOpen, setNotifOpen]=useState(false);
   const [avatarOpen, setAvatarOpen]=useState(false);
   const unreadNotifs=notifs.filter(n=>!n.read).length;
@@ -2128,8 +2136,7 @@ ${custPages}
       </aside>
 
       {/* ── MOBILE / TABLET MAIN AREA ─────────────────────────── */}
-      <div className="crm-main-content" style={{flex:1,minWidth:0,paddingBottom:"calc(68px + env(safe-area-inset-bottom,0px))"}}>
-
+      <div className="crm-main-content" style={{flex:1,minWidth:0,paddingBottom:"calc(68px + env(safe-area-inset-bottom,0px))"}} onClick={hideFabDock} onTouchStart={hideFabDock}>
       {/* HEADER — full topbar, sticky, white/card bg */}
       <header style={{background:t.topbar,borderBottom:`1px solid ${t.topbarBorder}`,boxShadow:dm?"0 1px 0 rgba(255,255,255,0.03)":"0 1px 3px rgba(0,0,0,0.05)"}} className="sticky top-0 z-30">
         <div className="px-3 sm:px-4 lg:px-6 flex items-center gap-2 sm:gap-3" style={{height:56,paddingTop:"env(safe-area-inset-top,0px)"}}>
@@ -4370,6 +4377,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           fabLabel={null}
           moreOpen={showMoreNav}
           onMore={()=>setShowMoreNav(o=>!o)}
+          onMoreClose={()=>setShowMoreNav(false)}
           moreTabs={moreTabs}
           isMoreActive={isMoreActive}
           icons={TAB_ICONS}
@@ -4384,6 +4392,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
     </div>{/* end outer flex */}
 
       {/* ── FLOATING KANBAN + AUDIT FAB DOCK — mobile/tablet only (<1024px) ── */}
+      {(!cSh && !dSh && !eSh && !sSh && !wSh && !paySh && !payLedgerSh && !bulkOrderSh && !qcSh && !changePwSh && !kanbanOpen && !auditOpen && !showMoreNav) && <>
       <style>{`
         @keyframes fabDockEnter {
           from { opacity:0; transform:translateX(-50%) translateY(6px) scale(0.96); }
@@ -4434,11 +4443,15 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           boxShadow: dm
             ? "0 8px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)"
             : "0 8px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
+          opacity: (fabDockVisible && !cSh && !dSh && !eSh && !sSh && !wSh && !paySh && !payLedgerSh && !bulkOrderSh && !qcSh && !changePwSh) ? 1 : 0,
+          pointerEvents: (fabDockVisible && !cSh && !dSh && !eSh && !sSh && !wSh && !paySh && !payLedgerSh && !bulkOrderSh && !qcSh && !changePwSh) ? "auto" : "none",
+          transform: `translateX(-50%) translateY(${(fabDockVisible && !cSh && !dSh && !eSh && !sSh && !wSh && !paySh && !payLedgerSh && !bulkOrderSh && !qcSh && !changePwSh) ? "0" : "10px"})`,
+          transition: "opacity 0.22s, transform 0.22s",
         }}
       >
         {/* Kanban */}
         <button
-          onClick={()=>setKanbanOpen(true)}
+          onClick={()=>{ setKanbanOpen(true); setFabDockVisible(true); clearTimeout(fabDockTimerRef.current); }}
           title="Kanban Board (Shift+B)"
           className="fab-btn"
           style={{
@@ -4460,7 +4473,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         {/* Audit — admin only */}
         {isAdmin&&(
           <button
-            onClick={()=>setAuditOpen(true)}
+            onClick={()=>{ setAuditOpen(true); setFabDockVisible(true); clearTimeout(fabDockTimerRef.current); }}
             title="Audit Log (Shift+L)"
             className="fab-btn"
             style={{
@@ -4478,6 +4491,7 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           </button>
         )}
       </div>
+      </>}
 
       {/* ── KANBAN BOARD ── */}
       <KanbanBoard
@@ -6182,8 +6196,8 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
           onOpenDetail={(modal) => setDetailModal(modal)}
           onQuickAction={(actionId, tab) => {
             if (tab) setTab(tab);
-            if (actionId === "qa_new_delivery") { setDsh("new"); setDf(blkD()); }
-            if (actionId === "qa_new_customer") { setCsh("new"); setCf(blkC()); }
+            if (actionId === "qa_new_delivery") { setDsh("add"); setDf(blkD()); }
+            if (actionId === "qa_new_customer") { setCsh("add"); setCf(blkC()); }
             if (actionId === "qa_new_expense")  { setEsh("new"); setEf(blkE()); }
             if (actionId === "qa_new_supply")   { setSsh("new"); setSf(blkS()); }
             if (actionId === "qa_new_payment")  { setPaySh(true); }
@@ -6194,17 +6208,18 @@ ${custBreakdownHtml.length>0?`<div style="font-size:13px;font-weight:800;text-tr
         />
       )}
       {/* ── QUICK ENTRY FAB (mobile) ── */}
-      <QuickEntryFAB
+      {!showMoreNav && <QuickEntryFAB
         dm={dm} t={t} tab={tab} sess={sess} can={can} isAdmin={isAdmin}
         customers={customers} products={products} settings={settings}
         today={today}
-        onNewDelivery={() => { setDf(blkD()); setDsh("new"); setTab("Deliveries"); }}
-        onNewCustomer={() => { setCf(blkC()); setCsh("new"); setTab("Customers"); }}
-        onNewExpense={()  => { setEf(blkE()); setEsh("new"); setTab("Expenses"); }}
-        onNewSupply={()   => { setSf(blkS()); setSsh("new"); setTab("Supplies"); }}
-        onNewWastage={() => { setWF(blkW()); setWSh("new"); setTab("Wastage"); }}
+        onNewDelivery={() => { setDf(blkD()); setDsh("add"); setTab("Deliveries"); }}
+        onNewCustomer={() => { setCf(blkC()); setCsh("add"); setTab("Customers"); }}
+        onNewExpense={()  => { setEf(blkE()); setEsh("add"); setTab("Expenses"); }}
+        onNewSupply={()   => { setSf(blkS()); setSsh("add"); setTab("Supplies"); }}
+        onNewWastage={() => { setWF(blkW()); setWSh("add"); setTab("Wastage"); }}
         onRecordPayment={() => { setPayLedgerSh(true); }}
-      />
+        onOpenChange={(isOpen) => { setFabDockVisible(!isOpen); clearTimeout(fabDockTimerRef.current); }}
+      />}
 
       <SystemHealthBar
         dm={dm} t={t}

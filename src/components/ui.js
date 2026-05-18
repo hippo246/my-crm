@@ -447,12 +447,12 @@ function sendBrowserNotif(title, body, icon = "🫓") {
 //           onLogout={onLogout} onDm={()=>setDm(d=>!d)} />
 // ═══════════════════════════════════════════════════════════════
 // NavBtn lifted outside BottomNav to prevent re-creation on every render (avoids flicker)
-const NavBtn = React.memo(function NavBtn({ tb, activeTab, onTab, icons, labels, dm, pendingCount, BLUE, activeCol, inactiveCol }) {
+const NavBtn = React.memo(function NavBtn({ tb, activeTab, onTab, onMore, icons, labels, dm, pendingCount, BLUE, activeCol, inactiveCol }) {
   const isA = activeTab === tb;
   const hasBadge = tb === "Deliveries" && pendingCount > 0;
   return (
     <button
-      onClick={() => onTab(tb)}
+      onClick={() => { onTab(tb); onMore?.(); }}
       style={{
         flex: 1, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
@@ -493,8 +493,9 @@ const NavBtn = React.memo(function NavBtn({ tb, activeTab, onTab, icons, labels,
   );
 });
 
-function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[], isMoreActive, icons={}, labels={}, dm, pendingCount=0, onLogout, onDm }) {
+function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, onMoreClose, moreTabs=[], isMoreActive, icons={}, labels={}, dm, pendingCount=0, onLogout, onDm }) {
   const t = T(dm);
+  const closeMore = onMoreClose || onMore;
 
   const BLUE = "#2563eb";
   const activeCol  = dm ? "#ffffff" : "#0f172a";
@@ -509,7 +510,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
     <>
       {/* ── More drawer backdrop ── */}
       {moreOpen && (
-        <div onClick={() => onMore()} className="lg:hidden"
+        <div onClick={() => closeMore()} className="lg:hidden"
           style={{
             // Explicit position+inset before zIndex avoids Safari stacking context bugs
             // where backdropFilter composites incorrectly when zIndex is the first paint
@@ -535,7 +536,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
             {moreTabs.map(tb => {
               const isA = activeTab === tb;
               return (
-                <button key={tb} onClick={() => { onTab(tb); onMore(); }}
+                <button key={tb} onClick={() => { onTab(tb); closeMore(); }}
                   style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                     padding: "12px 4px 10px", borderRadius: 16, minHeight: 72,
                     background: isA ? BLUE + "18" : "transparent",
@@ -553,7 +554,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
           </div>
           {/* Bottom actions */}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { onDm(); onMore(); }}
+            <button onClick={() => { onDm(); closeMore(); }}
               style={{ flex: 1, padding: "11px 8px", borderRadius: 14, border: `1.5px solid ${navBorder}`,
                 background: dm ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
                 color: dm ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)",
@@ -562,7 +563,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
                 alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44 }}>
               {dm ? "☀️" : "🌙"} {dm ? "Light" : "Dark"}
             </button>
-            <button onClick={() => { onMore(); onLogout(); }}
+            <button onClick={() => { closeMore(); onLogout(); }}
               style={{ flex: 1, padding: "11px 8px", borderRadius: 14,
                 border: "1.5px solid rgba(239,68,68,0.25)",
                 background: "rgba(239,68,68,0.07)", color: "#ef4444",
@@ -606,7 +607,7 @@ function BottomNav({ tabs, activeTab, onTab, onFab, moreOpen, onMore, moreTabs=[
         <div style={{ display: "flex", alignItems: "stretch", height: 64 }}>
 
           {/* All primary tabs */}
-          {tabs.map(tb => <NavBtn key={tb} tb={tb} activeTab={activeTab} onTab={onTab} icons={icons} labels={labels} dm={dm} pendingCount={pendingCount} BLUE={BLUE} activeCol={activeCol} inactiveCol={inactiveCol} />)}
+          {tabs.map(tb => <NavBtn key={tb} tb={tb} activeTab={activeTab} onTab={onTab} onMore={closeMore} icons={icons} labels={labels} dm={dm} pendingCount={pendingCount} BLUE={BLUE} activeCol={activeCol} inactiveCol={inactiveCol} />)}
 
           {/* More button */}
           <button onClick={() => onMore()}

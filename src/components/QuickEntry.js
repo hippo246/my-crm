@@ -88,6 +88,7 @@ export function QuickEntryFAB(props) {
     dm, t, sess, can, isAdmin, tab,
     onNewDelivery, onNewCustomer, onNewExpense,
     onNewSupply, onNewWastage, onRecordPayment,
+    onOpenChange,
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -106,12 +107,14 @@ export function QuickEntryFAB(props) {
   const openSheet = useCallback(() => {
     setOpen(true);
     requestAnimationFrame(() => setAnimIn(true));
-  }, []);
+    onOpenChange?.(true);
+  }, [onOpenChange]);
 
   const closeSheet = useCallback(() => {
     setAnimIn(false);
     setTimeout(() => setOpen(false), 260);
-  }, []);
+    onOpenChange?.(false);
+  }, [onOpenChange]);
 
   const fire = useCallback((action) => {
     closeSheet();
@@ -151,7 +154,7 @@ export function QuickEntryFAB(props) {
     <>
       {/* FAB button — fixed bottom-right, above bottom nav */}
       <button
-        onClick={openSheet}
+        onClick={open ? closeSheet : openSheet}
         aria-label="Quick add"
         style={{
           position: "fixed",
@@ -174,10 +177,10 @@ export function QuickEntryFAB(props) {
           touchAction: "manipulation",
           transition: "transform 0.15s, box-shadow 0.15s",
         }}
-        onTouchStart={e => { e.currentTarget.style.transform = "scale(0.93)"; }}
-        onTouchEnd={e => { e.currentTarget.style.transform = "scale(1)"; }}
+        onTouchStart={e => { e.currentTarget.style.transform = open ? "scale(0.93) rotate(45deg)" : "scale(0.93)"; }}
+        onTouchEnd={e => { e.currentTarget.style.transform = open ? "rotate(45deg)" : "scale(1)"; }}
       >
-        +
+        <span style={{ display: "inline-block", transform: open ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>+</span>
       </button>
 
       {/* Bottom sheet overlay */}
@@ -187,7 +190,7 @@ export function QuickEntryFAB(props) {
           <div
             onClick={closeSheet}
             style={{
-              position: "fixed", inset: 0, zIndex: 400,
+              position: "fixed", inset: 0, zIndex: 1200,
               background: "rgba(0,0,0,0.55)",
               backdropFilter: "blur(2px)",
               opacity: animIn ? 1 : 0,
@@ -200,7 +203,7 @@ export function QuickEntryFAB(props) {
             style={{
               position: "fixed",
               left: 0, right: 0, bottom: 0,
-              zIndex: 401,
+              zIndex: 1201,
               background: dm ? "#111827" : "#ffffff",
               borderRadius: "24px 24px 0 0",
               boxShadow: "0 -8px 40px rgba(0,0,0,0.3)",
